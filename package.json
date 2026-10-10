@@ -1,12 +1,22 @@
 {
   "private": true,
-  "engines": { "node": "24.12.0" },
+  "engines": {
+    "node": "24.12.0"
+  },
   "scripts": {
+    "prepare:df": "node scripts/prepare-df.mjs",
+    "build:df": "npm run prepare:df && bash scripts/with-toolchain.sh bash -c 'cd df-billboard && aztec compile'",
+    "build:df:core": "npm run prepare:df && bash scripts/with-toolchain.sh bash -c 'cd .local/df-upstream/contracts && aztec compile'",
+    "test:df:core": "bash scripts/with-toolchain.sh node scripts/test-df-e2e.mjs --df-core --real-proofs",
+    "test:df": "npm run prepare:df && node --test scripts/test-df-message.mjs && bash scripts/with-toolchain.sh bash -c 'cd df-billboard && aztec test'",
+    "test:df:message": "node --test scripts/test-df-message.mjs",
+    "test:df:e2e": "bash scripts/with-toolchain.sh node scripts/test-df-e2e.mjs",
     "build:contract": "bash scripts/with-toolchain.sh node scripts/build-contract.mjs",
     "build:portal": "bash scripts/with-toolchain.sh node scripts/build-portal.mjs",
     "test:sdk": "node scripts/test-sdk.mjs",
     "test:e2e": "node scripts/test-local-e2e.mjs",
     "start:local": "bash scripts/start-local.sh",
+    "start:local:df": "SEQ_BLOCK_DURATION_MS=12000 bash scripts/start-local.sh",
     "test:noir": "bash scripts/with-toolchain.sh bash billboard/test/run_all.sh --noir-only",
     "build:sdk": "node scripts/build-sdk.mjs",
     "build:apps": "node apps/build.mjs",
@@ -29,6 +39,8 @@
     "fake-indexeddb": "^6.2.5"
   },
   "devDependencies": {
+    "@aztec/bb-prover": "5.0.1",
+    "big-integer": "1.6.52",
     "esbuild": "0.25.10",
     "esbuild-plugin-polyfill-node": "0.3.0"
   }
