@@ -54,7 +54,7 @@ def main():
     os.chdir(directory)
 
     handler = functools.partial(COOPCOEPHandler, directory=directory)
-    with http.server.HTTPServer(('0.0.0.0', port), handler) as httpd:
+    with http.server.HTTPServer(('127.0.0.1', port), handler) as httpd:
         print(f'''
 ╔══════════════════════════════════════════════════════════════════╗
 ║   Aztec Billboard — Web Apps Server                              ║

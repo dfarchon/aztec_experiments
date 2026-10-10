@@ -511,6 +511,7 @@ async function ensureAztecSetup(state, statusId, opts = {}) {
   const l1Contracts = await aztecNode.getL1ContractAddresses();
   const store = await a.createIndexedDBStore('pxe_data', {
     ...l1Contracts,
+    l1ChainId: (await aztecNode.getNodeInfo()).l1ChainId,
     dataDirectory: dataDirPrefix + l1Contracts.rollupAddress,
   });
   const pxe = await a.createPXE(aztecNode, {
@@ -667,7 +668,7 @@ async function preflightL1ToL2Message(aztecNode, recipientAddress, claimAmount, 
     const response = bb.poseidon2Hash({
       inputs: fields.map(x => new a.Fr(x).toBuffer())
     });
-    return BigInt(new a.Fr(Buffer.from(response.hash)).toString());
+    return BigInt(a.Fr.fromString('0x' + hexFromBytes(response.hash)).toString());
   }
 
   const toField = BigInt(recipientAddress.toString());
@@ -795,7 +796,7 @@ async function computeL1ToL2MsgHash(aztecNode, recipientAddress, claimAmount, cl
     const response = bb.poseidon2Hash({
       inputs: fields.map(x => new a.Fr(x).toBuffer())
     });
-    return BigInt(new a.Fr(Buffer.from(response.hash)).toString());
+    return BigInt(a.Fr.fromString('0x' + hexFromBytes(response.hash)).toString());
   }
   const toField = BigInt(recipientAddress.toString());
   const secretField = BigInt(claimSecretFr.toString());

@@ -736,7 +736,7 @@
         // ============================================================
         log('Step 5: Creating PXE...', 'info');
         const dataDirPrefix = (config.dataDirPrefix || 'pxe_bb_') + address.toString().slice(0, 16) + '_';
-        const storeConfig = { ...l1Contracts, dataDirectory: dataDirPrefix + l1Contracts.rollupAddress };
+        const storeConfig = { ...l1Contracts, l1ChainId: nodeInfo.l1ChainId, dataDirectory: dataDirPrefix + l1Contracts.rollupAddress };
         const store = await createStore(storeConfig);
         pxe = await a.createPXE(aztecNode, {
           proverEnabled: true, autoSync: true,
@@ -1810,7 +1810,7 @@
 
       // Call portal.withdraw on L1
       log('  Sending L1 withdrawal tx...', 'info');
-      const pathHex = siblingPath.toBufferArray().map(buf => '0x' + Buffer.from(buf).toString('hex'));
+      const pathHex = siblingPath.toBufferArray().map(buf => ethers.hexlify(buf));
       const portalWithSigner = new ethers.Contract(portalAddr, PORTAL_ABI, ethSigner);
 
       try {

@@ -193,7 +193,7 @@ aztec/
 │   ├── wallet-buttons.js            ← Common wallet loading/generation UI module
 │   ├── app-env.js                   ← Common browser env builders (buildEnv, buildConfig, makeCallEngine)
 │   ├── aztec-lib.js                 ← PXE/CRS/wallet infrastructure + Fee Juice constants
-│   ├── aztec_bundle.js              ← Aztec PXE bundle (WASM, ~58MB)
+│   ├── aztec_bundle.js              ← Generated Aztec PXE bundle (not tracked)
 │   ├── ethers.min.js                ← ethers v6 (for L1 interactions)
 │   ├── poseidon2.js                 ← Pure-JS Poseidon2 (verified against bb.js)
 │   └── rpc-config.json              ← Aztec node URL + API key
@@ -209,8 +209,8 @@ aztec/
 │   │   │   ├── cli.mjs              ← CLI tool (same engine, Node.js)
 │   │   │   └── pxe-cache.cjs        ← IndexedDB dump/restore for CLI PXE caching
 │   │   └── billboard/
-│   │       ├── billboard_artifact.json   ← Compiled L2 contract artifact
-│   │       ├── portal_bytecode.txt       ← Compiled L1 portal bytecode
+│   │       ├── billboard_artifact.json   ← Generated L2 contract artifact
+│   │       ├── portal_bytecode.txt       ← Generated L1 portal bytecode
 │   │       ├── build_artifact.mjs        ← Artifact build script (VKs, bytecode)
 │   │       ├── build_vks.sh              ← VK computation helper
 │   │       ├── deploy/                   ← Deploy app
@@ -234,7 +234,7 @@ aztec/
 │   │           ├── engine.js            ← User flow (deposit, claim, post, withdraw, claim-l1, declare-immoral, transfer-censor)
 │   │           ├── cli.mjs              ← CLI tool
 │   │           └── pxe-cache.cjs        ← IndexedDB dump/restore for CLI PXE caching
-│   ├── dist/                        ← Built single-file apps
+│   ├── dist/                        ← Generated apps and optional CRS cache (not tracked)
 │   │   ├── fee-juice.html
 │   │   ├── deploy.html
 │   │   ├── user.html
@@ -294,19 +294,15 @@ The `auto` action runs the full flow end-to-end: deposit → wait for L2 ingest 
 ## Building
 
 ```bash
-# 1. Compile L2 contract (aztec compile transpiles public ACIR → AVM bytecode + adds VKs)
-cd billboard && aztec compile
-
-# 2. Build the artifact (computes VKs with chonkComputeVk, packages bytecode)
-cd apps/src/billboard && node build_artifact.mjs
-cp billboard_artifact.json deploy/billboard_artifact.json
-
-# 3. Compile L1 portal (if portal_bytecode.txt needs updating)
-cd billboard/portal && forge build --use 0.8.33
-
-# 4. Build all dapps (combines modules into single-file HTML)
-cd apps && node build.mjs
+# From the repository root, with Node 24.12.0 and Aztec 5.0.1 installed:
+npm ci
+npm run build:contract
+npm run build:portal
+npm run build:sdk
+npm run build:apps
 ```
+
+Generated SDK bundles, workers, contract artifacts, portal bytecode, Foundry output and `apps/dist/` are ignored by Git. On a fresh checkout, run all four build commands in order before using the browser apps or the legacy CLIs. The browser loads CRS from the Aztec CDN when local `apps/dist/crs/` files are absent; an offline browser setup must provide those files separately.
 
 ### Building the formal verification proofs
 
@@ -318,7 +314,11 @@ lake build   # 2125 jobs, zero sorrys
 
 ### Important: aztec-nr version must match the bundle
 
-The L2 contract's `Nargo.toml` must depend on `aztec-nr` tag `v5.0.0` — the same version the `aztec_bundle.js` was built from. Version mismatches cause standard contract addresses (HandshakeRegistry, AuthRegistry, etc.) baked into the ACIR to differ from those registered in PXE, causing "contract is not registered" errors.
+This fork pins `aztec-nr`, the JavaScript SDK and PXE to **5.0.1**. Build the SDK from `shared/sdk-entry.mjs` using the committed npm lockfile; `build:apps` alone only assembles pages and copies the existing bundle. The toolchain wrapper checks `.aztec-version` and `.nvmrc` without changing the global installation. Set `AZTEC_TOOLCHAIN_DIR` if Aztec is installed outside the standard versioned directory. Mismatched artifacts and SDKs can cause standard contract registration errors.
+
+The SDK build bundles upstream `main.worker.js` and `thread.worker.js` entrypoints directly. The old generated-bundle patch/extraction scripts are legacy tools and must not be applied to the new bundle. Browser/CLI IndexedDB stores use a version, chain and rollup namespace; old wallet stores are not deleted or automatically migrated.
+
+Regression commands: `npm run test:noir`, `npm run test:sdk`, and `npm run test:daemon`. Start the isolated local network with `npm run start:local` (L2 5180, L1 5954, admin 5980), then run `npm run test:e2e`. This local E2E uses synthetic proofs, not production proof verification. Its receipt is saved to `.local/e2e-result.json`.
 
 Each recompilation changes the contract class ID (public bytecode commitment), so always use a salt that was never used before when deploying.
 

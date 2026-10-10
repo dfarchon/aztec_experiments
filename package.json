@@ -1,6 +1,35 @@
 {
+  "private": true,
+  "engines": { "node": "24.12.0" },
+  "scripts": {
+    "build:contract": "bash scripts/with-toolchain.sh node scripts/build-contract.mjs",
+    "build:portal": "bash scripts/with-toolchain.sh node scripts/build-portal.mjs",
+    "test:sdk": "node scripts/test-sdk.mjs",
+    "test:e2e": "node scripts/test-local-e2e.mjs",
+    "start:local": "bash scripts/start-local.sh",
+    "test:noir": "bash scripts/with-toolchain.sh bash billboard/test/run_all.sh --noir-only",
+    "build:sdk": "node scripts/build-sdk.mjs",
+    "build:apps": "node apps/build.mjs",
+    "test:daemon": "bash censor-daemon/run_tests.sh"
+  },
   "dependencies": {
+    "@aztec/accounts": "5.0.1",
+    "@aztec/aztec.js": "5.0.1",
+    "@aztec/bb.js": "5.0.1",
+    "@aztec/foundation": "5.0.1",
+    "@aztec/kv-store": "5.0.1",
+    "@aztec/noir-acvm_js": "5.0.1",
+    "@aztec/noir-noirc_abi": "5.0.1",
+    "@aztec/protocol-contracts": "5.0.1",
+    "@aztec/pxe": "5.0.1",
+    "@aztec/stdlib": "5.0.1",
+    "@aztec/wallet-sdk": "5.0.1",
+    "@aztec/wallets": "5.0.1",
     "ethers": "^6.17.0",
     "fake-indexeddb": "^6.2.5"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10",
+    "esbuild-plugin-polyfill-node": "0.3.0"
   }
 }
