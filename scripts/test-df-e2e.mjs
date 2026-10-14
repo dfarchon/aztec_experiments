@@ -1,4 +1,4 @@
-// Local-only node/PXE integration. --real-proofs independently verifies claim/post
+// Local-only node/PXE integration. --real-proofs independently verifies posts'
 // client proofs; the local rollup itself still runs in synthetic-proof mode.
 // Run npm run build:df and npm run start:local before this script.
 import fs from 'node:fs';
@@ -105,27 +105,23 @@ try {
     console.log('PASS real PlayerStorage deployment and state write');
   }
   const { contract: board } = await Contract.deploy(wallet, artifact('df_billboard-DFBillboard'), [source.address]).send({ from: admin });
-  await assert.rejects(() => board.methods.claim(state).simulate({ from: outsider }), /Player not registered/);
-  await assert.rejects(() => board.methods.claim({ ...state, score: 100n }).simulate({ from: owner }), /Invalid DF player state/);
-  const claim = await sendPrivate(board.methods.claim(state));
-  console.log('PASS DF storage proof -> private permit', claim.receipt.txHash.toString());
-  await assert.rejects(() => board.methods.claim(state).simulate({ from: owner }), /nullifier|duplicate/i);
   const message = '黑暗森林：匿名入局资格 → 公开消息 🌲';
   const { text, length } = encodeDFMessage(message);
-  await assert.rejects(() => board.methods.post(text, length).simulate({ from: outsider }), /No posting permit/);
-  const posted = await sendPrivate(board.methods.post(text, length));
+  await assert.rejects(() => board.methods.post(state, text, length).simulate({ from: outsider }), /Player not registered/);
+  await assert.rejects(() => board.methods.post({ ...state, score: 100n }, text, length).simulate({ from: owner }), /Invalid DF player state/);
+  const posted = await sendPrivate(board.methods.post(state, text, length));
   const [fields, byteLength] = await view(board.methods.get_post(0));
   assert.equal(decodeDFMessage(fields, byteLength), message);
-  assert.equal(BigInt(await view(board.methods.get_post_count())), 1n);
-  await assert.rejects(() => board.methods.post(text, length).simulate({ from: owner }), /No posting permit/);
+  const second = await sendPrivate(board.methods.post(state, text, length));
+  assert.equal(BigInt(await view(board.methods.get_post_count())), 2n);
   await assert.rejects(() => board.methods._publish(Array(17).fill(0n), 1).simulate({ from: outsider }), /only be called by the same contract/);
-  console.log('PASS private permit -> public UTF-8 text; outsider reads without eligibility');
-  console.log('PASS duplicate claim, double post, forged state, outsider and public bypass rejected');
+  console.log('PASS first post validates DF entry; second post reuses private rolling history');
+  console.log('PASS outsider reads without eligibility; forged state, outsider and public bypass rejected');
   const result = {
     completedAt: new Date().toISOString(), nodeVersion: info.nodeVersion,
     rollupRealProofs: false, clientRealProofs: realProofs, verifiedProofs,
     playerStorage: source.address.toString(), board: board.address.toString(),
-    claimTx: claim.receipt.txHash.toString(), postTx: posted.receipt.txHash.toString(), message,
+    postTx: posted.receipt.txHash.toString(), secondPostTx: second.receipt.txHash.toString(), message,
     qualificationFixture: useDFCore ? 'Core.initialize_player with ZK checks enabled; PlayerUpdate from chain' : 'Real PlayerStorage.set by admin; not Core.initialize_player',
     dfCore,
   };
