@@ -1,4 +1,4 @@
-import { createBillboardController } from './controller.mjs';
+import { createBillboardController } from './controller.ts';
 
 // Kept outside route components: navigation must not discard an active wallet,
 // an in-flight transaction, or the user's message draft.

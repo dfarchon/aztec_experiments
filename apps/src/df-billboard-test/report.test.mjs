@@ -6,7 +6,7 @@ import { build } from 'esbuild';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { StaticRouter } from 'react-router-dom/server.js';
-import { createReadingReport, reportEffect } from './report-data.mjs';
+import { createReadingReport, reportEffect } from './report-data.ts';
 
 function fixture() {
   const original = { normal_zh: ['我们反对代练。', '<img src=x onerror=alert(1)>'],
@@ -26,14 +26,14 @@ test('report derives category counts and separates promotion from discussion lab
   assert.equal(report.summary.find(row=>row.category==='advertising').adFold,1);
 });
 
-test('all switch combinations preserve AI as hint only and count fold union once',()=>{
+test('all switch combinations fold on any active rule and count each post once',()=>{
   const report=createReadingReport(fixture());
-  for (const keyword of [false,true]) for (const ad of [false,true]) for (const ai of [false,true]) for (const adMode of ['hint','fold']) {
-    const options={keyword,ad,ai,adMode};
+  for (const keyword of [false,true]) for (const ad of [false,true]) for (const ai of [false,true]) {
+    const options={keyword,ad,ai};
     const result=reportEffect(report.rows[2],options);
-    assert.equal(result.folded,keyword||(ad&&adMode==='fold'));
-    assert.equal(reportEffect(report.rows[3],options).folded,false);
-    assert.equal(reportEffect(report.rows[3],options).aiRisk,ai);
+    assert.equal(result.folded,keyword||ad);
+    assert.equal(reportEffect(report.rows[3],options).folded,ai);
+    assert.equal(reportEffect(report.rows[3],options).aiFolded,ai);
   }
 });
 
@@ -55,7 +55,7 @@ test('report renders documentation navigation, historic provenance and escaped s
   for(const id of ['overview','switches','samples','design','limits','evidence']) assert.match(html,new RegExp(`id="${id}"`));
   assert.match(html,/&lt;img src=x onerror=alert\(1\)&gt;/);
   assert.doesNotMatch(html,/<img|id="walletMenu"|id="connect"/);
-  assert.match(html,/不会启动模型/);
+  assert.match(html,/首张是总数，后三张是各类的折叠数 \/ 样本数/);
   assert.match(html,/df-test-report.json/);
-  assert.match(html,/本页实现时的回归记录/);
+  assert.match(html,/本页读取历史 AI 结果，不会重新推理/);
 });

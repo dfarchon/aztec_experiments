@@ -1,4 +1,5 @@
 import * as linkify from 'linkifyjs';
+import type { PostData } from './types';
 
 export const MODERATION_RULE_VERSION = 'conservative-reading-v3';
 
@@ -13,31 +14,31 @@ export const AD_TIER_LABELS = {
   likely: '推广线索较强', possible: '推广线索不完整／语境不确定',
   context: '广告讨论／风险提醒语境', policy: '玩家交易／社区活动 · 规则待定',
 };
-export const isPromotion = post => post.adTier === 'likely' || post.adTier === 'possible';
-export const canFoldPromotion = post => post.adTier === 'likely';
+export const isPromotion = (post: PostData): boolean => post.adTier === 'likely' || post.adTier === 'possible';
+export const canFoldPromotion = (post: PostData): boolean => post.adTier === 'likely';
 
-export function normalizeMessage(text) {
+export function normalizeMessage(text: string): string {
   // Conservative grouping: preserve case, character forms and word boundaries.
   return text.replace(/\r\n?/g, '\n').replace(/[ \t]+/g, ' ').trim();
 }
 
-function variantKey(text) {
+function variantKey(text: string): string {
   return text.normalize('NFKC')
     .replace(/[\u200b-\u200d\ufeff]/g, '')
     .replace(/\s+/g, '')
     .toLowerCase();
 }
 
-export function hasContactSignal(text) {
+export function hasContactSignal(text: string): boolean {
   const searchable = text.normalize('NFKC').replace(/[\u200b-\u200d\ufeff]/g, '');
   return contactPattern.test(searchable) || contactPattern.test(searchable.replace(/\s+/g, '')) ||
     linkify.find(searchable).some(item => item.type === 'url' || item.type === 'email');
 }
 
-// Deterministic hints, not semantic moderation. Context/policy/weak evidence
-// never authorize folding, even when the reader selects the fold preference.
-export function classifyRulePosts(posts) {
-  const variants = new Map();
+// Deterministic local classification, not semantic moderation. Context,
+// policy and weak evidence never authorize folding.
+export function classifyRulePosts<T extends PostData>(posts: T[]): (T & { adTier: string; adReasons: string[]; similarTo: string | number | null })[] {
+  const variants = new Map<string, { id: string | number; strict: string }>();
   return posts.map(post => {
     const text = typeof post.text === 'string' && !post.decodeError ? post.text : '';
     let readable = text.normalize('NFKC').replace(/[\u200b-\u200d\ufeff]/g, '');
@@ -51,16 +52,16 @@ export function classifyRulePosts(posts) {
     const contact = hasContactSignal(text);
     const context = contextPattern.test(readable);
     let adTier = 'none';
-    let adReasons = [];
+    let adReasons: string[] = [];
     if (context && (product || sales)) {
       adTier = ownOfferPattern.test(readable) && sales && contact ? 'possible' : 'context';
-      adReasons = ['出现引用、讨论、否定或风险提醒语境', '仅提示，仍可能夹带推广'];
+      adReasons = ['出现引用、讨论、否定或风险提醒语境', '不自动折叠，仍可能夹带推广'];
     } else if (policyPattern.test(readable)) {
       adTier = 'policy';
       adReasons = ['涉及玩家交易或社区活动，是否允许需另行确定'];
     } else if (sales && (product || contact)) {
       adTier = product && contact ? 'likely' : 'possible';
-      adReasons = [product && '商品／服务', '价格／优惠／接单行为', contact && '联系或跳转入口'].filter(Boolean);
+      adReasons = [product && '商品／服务', '价格／优惠／接单行为', contact && '联系或跳转入口'].filter((value): value is string => Boolean(value));
     } else if (product && contact) {
       adTier = 'possible';
       adReasons = ['商品／服务与联系入口同时出现', '未确认推销行为'];
@@ -76,9 +77,9 @@ export function classifyRulePosts(posts) {
 }
 
 // Preserve every original ID/text/AI label. This is display grouping only.
-export function groupDuplicatePosts(posts, enabled = true) {
-  const groups = [];
-  const seen = new Map();
+export function groupDuplicatePosts<T extends PostData>(posts: T[], enabled = true): T[][] {
+  const groups: T[][] = [];
+  const seen = new Map<string, T[]>();
   for (const post of posts) {
     const key = enabled && !post.decodeError && typeof post.text === 'string'
       ? normalizeMessage(post.text) : '';

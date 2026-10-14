@@ -1,5 +1,6 @@
+// @ts-nocheck -- Transformers' browser pipeline types do not model this worker's multi-label output.
 import { pipeline, env } from '@huggingface/transformers';
-import { AI_MODEL, AI_REVISION, AI_CACHE_NAME, safetyResult } from './ai-config.mjs';
+import { AI_MODEL, AI_REVISION, AI_CACHE_NAME, safetyResult } from './ai-config.ts';
 
 env.allowLocalModels = false;
 env.useBrowserCache = false;

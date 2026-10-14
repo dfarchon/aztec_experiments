@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Hint } from './Hint';
 import type { ReactNode } from 'react';
-import type { AdMode, KeywordMode, ViewProps } from './types';
+import type { KeywordMode, ViewProps } from './types';
 
 function Toggle({ id, checked, disabled, onChange, children }: { id: string; checked: boolean; disabled?: boolean; onChange(value: boolean): void; children: ReactNode }) {
   return <label className="reading-toggle" htmlFor={id}><span>{children}</span>
@@ -30,20 +30,15 @@ export function ReadingSettings({ view, controller }: ViewProps) {
       {view.keywordError && <p role="alert" className="reading-error">{view.keywordError}</p>}
     </section>
     <section className="reading-option">
-      <div className="reading-title"><Toggle id="adEnabled" checked={view.adEnabled !== false} onChange={value => controller.setField('adEnabled', value)}>推广规则</Toggle>
-        <Hint label="推广规则说明">结合商品／服务、推销行为和联系入口判断推广线索，不因单独出现链接就屏蔽。讨论提醒、玩家交易、社区活动与不完整线索只提示。规则可能误判，也可能漏判。</Hint></div>
-      <label htmlFor="adMode">命中后的显示方式</label>
-      <select id="adMode" disabled={view.adEnabled === false} value={view.adMode === 'fold' ? 'fold' : 'hint'}
-        onChange={event => controller.setField('adMode', event.target.value as AdMode)}>
-        <option value="hint">仅提示（默认）</option><option value="fold">折叠较强推广线索</option>
-      </select>
+      <div className="reading-title"><Toggle id="adEnabled" checked={view.adEnabled} onChange={value => controller.setField('adEnabled', value)}>折叠明显推广</Toggle>
+        <Hint label="推广折叠说明">结合商品／服务、推销行为和联系入口判断。仅折叠较强推广线索；讨论提醒、玩家交易、社区活动及不完整线索仍正常展示。规则可能误判或漏判。</Hint></div>
     </section>
     <section className="reading-option">
       <div className="reading-title"><Toggle id="aiHints" checked={view.aiHints} disabled={view.aiClearing || (view.busy && !view.aiHints)}
-        onChange={value => controller.setAiHints(value)}>AI 风险提示</Toggle>
-        <Hint label="AI 模型说明">Content Safety Guard Small · 中英文。本地运行，默认关闭；只加提示，不自动折叠。权重约 268 MB，分词器约 34 MB，另需运行库。帖子不上传审核服务。模型不可用时保留原文，关键词和推广规则照常工作。链上操作期间暂停 AI。</Hint></div>
+        onChange={value => controller.setAiHints(value)}>折叠 AI 判为风险的内容</Toggle>
+        <Hint label="AI 折叠说明">Content Safety Guard Small · 中英文。本地运行，默认关闭；模型命中风险后折叠，未完成分析或模型不可用时保持可见。权重约 268 MB，分词器约 34 MB，另需运行库。帖子不上传审核服务，可能误判或漏判。</Hint></div>
       {view.aiConsentOpen && <div className="ai-consent" role="group" aria-label="首次启用本地 AI">
-        <p>将下载约 268 MB 权重、34 MB 分词器及运行库；有消息时开始分析，可能占用较多内存。帖子不上传审核服务。模型可能误判或漏判，开启后会记住此设备的选择。</p>
+        <p>将下载约 268 MB 权重、34 MB 分词器及运行库；有消息时开始分析，可能占用较多内存。模型判为风险的消息会折叠，可能误判或漏判；原文可展开。帖子不上传审核服务，开启后会记住此设备的选择。</p>
         <div className="reading-actions"><button id="confirmAi" onClick={controller.confirmAiHints}>确认下载并启用</button>
           <button id="cancelAi" onClick={() => controller.setAiHints(false)}>取消</button></div>
       </div>}

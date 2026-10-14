@@ -1,12 +1,12 @@
 export const KEYWORD_LIMIT = 200;
 export const KEYWORD_LENGTH_LIMIT = 80;
-export const normalizeKeywordText = text => text.normalize('NFKC').toLowerCase();
+export const normalizeKeywordText = (text: string) => text.normalize('NFKC').toLowerCase();
 
 // Literal user preferences, not an advertising or safety judgement. Never
 // interpret user input as regex or remove spaces / zero-width characters.
-export function parseKeywords(input) {
+export function parseKeywords(input: string): string[] {
   if (typeof input !== 'string' || input.length > 20_000) throw new Error('词表过大，请限制在 200 个词以内');
-  const words = [], seen = new Set();
+  const words: string[] = [], seen = new Set<string>();
   for (const line of input.split(/\r?\n/)) {
     const word = line.trim();
     if (!word) continue;
@@ -20,7 +20,7 @@ export function parseKeywords(input) {
   return words;
 }
 
-export function keywordMatches(text, words = [], mode = 'contains') {
+export function keywordMatches(text: string | undefined, words: string[] = [], mode: 'contains' | 'word' = 'contains'): string[] {
   if (typeof text !== 'string') return [];
   const normalized = normalizeKeywordText(text);
   return words.filter(word => {

@@ -9,7 +9,7 @@ export const AI_CATEGORY_THRESHOLDS = {
   misinformation: 0.15, unauthorized_advice: 0.2, other: 0.1,
 };
 
-export function safetyResult(predictions) {
+export function safetyResult(predictions: { label: string; score: number }[]) {
   if (!Array.isArray(predictions)) throw new Error('模型返回格式不正确');
   const scores = Object.fromEntries(predictions.map(({ label, score }) => [label, score]));
   for (const label of ['unsafe', ...Object.keys(AI_CATEGORY_THRESHOLDS)]) {

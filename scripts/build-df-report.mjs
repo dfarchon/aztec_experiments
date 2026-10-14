@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { createReadingReport } from '../apps/src/df-billboard-test/report-data.mjs';
+import { createReadingReport } from '../apps/src/df-billboard-test/report-data.ts';
 
 // Evidence stays outside the repository. Only the public, synthetic diagnostic
 // report is emitted into ignored apps/dist; no wallet/deployment data is copied.

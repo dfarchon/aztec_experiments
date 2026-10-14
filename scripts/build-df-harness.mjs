@@ -39,7 +39,7 @@ await build({
   logLevel: 'warning',
 });
 await build({
-  entryPoints: [path.join(source, 'toxicity.worker.mjs')],
+  entryPoints: [path.join(source, 'toxicity.worker.ts')],
   outfile: path.join(dist, 'df-toxicity.worker.js'),
   bundle: true,
   platform: 'browser',

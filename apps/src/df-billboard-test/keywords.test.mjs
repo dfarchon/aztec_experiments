@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseKeywords, keywordMatches } from './keywords.mjs';
-import { AI_CATEGORY_THRESHOLDS, safetyResult } from './ai-config.mjs';
+import { parseKeywords, keywordMatches } from './keywords.ts';
+import { AI_CATEGORY_THRESHOLDS, safetyResult } from './ai-config.ts';
 
 test('keyword list is literal, deduplicated, case/width insensitive and bounded', () => {
   assert.deepEqual(parseKeywords(' 代练\nVPN\nｖｐｎ\r\n\n'), ['代练', 'VPN']);

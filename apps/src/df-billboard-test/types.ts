@@ -1,4 +1,3 @@
-export type AdMode = 'hint' | 'fold';
 export type KeywordMode = 'contains' | 'word';
 export type WalletMode = 'local' | 'create' | 'import' | 'test' | 'extension';
 export interface PostData {
@@ -12,7 +11,7 @@ export interface Progress {
 export interface EditableFields {
   walletMode: WalletMode; savedAccount: string; account: string; accountLabel: string;
   accountFile: File | null; realProofs: boolean; provider: string; message: string;
-  mergeDuplicates: boolean; adMode: AdMode; adEnabled: boolean;
+  mergeDuplicates: boolean; adEnabled: boolean;
   keywordEnabled: boolean; keywordMode: KeywordMode;
 }
 export interface BillboardView extends EditableFields {
@@ -57,7 +56,7 @@ export interface ReportRow {
   keywordHits: string[]; adTier: string; adReasons: string[];
   promotion: boolean; adFold: boolean; aiRisk: boolean; aiLabels: string[];
 }
-export interface ReportOptions { keyword: boolean; ad: boolean; adMode: AdMode; ai: boolean }
+export interface ReportOptions { keyword: boolean; ad: boolean; ai: boolean }
 export interface ReadingReport {
   available: true; generatedAt: string; ruleVersion: string;
   ai: { model: string; revision: string; decision: string; recordedAt: string; elapsedMs: number; workerSha256?: string };

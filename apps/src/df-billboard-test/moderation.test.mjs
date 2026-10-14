@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { canFoldPromotion, classifyRulePosts, groupDuplicatePosts, hasContactSignal, isPromotion, normalizeMessage } from './moderation.mjs';
+import { canFoldPromotion, classifyRulePosts, groupDuplicatePosts, hasContactSignal, isPromotion, normalizeMessage } from './moderation.ts';
 
 test('grouping normalization preserves case, unicode forms and word boundaries', () => {
   assert.equal(normalizeMessage(' Ｈｅｌｌｏ\u200b  DF '), 'Ｈｅｌｌｏ\u200b DF');
