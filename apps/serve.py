@@ -2,7 +2,7 @@
 """
 serve.py — HTTP server with COOP/COEP headers for Aztec WASM multi-threading.
 
-Serves all four billboard web apps from the apps/dist directory.
+Serves the original billboard apps and the built DF test site from apps/dist.
 The Aztec bundle uses SharedArrayBuffer for multi-threaded WASM, which
 requires crossOriginIsolated. This server sets the necessary headers:
 
@@ -33,6 +33,13 @@ import http.server
 import functools
 
 class COOPCOEPHandler(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        # Compatibility for serving the Vite build alongside the original apps.
+        route = self.path.split('?', 1)[0]
+        if route in ('/', '/reports', '/reports/'):
+            self.path = '/index.html'
+        super().do_GET()
+
     def end_headers(self):
         self.send_header('Cross-Origin-Opener-Policy', 'same-origin')
         self.send_header('Cross-Origin-Embedder-Policy', 'credentialless')
@@ -54,7 +61,9 @@ def main():
     os.chdir(directory)
 
     handler = functools.partial(COOPCOEPHandler, directory=directory)
-    with http.server.HTTPServer(('127.0.0.1', port), handler) as httpd:
+    # The SDK bundle and WASM assets are large. A single slow download must not
+    # block the HTML, deployment manifest, or other browser requests.
+    with http.server.ThreadingHTTPServer(('127.0.0.1', port), handler) as httpd:
         print(f'''
 ╔══════════════════════════════════════════════════════════════════╗
 ║   Aztec Billboard — Web Apps Server                              ║
@@ -90,6 +99,13 @@ def main():
        Dedicated censor panel. Flag posts as immoral, transfer
        censor rights to another address. Shows ALL posts (including
        censored). No ETH wallet needed — only L2 Fee Juice.
+
+    5. DF Test     http://localhost:{port}/
+       React test site: local DF join → anonymous post (10 per rolling 24 hours).
+       Start the complete local stack with npm run dev:df:harness.
+
+    6. DF Report   http://localhost:{port}/reports
+       Read-only test results and design notes.
 
   ────────────────────────────────────────────────────────────────
   Typical workflow:

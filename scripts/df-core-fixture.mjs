@@ -64,7 +64,7 @@ export async function findSpawn(snark, game, thresholds, radius) {
   throw new Error('No valid spawn found within bounded search; ZK checks remain enabled');
 }
 
-export async function initializeDFPlayer({ wallet, node, owner, admin, outsider, send, sendPrivate, view }) {
+export async function deployDFCore({ wallet, admin, send }) {
   const definitions = [
     ['Config', 'config-Config'], ['WorldStorage', 'world-WorldStorage'],
     ['PlayerStorage', 'player-PlayerStorage'], ['PlanetStorage', 'planet-PlanetStorage'],
@@ -94,6 +94,11 @@ export async function initializeDFPlayer({ wallet, node, owner, admin, outsider,
   }), admin);
   const world = { paused: false, radius: 53001n, misc_nonce: 0n, next_change_block: 0 };
   await send(worldStorage.methods.set(0n, world), admin);
+  return { deployed, source, core, config, world };
+}
+
+export async function initializeDFPlayer({ wallet, node, owner, admin, outsider, send, sendPrivate, view }) {
+  const { deployed, source, core, config, world } = await deployDFCore({ wallet, admin, send });
   const snark = await view(config.methods.get_snark_config());
   assert.equal(snark.disable_zk_checks, false, 'DF coordinate proof checks must stay enabled');
   const game = await view(config.methods.get_game_config_core());

@@ -107,7 +107,7 @@ async function initCRS(statusId) {
 
   async function fetchCRS(filename, options = {}) {
     try {
-      const res = await fetch('crs/' + filename, options);
+      const res = await fetch('/crs/' + filename, options);
       if (res.ok || res.status === 206) {
         log('  Loaded ' + filename + ' from local file.', 'info', S);
         return res;
@@ -156,10 +156,10 @@ async function initCRS(statusId) {
 // ============================================================
 // Returns { secretKey, signingKey, accountContract, instance, address, partialAddress }
 // or throws on error.
-async function deriveAccountAddress(secretKeyHex, saltVal) {
+async function deriveAccountAddress(secretKeyHex, saltVal, explicitSigningKey) {
   const a = A();
   const secretKey = a.Fr.fromHexString(secretKeyHex);
-  const signingKey = a.deriveSigningKey(secretKey);
+  const signingKey = explicitSigningKey || a.deriveSigningKey(secretKey);
   // v5: Use SchnorrInitializerlessAccountContract for self-deployment.
   // The regular SchnorrAccountContract stores its signing key in a private note
   // created by the constructor. But during self-deployment (deploy + claim fee
@@ -195,7 +195,7 @@ async function showAddress(statusId) {
   try {
     const a = A();
     const sk = document.getElementById('secretKey').value.trim();
-    const saltVal = parseInt(document.getElementById('salt').value) || 0;
+    const saltVal = BigInt(document.getElementById('salt').value.trim() || '0');
     if (!sk || !sk.startsWith('0x')) return;
     if (!a || !a.Fr) return;
 
@@ -461,9 +461,10 @@ async function ensureAztecSetup(state, statusId, opts = {}) {
   const a = A();
   const S = statusId;
   const nodeUrl = getNodeUrl();
-  const sk = document.getElementById('secretKey').value.trim();
-  const saltVal = parseInt(document.getElementById('salt').value) || 0;
+  const sk = opts.secretKey ?? document.getElementById('secretKey')?.value.trim();
+  const saltVal = BigInt(opts.salt ?? document.getElementById('salt')?.value.trim() ?? '0');
   const dataDirPrefix = opts.dataDirPrefix || 'pxe_bb_';
+  const progress = (step, message) => opts.onProgress?.(step, 8, message);
 
   if (!sk) { log('Enter your secret key first.', 'error', S); return false; }
 
@@ -471,8 +472,9 @@ async function ensureAztecSetup(state, statusId, opts = {}) {
   if (state.wallet && state.pxe) return true;
 
   // Step 1: Derive keys
+  progress(1, '推导账号地址');
   log('Step 1: Deriving account keys...', 'info', S);
-  const derived = await deriveAccountAddress(sk, saltVal);
+  const derived = await deriveAccountAddress(sk, saltVal, opts.signingKey);
   const { secretKey, accountContract, artifact, instance, address, partialAddress } = derived;
   log('  Address: ' + address.toString(), 'success', S);
 
@@ -483,27 +485,32 @@ async function ensureAztecSetup(state, statusId, opts = {}) {
   state.instance = instance;
 
   // Step 2: Create node client with retry
+  progress(2, '连接 Aztec 节点');
   log('Step 2: Connecting to Aztec node...', 'info', S);
   const rawNode = a.createAztecNodeClient(nodeUrl);
   state.rawNode = rawNode;
   const aztecNode = wrapWithRetry(rawNode, 'node', S);
   state.aztecNode = aztecNode;
   const nodeInfo = await aztecNode.getNodeInfo();
-  log('  Chain ID: ' + nodeInfo.chainId, 'info', S);
+  log('  L1 chain ID: ' + nodeInfo.l1ChainId, 'info', S);
 
   // Start the block monitor (top-right indicator)
   startBlockMonitor(aztecNode);
 
   // Step 3: Init CRS (if not done)
-  if (!state.crsInit) {
+  progress(3, '准备证明环境');
+  if (!state.crsInit && opts.proverEnabled !== false) {
     log('Step 3: Initializing CRS (one-time ~68MB download)...', 'info', S);
     await initCRS(S);
     state.crsInit = true;
-  } else {
+  } else if (state.crsInit) {
     log('Step 3: CRS already initialized.', 'info', S);
+  } else {
+    log('Step 3: Skipping CRS for local synthetic-proof mode.', 'info', S);
   }
 
   // Step 4: Create PXE
+  progress(4, '创建浏览器 PXE');
   // v5 defaults to SQLite-OPFS store which requires a Worker (./worker.js) —
   // that fails in a static IIFE bundle. Use the deprecated IndexedDB store instead,
   // which runs entirely on the main thread without Workers.
@@ -515,7 +522,7 @@ async function ensureAztecSetup(state, statusId, opts = {}) {
     dataDirectory: dataDirPrefix + l1Contracts.rollupAddress,
   });
   const pxe = await a.createPXE(aztecNode, {
-    proverEnabled: true,
+    proverEnabled: opts.proverEnabled !== false,
     autoSync: true,
     dataDirectory: dataDirPrefix + l1Contracts.rollupAddress,
   }, { store });
@@ -523,6 +530,7 @@ async function ensureAztecSetup(state, statusId, opts = {}) {
   log('  PXE created.', 'success', S);
 
   // Step 5: Register account BEFORE syncing so the PXE discovers historical notes
+  progress(5, '注册本地账号');
   // belonging to this account. If we sync first, all blocks are processed without
   // knowing about the account, and notes from previous sessions are never found.
   log('Step 5: Registering account with PXE...', 'info', S);
@@ -531,6 +539,7 @@ async function ensureAztecSetup(state, statusId, opts = {}) {
   log('  Account registered.', 'success', S);
 
   // Step 6: Register account contract class
+  progress(6, '注册账号合约');
   log('Step 6: Registering Schnorr initializerless account contract...', 'info', S);
   const retry = createRetryFn(S, 'register', 5);
   await retry(() => pxe.registerContractClass(a.SchnorrInitializerlessAccountContractArtifact));
@@ -544,6 +553,7 @@ async function ensureAztecSetup(state, statusId, opts = {}) {
   log('  PXE synced.', 'success', S);
 
   // Step 7: Create wallet
+  progress(7, '创建钱包');
   log('Step 7: Creating wallet...', 'info', S);
   const wallet = createAztecWallet(pxe, aztecNode, rawNode, S, { preProveHook: opts.preProveHook });
   const accountManager = await a.AccountManager.create(wallet, secretKey, accountContract, { salt: new a.Fr(saltVal) });
@@ -553,6 +563,7 @@ async function ensureAztecSetup(state, statusId, opts = {}) {
   log('  Wallet ready.', 'success', S);
 
   // Step 8: Store signing key capsule for initializerless account contract.
+  progress(8, '准备签名密钥');
   // The SchnorrInitializerlessAccountContract's is_valid_impl loads the signing
   // public key from a capsule (in-memory PXE store) rather than a note. The
   // constructor utility function stores this capsule. We must simulate it here
