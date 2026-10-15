@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react';
-import { canFoldPromotion, groupDuplicatePosts } from './moderation.ts';
+import { canFoldBasicRules, groupDuplicatePosts } from './moderation.ts';
 import { keywordMatches } from './keywords.ts';
 import { ReadingSettings } from './ReadingSettings';
 import type { BillboardView, PostData, ViewProps } from './types';
 
-function shouldFold(post: PostData, adEnabled: boolean, aiEnabled: boolean) {
-  return Boolean(post.keywordHits?.length || (adEnabled && canFoldPromotion(post)) ||
+function shouldFold(post: PostData, rulesEnabled: boolean, aiEnabled: boolean) {
+  return Boolean(post.keywordHits?.length || (rulesEnabled && canFoldBasicRules(post)) ||
     (aiEnabled && post.aiAnalyzed && post.aiLabels?.length));
 }
 
-function Post({ post, adEnabled, expanded, aiEnabled }: { post: PostData; adEnabled: boolean; expanded: boolean; aiEnabled: boolean }) {
-  const folded = shouldFold(post, adEnabled, aiEnabled);
+function Post({ post, rulesEnabled, expanded, aiEnabled }: { post: PostData; rulesEnabled: boolean; expanded: boolean; aiEnabled: boolean }) {
+  const folded = shouldFold(post, rulesEnabled, aiEnabled);
   const [open, setOpen] = useState(expanded);
   useEffect(() => setOpen(expanded), [expanded, folded]);
   return <article data-post-id={post.id} className={folded ? 'is-folded' : ''}>
@@ -25,7 +25,7 @@ function Post({ post, adEnabled, expanded, aiEnabled }: { post: PostData; adEnab
 function PostGroup({ posts, view, showFolded }: { posts: PostData[]; view: BillboardView; showFolded: boolean }) {
   const [open, setOpen] = useState(false);
   useEffect(() => { if (showFolded) setOpen(true); }, [showFolded]);
-  const props = { adEnabled: view.adEnabled, expanded: showFolded, aiEnabled: view.aiHints };
+  const props = { rulesEnabled: view.rulesEnabled, expanded: showFolded, aiEnabled: view.aiHints };
   return <li className="post-group">
     <Post post={posts[0]} {...props} />
     {posts.length > 1 && <details className="duplicates" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
@@ -40,8 +40,8 @@ export function Feed({ view, controller }: ViewProps) {
   const posts = view.posts.map(post => ({ ...post, keywordHits: view.keywordEnabled && !post.decodeError
     ? keywordMatches(post.text, view.keywords, view.keywordMode) : [] }));
   const groups = groupDuplicatePosts(posts, view.mergeDuplicates);
-  const folded = posts.filter(post => shouldFold(post, view.adEnabled, view.aiHints)).length;
-  useEffect(() => setShowFolded(false), [view.keywordEnabled, view.keywords, view.keywordMode, view.adEnabled, view.aiHints]);
+  const folded = posts.filter(post => shouldFold(post, view.rulesEnabled, view.aiHints)).length;
+  useEffect(() => setShowFolded(false), [view.keywordEnabled, view.keywords, view.keywordMode, view.rulesEnabled, view.aiHints]);
   return <section className="card feed-card">
     <div className="card-head"><h2>公开消息</h2>
       <button id="refresh" type="button" disabled={view.busy || !view.connected} onClick={controller.refresh}>刷新消息</button></div>

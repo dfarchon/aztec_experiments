@@ -26,7 +26,7 @@ export function createBillboardController(deps = {}): BillboardController {
     localStatus: '等待初始化本地钱包', extensionStatus: '等待连接 Azguard',
     joinedStatus: '连接钱包后检查入局状态', copied: false, message: '', logs: [],
     posts: [], feedLoaded: false, mergeDuplicates: true, aiHints: false, aiStatus: 'AI 折叠未启用',
-    adEnabled: false, keywordEnabled: false, keywords: [], keywordMode: 'contains', keywordError: '',
+    rulesEnabled: false, keywordEnabled: false, keywords: [], keywordMode: 'contains', keywordError: '',
     aiConsentGiven: false, aiConsentOpen: false, aiProgress: null, aiClearing: false,
   };
   function patch(changes) {
@@ -52,10 +52,10 @@ export function createBillboardController(deps = {}): BillboardController {
   let aiNeedsRun = false;
   const aiPending = new Map();
   const AI_REQUEST_TIMEOUT_MS = 600_000;
-  const preferencesKey = 'df-signal:reading-preferences:v4';
+  const preferencesKey = 'df-signal:reading-preferences:v5';
   function savePreferences() {
     try { localStorage.setItem(preferencesKey, JSON.stringify({
-      mergeDuplicates: view.mergeDuplicates, adEnabled: view.adEnabled,
+      mergeDuplicates: view.mergeDuplicates, rulesEnabled: view.rulesEnabled,
       keywordEnabled: view.keywordEnabled, keywords: view.keywords, keywordMode: view.keywordMode,
       aiHints: view.aiHints, aiConsentVersion: view.aiConsentGiven ? AI_MODEL_VERSION : null,
     })); } catch { /* Restricted/full storage: controls still work in this session. */ }
@@ -207,16 +207,17 @@ export function createBillboardController(deps = {}): BillboardController {
     ensureLocal(location.href);
     try {
       const current = localStorage.getItem(preferencesKey);
-      const preferences = JSON.parse(current || localStorage.getItem('df-signal:reading-preferences:v3') ||
+      const previous = localStorage.getItem('df-signal:reading-preferences:v4');
+      const preferences = JSON.parse(current || previous || localStorage.getItem('df-signal:reading-preferences:v3') ||
         localStorage.getItem('df-signal:reading-preferences:v2') || '{}');
       patch({ mergeDuplicates: typeof preferences.mergeDuplicates === 'boolean' ? preferences.mergeDuplicates : true,
-        // Old "hint" preferences must not silently become content folding.
-        adEnabled: current ? preferences.adEnabled === true : preferences.adMode === 'fold' && preferences.adEnabled !== false,
+        // The old promotion switch never silently opts users into broader rules.
+        rulesEnabled: Boolean(current && preferences.rulesEnabled === true),
         keywordEnabled: preferences.keywordEnabled === true,
         keywordMode: preferences.keywordMode === 'word' ? 'word' : 'contains',
-        aiConsentGiven: Boolean(current && preferences.aiConsentVersion === AI_MODEL_VERSION),
+        aiConsentGiven: Boolean((current || previous) && preferences.aiConsentVersion === AI_MODEL_VERSION),
         // Earlier consent only authorized hints, not automatic folding.
-        aiHints: Boolean(current && preferences.aiHints === true && preferences.aiConsentVersion === AI_MODEL_VERSION),
+        aiHints: Boolean((current || previous) && preferences.aiHints === true && preferences.aiConsentVersion === AI_MODEL_VERSION),
       });
       if (view.aiHints) patch({ aiStatus: 'AI 已启用，等待读取公开消息。' });
       try { patch({ keywords: parseKeywords(Array.isArray(preferences.keywords) ? preferences.keywords.join('\n') : '') }); }
@@ -781,7 +782,7 @@ export function createBillboardController(deps = {}): BillboardController {
     } catch (error) {
       if (generation !== aiGeneration) return;
       disposeAiWorker('AI 分析失败');
-      patch({ aiProgress: null, aiStatus: `AI 折叠不可用：${error?.message || String(error)}。未完成分析的消息保持可见；关键词和推广规则仍可使用。` });
+      patch({ aiProgress: null, aiStatus: `AI 折叠不可用：${error?.message || String(error)}。未完成分析的消息保持可见；关键词和基础规则仍可使用。` });
       console.error('AI classification failed', error);
     }
   }
@@ -814,10 +815,10 @@ export function createBillboardController(deps = {}): BillboardController {
 
   function setField(name, value) {
     const editable = ['walletMode', 'savedAccount', 'account', 'accountLabel', 'accountFile', 'realProofs',
-      'provider', 'message', 'mergeDuplicates', 'adEnabled', 'keywordEnabled', 'keywordMode'];
-    const readingFields = ['mergeDuplicates', 'adEnabled', 'keywordEnabled', 'keywordMode'];
+      'provider', 'message', 'mergeDuplicates', 'rulesEnabled', 'keywordEnabled', 'keywordMode'];
+    const readingFields = ['mergeDuplicates', 'rulesEnabled', 'keywordEnabled', 'keywordMode'];
     if (!editable.includes(name) || (busy && !readingFields.includes(name))) return;
-    if (['mergeDuplicates', 'adEnabled', 'keywordEnabled'].includes(name) && typeof value !== 'boolean') return;
+    if (['mergeDuplicates', 'rulesEnabled', 'keywordEnabled'].includes(name) && typeof value !== 'boolean') return;
     if (name === 'keywordMode' && !['contains', 'word'].includes(value)) return;
     if (['walletMode', 'savedAccount', 'account', 'provider'].includes(name) &&
         (state.wallet || pendingConnection)) return;

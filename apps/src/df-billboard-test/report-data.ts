@@ -1,4 +1,4 @@
-import { classifyRulePosts, isPromotion, canFoldPromotion, MODERATION_RULE_VERSION } from './moderation.ts';
+import { classifyRulePosts, isPromotion, canFoldPromotion, canFoldBasicRules, MODERATION_RULE_VERSION } from './moderation.ts';
 import { keywordMatches } from './keywords.ts';
 import type { Category, ReadingReport, ReportOptions, ReportRow } from './types';
 
@@ -24,6 +24,7 @@ export function createReadingReport({ original, holdout, browser, metadata }: {
       : row.group.startsWith('policy') ? 'policy' : 'normal') as Category,
     keywordHits: keywordMatches(row.text, EXAMPLE_KEYWORDS),
     adTier: row.adTier, adReasons: row.adReasons, promotion: isPromotion(row), adFold: canFoldPromotion(row),
+    ruleMatches: row.ruleMatches, ruleFold: canFoldBasicRules(row),
     aiRisk: row.flagged, aiLabels: row.labels || [],
   }));
   return {
@@ -37,14 +38,15 @@ export function createReadingReport({ original, holdout, browser, metadata }: {
       const selected = rows.filter(row => row.category === category);
       return { category, total: selected.length, keyword: selected.filter(row => row.keywordHits.length).length,
         promotion: selected.filter(row => row.promotion).length, adFold: selected.filter(row => row.adFold).length,
+        ruleFold: selected.filter(row => row.ruleFold).length,
         aiRisk: selected.filter(row => row.aiRisk).length };
     }),
   };
 }
 
-export function reportEffect(row: ReportRow, { keyword, ad, ai }: ReportOptions) {
+export function reportEffect(row: ReportRow, { keyword, rules, ai }: ReportOptions) {
   const keywordFolded = Boolean(keyword && row.keywordHits.length);
-  const adFolded = Boolean(ad && row.adFold);
+  const ruleFolded = Boolean(rules && row.ruleFold);
   const aiFolded = Boolean(ai && row.aiRisk);
-  return { folded: keywordFolded || adFolded || aiFolded, keywordFolded, adFolded, aiFolded };
+  return { folded: keywordFolded || ruleFolded || aiFolded, keywordFolded, ruleFolded, aiFolded };
 }

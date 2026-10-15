@@ -1,8 +1,9 @@
 export type KeywordMode = 'contains' | 'word';
+export type RuleCategory = 'promotion' | 'credential-request' | 'token-claim-link' | 'adult-solicitation' | 'repeated-solicitation';
 export type WalletMode = 'local' | 'create' | 'import' | 'test' | 'extension';
 export interface PostData {
   id: number | string; text?: string; decodeError?: boolean;
-  adTier?: string; adReasons?: string[]; similarTo?: number | string | null;
+  adTier?: string; adReasons?: string[]; ruleMatches?: RuleCategory[]; similarTo?: number | string | null;
   keywordHits?: string[]; aiLabels?: string[]; aiAnalyzed?: boolean;
 }
 export interface Progress {
@@ -11,7 +12,7 @@ export interface Progress {
 export interface EditableFields {
   walletMode: WalletMode; savedAccount: string; account: string; accountLabel: string;
   accountFile: File | null; realProofs: boolean; provider: string; message: string;
-  mergeDuplicates: boolean; adEnabled: boolean;
+  mergeDuplicates: boolean; rulesEnabled: boolean;
   keywordEnabled: boolean; keywordMode: KeywordMode;
 }
 export interface BillboardView extends EditableFields {
@@ -54,14 +55,14 @@ export type Category = 'normal' | 'advertising' | 'toxic' | 'policy';
 export interface ReportRow {
   id: string; text: string; language: string; dataset: string; category: Category;
   keywordHits: string[]; adTier: string; adReasons: string[];
-  promotion: boolean; adFold: boolean; aiRisk: boolean; aiLabels: string[];
+  promotion: boolean; adFold: boolean; ruleMatches: RuleCategory[]; ruleFold: boolean; aiRisk: boolean; aiLabels: string[];
 }
-export interface ReportOptions { keyword: boolean; ad: boolean; ai: boolean }
+export interface ReportOptions { keyword: boolean; rules: boolean; ai: boolean }
 export interface ReadingReport {
   available: true; generatedAt: string; ruleVersion: string;
   ai: { model: string; revision: string; decision: string; recordedAt: string; elapsedMs: number; workerSha256?: string };
   exampleKeywords: string[]; rows: ReportRow[];
   datasets: { name: string; count: number }[]; duplicatePairs: number;
-  summary: { category: Category; total: number; keyword: number; promotion: number; adFold: number; aiRisk: number }[];
+  summary: { category: Category; total: number; keyword: number; promotion: number; adFold: number; ruleFold: number; aiRisk: number }[];
   sources?: { file: string; sha256: string }[];
 }

@@ -26,6 +26,11 @@ table { width:100%; border-collapse:collapse; text-align:left; font-size:12px; }
 caption { text-align:left; padding:12px; color:var(--muted); }
 th,td { padding:12px; border-top:1px solid #383838; white-space:nowrap; }
 th { font-weight:400; } thead { color:#ddd; background:#202020; } td { text-align:center; }
+.report-design-table table { table-layout:fixed; }
+.report-design-table th,.report-design-table td { white-space:normal; text-align:left; vertical-align:top; line-height:1.7; overflow-wrap:anywhere; }
+.report-design-table th:first-child { width:27%; }
+.report-design-table td { color:#c4c4c4; }
+.report-retry { margin-left:14px; }
 .report-simulator { min-width:0; border:1px solid #555; padding:16px; margin:24px 0 0; border-radius:3px; }
 .report-simulator legend { padding:0 8px; color:#ddd; }
 .report-controls { display:flex; gap:12px 20px; align-items:center; flex-wrap:wrap; font-size:12px; }
@@ -48,7 +53,7 @@ th { font-weight:400; } thead { color:#ddd; background:#202020; } td { text-alig
 .sample-reasons dt { color:var(--muted); }
 .report-empty { padding:20px 0; color:var(--muted); }
 .design-steps { list-style:decimal-leading-zero; padding-left:28px; }
-.design-steps li { padding-left:10px; margin:20px 0; }
+.design-steps li { padding-left:10px; margin:20px 0; border-bottom:1px solid #333; }
 .design-steps li::marker { color:var(--accent); font-size:12px; }
 .design-steps h3 { margin-top:0; }
 .report-legend { padding-top:12px; border-top:1px dashed #444; font-size:12px; color:var(--muted); }

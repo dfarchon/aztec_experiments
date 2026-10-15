@@ -30,8 +30,8 @@ export function ReadingSettings({ view, controller }: ViewProps) {
       {view.keywordError && <p role="alert" className="reading-error">{view.keywordError}</p>}
     </section>
     <section className="reading-option">
-      <div className="reading-title"><Toggle id="adEnabled" checked={view.adEnabled} onChange={value => controller.setField('adEnabled', value)}>折叠明显推广</Toggle>
-        <Hint label="推广折叠说明">结合商品／服务、推销行为和联系入口判断。仅折叠较强推广线索；讨论提醒、玩家交易、社区活动及不完整线索仍正常展示。规则可能误判或漏判。</Hint></div>
+      <div className="reading-title"><Toggle id="rulesEnabled" checked={view.rulesEnabled} onChange={value => controller.setField('rulesEnabled', value)}>基础规则过滤</Toggle>
+        <Hint label="基础规则说明">折叠明确促销／服务招揽与外部联系入口、游戏资产站外商店引流、索取钱包凭证、代币领取链接、成人内容招揽及重复外部招揽。游戏内银币交易、社区活动和讨论提醒尽量保留。只改变本地展示；可能误判或漏判，原文可展开。</Hint></div>
     </section>
     <section className="reading-option">
       <div className="reading-title"><Toggle id="aiHints" checked={view.aiHints} disabled={view.aiClearing || (view.busy && !view.aiHints)}

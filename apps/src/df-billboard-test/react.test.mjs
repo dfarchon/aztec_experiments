@@ -33,7 +33,7 @@ test('React renders the wallet, composer and disconnected action guards', () => 
 });
 
 test('React feed escapes chain text, groups originals, folds analyzed AI hits and preserves malformed entries', () => {
-  const view = { busy: false, connected: true, feedLoaded: true, mergeDuplicates: true, adEnabled: false, aiHints: true,
+  const view = { busy: false, connected: true, feedLoaded: true, mergeDuplicates: true, rulesEnabled: false, aiHints: true,
     posts: classifyRulePosts([
       ...[0, 1, 2].map(id => ({ id, text: 'come to https://example.com' })),
       { id: 3, text: '<img src=x onerror=alert(1)>', aiLabels: ['insult'], aiAnalyzed: true },
@@ -53,15 +53,28 @@ test('React feed escapes chain text, groups originals, folds analyzed AI hits an
   assert.doesNotMatch(unfiltered, /class="is-folded"/);
 });
 
-test('promotion switch folds only strong evidence without any per-post warning', () => {
-  const view = { busy: false, connected: true, feedLoaded: true, mergeDuplicates: true, adEnabled: false, aiHints: false,
+test('basic rules switch folds strong promotion without any per-post warning', () => {
+  const view = { busy: false, connected: true, feedLoaded: true, mergeDuplicates: true, rulesEnabled: false, aiHints: false,
     posts: classifyRulePosts([{ id: 0, text: '低价代练加微信 demo' }]) };
-  const render = adEnabled => renderToStaticMarkup(createElement(Feed, { view: { ...view, adEnabled }, controller: {} }));
+  const render = rulesEnabled => renderToStaticMarkup(createElement(Feed, { view: { ...view, rulesEnabled }, controller: {} }));
   assert.doesNotMatch(render(false), /class="is-folded"|<details/);
   assert.match(render(true), /class="is-folded"/);
   assert.match(render(true), /已折叠 · 查看原文/);
   assert.doesNotMatch(render(true), /推广规则详情|⚑/);
   for (const enabled of [false, true]) assert.match(render(enabled), /低价代练加微信 demo/);
+});
+
+test('basic rules fold solicitation independently of keywords and AI', () => {
+  const posts = classifyRulePosts([
+    { id: 0, text: '输入你的助记词领取奖励' },
+    { id: 1, text: '不要输入助记词，警惕骗局' },
+  ]);
+  const view = { busy: false, connected: true, feedLoaded: true, mergeDuplicates: false,
+    rulesEnabled: true, keywordEnabled: false, aiHints: false, posts };
+  const render = rulesEnabled => renderToStaticMarkup(createElement(Feed, { view: { ...view, rulesEnabled }, controller: {} }));
+  assert.equal((render(true).match(/class="is-folded"/g) || []).length, 1);
+  assert.match(render(true), /2 条消息 · 1 条折叠/);
+  assert.doesNotMatch(render(false), /class="is-folded"/);
 });
 
 test('fold setting never hides context, policy, weak evidence or similar variants', () => {
@@ -71,7 +84,7 @@ test('fold setting never hides context, policy, weak evidence or similar variant
     { id: 2, text: '代练限时优惠' },
     { id: 3, text: 'Meet now here' }, { id: 4, text: 'Meet nowhere' },
   ]);
-  const view = { busy: false, connected: true, feedLoaded: true, mergeDuplicates: true, adEnabled: true, aiHints: false, posts };
+  const view = { busy: false, connected: true, feedLoaded: true, mergeDuplicates: true, rulesEnabled: true, aiHints: false, posts };
   const html = renderToStaticMarkup(createElement(Feed, { view, controller: {} }));
   assert.doesNotMatch(html, /<details|class="is-folded"/);
   assert.doesNotMatch(html, /data-tier=|推广规则详情|相似消息详情/);
@@ -81,7 +94,7 @@ test('fold setting never hides context, policy, weak evidence or similar variant
 test('three independent folding switches default to off', () => {
   const controller = createBillboardController();
   const html = renderToStaticMarkup(createElement(Feed, { view: controller.getSnapshot(), controller }));
-  assert.doesNotMatch(html, /id="adEnabled"[^>]*checked/);
+  assert.doesNotMatch(html, /id="rulesEnabled"[^>]*checked/);
   assert.doesNotMatch(html, /id="keywordEnabled"[^>]*checked/);
   assert.doesNotMatch(html, /id="aiHints"[^>]*checked/);
   assert.match(html, /Content Safety Guard Small/);
@@ -90,7 +103,7 @@ test('three independent folding switches default to off', () => {
 });
 
 test('keyword folding is independent, literal, reversible, and escapes user words', () => {
-  const view = { busy: false, connected: true, feedLoaded: true, mergeDuplicates: false, adEnabled: false,
+  const view = { busy: false, connected: true, feedLoaded: true, mergeDuplicates: false, rulesEnabled: false,
     keywordEnabled: true, keywordMode: 'contains', keywords: ['代练', '<script>'], aiHints: false,
     posts: classifyRulePosts([{ id: 0, text: '请不要相信代练' }, { id: 1, text: '<script>not executable</script>' }, { id: 2, text: '普通消息' }]) };
   const html = renderToStaticMarkup(createElement(Feed, { view, controller: {} }));
@@ -105,7 +118,7 @@ test('keyword folding is independent, literal, reversible, and escapes user word
 });
 
 test('AI folds only analyzed risk hits while pending and clean posts remain visible', () => {
-  const view = { busy: false, connected: true, feedLoaded: true, mergeDuplicates: false, adEnabled: false,
+  const view = { busy: false, connected: true, feedLoaded: true, mergeDuplicates: false, rulesEnabled: false,
     aiHints: true, keywordEnabled: false, posts: [
       {id:0,text:'classified',aiLabels:['harassment'],aiAnalyzed:true},
       {id:1,text:'pending'}, {id:2,text:'checked',aiLabels:[],aiAnalyzed:true},

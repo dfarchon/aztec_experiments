@@ -47,7 +47,7 @@ export function App({ controller }: { controller: BillboardController }) {
   return <>
     <header className="site-header"><div className="header-inner">
       <div className="brand"><span className="brand-mark" aria-hidden="true">◈</span><span>Dark Forest <span className="brand-sub">/ Billboard</span></span></div>
-      <div className="header-spacer" /><Link className="report-link" to="/reports">测试与设计 →</Link>
+      <div className="header-spacer" /><Link className="report-link" to="/reports">设计与测试 →</Link>
       <span id="network" className="network-pill">{view.deployment ? 'Aztec Localnet · 31337' : '加载本地部署信息'}</span>
       <WalletPanel view={view} controller={controller} />
     </div></header>

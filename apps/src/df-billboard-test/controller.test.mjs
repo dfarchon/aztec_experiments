@@ -120,24 +120,24 @@ test('initialization is idempotent, subscribable and does not publish test keys'
   controller.setAiHints(false);
 });
 
-test('legacy reading preferences migrate without granting new model consent', async t => {
+test('legacy reading preferences migrate without enabling broader basic rules', async t => {
   const { controller } = fixture(t);
   const key = 'df-signal:reading-preferences:v2';
   localStorage.setItem(key, JSON.stringify({ mergeDuplicates: false, adMode: 'fold', aiHints: true }));
   await controller.initialize();
   assert.equal(controller.getSnapshot().mergeDuplicates, false);
-  assert.equal(controller.getSnapshot().adEnabled, true);
+  assert.equal(controller.getSnapshot().rulesEnabled, false);
   assert.equal(controller.getSnapshot().aiHints, false);
   assert.equal(controller.getSnapshot().aiConsentGiven, false);
   controller.setField('adMode', 'fold');
   controller.setField('mergeDuplicates', 'false');
-  assert.equal(controller.getSnapshot().adEnabled, true);
+  assert.equal(controller.getSnapshot().rulesEnabled, false);
   assert.equal(controller.getSnapshot().mergeDuplicates, false);
-  controller.setField('adEnabled', false);
+  controller.setField('rulesEnabled', true);
   controller.setField('mergeDuplicates', true);
-  const saved = JSON.parse(localStorage.getItem('df-signal:reading-preferences:v4'));
+  const saved = JSON.parse(localStorage.getItem('df-signal:reading-preferences:v5'));
   assert.equal(saved.mergeDuplicates, true);
-  assert.equal(saved.adEnabled, false);
+  assert.equal(saved.rulesEnabled, true);
   assert.equal(saved.aiConsentVersion, null);
 });
 
@@ -149,7 +149,7 @@ test('old hint-only preferences do not silently enable promotion or AI folding',
   }));
   await controller.initialize();
   const view = controller.getSnapshot();
-  assert.equal(view.adEnabled, false);
+  assert.equal(view.rulesEnabled, false);
   assert.equal(view.aiHints, false);
   assert.equal(view.aiConsentGiven, false);
   assert.equal(view.keywordEnabled, true);
@@ -162,10 +162,10 @@ test('malformed preferences and unavailable preference storage do not block read
   const { controller } = fixture(t);
   localStorage.setItem('df-signal:reading-preferences:v2', 'broken');
   await controller.initialize();
-  assert.equal(controller.getSnapshot().adEnabled, false);
+  assert.equal(controller.getSnapshot().rulesEnabled, false);
   t.mock.method(localStorage, 'setItem', () => { throw new Error('quota'); });
-  assert.doesNotThrow(() => controller.setField('adEnabled', true));
-  assert.equal(controller.getSnapshot().adEnabled, true);
+  assert.doesNotThrow(() => controller.setField('rulesEnabled', true));
+  assert.equal(controller.getSnapshot().rulesEnabled, true);
 });
 
 test('wallet -> Core.initialize_player wiring -> sponsored post preserves state and message decoding', async t => {
@@ -303,16 +303,16 @@ test('keyword settings validate input, persist and remain independent of rules a
   await controller.initialize();
   assert.equal(controller.saveKeywords('代练\nVPN\nvpn\n'), true);
   controller.setField('keywordEnabled', true);
-  controller.setField('adEnabled', false);
+  controller.setField('rulesEnabled', false);
   controller.setField('keywordMode', 'word');
   assert.deepEqual(controller.getSnapshot().keywords, ['代练', 'VPN']);
   assert.equal(controller.getSnapshot().aiHints, false);
   assert.equal(controller.saveKeywords('长'.repeat(81)), false);
   assert.deepEqual(controller.getSnapshot().keywords, ['代练', 'VPN']);
-  const saved = JSON.parse(localStorage.getItem('df-signal:reading-preferences:v4'));
+  const saved = JSON.parse(localStorage.getItem('df-signal:reading-preferences:v5'));
   assert.equal(saved.keywordEnabled, true);
   assert.equal(saved.keywordMode, 'word');
-  assert.equal(saved.adEnabled, false);
+  assert.equal(saved.rulesEnabled, false);
   assert.equal(saved.aiHints, false);
 });
 
@@ -324,9 +324,26 @@ test('new folding settings restore AI only with explicit consent for this model 
   await controller.initialize();
   assert.equal(controller.getSnapshot().aiHints, true);
   assert.deepEqual(controller.getSnapshot().keywords, ['代练']);
-  assert.equal(controller.getSnapshot().adEnabled, false);
+  assert.equal(controller.getSnapshot().rulesEnabled, false);
   controller.setAiHints(false);
-  assert.equal(JSON.parse(localStorage.getItem('df-signal:reading-preferences:v4')).aiHints, false);
+  assert.equal(JSON.parse(localStorage.getItem('df-signal:reading-preferences:v5')).aiHints, false);
+});
+
+test('v4 promotion opt-in does not become basic-rules opt-in; v5 choice persists', async t => {
+  const { controller } = fixture(t);
+  localStorage.setItem('df-signal:reading-preferences:v4', JSON.stringify({
+    adEnabled: true, keywordEnabled: true, keywords: ['某词'],
+  }));
+  await controller.initialize();
+  assert.equal(controller.getSnapshot().rulesEnabled, false);
+  assert.equal(controller.getSnapshot().keywordEnabled, true);
+  controller.setField('rulesEnabled', true);
+  const saved = localStorage.getItem('df-signal:reading-preferences:v5');
+  assert.equal(JSON.parse(saved).rulesEnabled, true);
+  const second = fixture(t).controller;
+  localStorage.setItem('df-signal:reading-preferences:v5', saved);
+  await second.initialize();
+  assert.equal(second.getSnapshot().rulesEnabled, true);
 });
 
 test('new model revision invalidates old consent', async t => {
@@ -396,6 +413,6 @@ test('model failures preserve posts, rules and keywords; late cancelled results 
   assert.match(controller.getSnapshot().aiStatus, /不可用/);
   assert.equal(controller.getSnapshot().posts.length, 3);
   assert.equal(controller.getSnapshot().keywordEnabled, true);
-  assert.equal(controller.getSnapshot().adEnabled, false);
+  assert.equal(controller.getSnapshot().rulesEnabled, false);
   assert.equal(controller.getSnapshot().posts[0].aiAnalyzed, undefined);
 });

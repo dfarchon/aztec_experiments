@@ -17,6 +17,6 @@ export default function BoardRoute() {
   if (!ready) return <main className="shell"><h1>Dark Forest Billboard</h1>
     {error ? <div role="alert"><p>{error}</p><button onClick={() => setAttempt(value => value + 1)}>重试</button></div>
       : <p role="status">正在加载本地 Aztec 环境…</p>}
-    <Link to="/reports">查看测试与设计</Link></main>;
+    <Link to="/reports">查看留言板设计与测试</Link></main>;
   return <App controller={controller} />;
 }

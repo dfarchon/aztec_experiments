@@ -7,7 +7,7 @@ const ReportPage = lazy(() => import('./ReportPage').then(module => ({ default: 
 export function SiteRoutes() {
   const location = useLocation();
   useEffect(() => {
-    document.title = location.pathname.startsWith('/reports') ? '测试与设计 · Dark Forest Billboard' : 'Dark Forest Billboard';
+    document.title = location.pathname.startsWith('/reports') ? '留言板设计与测试 · Dark Forest Billboard' : 'Dark Forest Billboard';
     if (!location.hash) window.scrollTo(0, 0);
   }, [location.pathname]);
   return <Suspense fallback={<main className="shell"><p role="status">正在加载页面…</p></main>}>
