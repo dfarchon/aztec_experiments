@@ -18,9 +18,9 @@ export function WalletPanel({ view, controller }: ViewProps) {
     mode === "extension"
       ? `连接 ${view.providers[Number(view.provider)]?.name || "Azguard"}`
       : mode === "create"
-        ? "创建并连接 DF 账号"
+        ? "创建并连接 Aztec 账号"
         : mode === "import"
-          ? "导入并连接 DF 账号"
+          ? "导入并连接 Aztec 账号"
           : "连接本地 Aztec 钱包";
 
   useEffect(() => {
@@ -91,8 +91,8 @@ export function WalletPanel({ view, controller }: ViewProps) {
           </button>
         </div>
         <p className="small">
-          与 DF 游戏一样，默认使用浏览器内置的 Aztec
-          钱包。本站与游戏不同源，游戏账号需要导出备份后在这里导入。
+          默认使用浏览器内置 Aztec 钱包，也可连接 Azguard
+          扩展或导入兼容的账号备份。
         </p>
         <label htmlFor="walletMode">连接方式</label>
         <select
@@ -104,9 +104,9 @@ export function WalletPanel({ view, controller }: ViewProps) {
           }
         >
           <option value="local">本地钱包 · 使用已保存账号</option>
-          <option value="create">本地钱包 · 创建 DF 账号</option>
-          <option value="import">本地钱包 · 导入 DF 账号备份</option>
-          <option value="test">本地钱包 · 预置测试玩家（仅测试）</option>
+          <option value="create">本地钱包 · 创建 Aztec 账号</option>
+          <option value="import">本地钱包 · 导入 Aztec 账号备份</option>
+          <option value="test">本地钱包 · 预置测试账号（仅测试）</option>
           <option value="extension">Azguard · 扩展钱包（可选）</option>
         </select>
         <div id="localOptions" hidden={mode === "extension"}>
@@ -123,8 +123,8 @@ export function WalletPanel({ view, controller }: ViewProps) {
               )}
               {view.savedAccounts.map((account) => (
                 <option key={account.address} value={account.address}>
-                  {account.label || "DF 账号"} · {account.address.slice(0, 10)}…
-                  {account.address.slice(-6)}
+                  {account.label || "Aztec 账号"} ·{" "}
+                  {account.address.slice(0, 10)}…{account.address.slice(-6)}
                 </option>
               ))}
             </select>
@@ -135,7 +135,7 @@ export function WalletPanel({ view, controller }: ViewProps) {
               id="accountLabel"
               type="text"
               maxLength={32}
-              placeholder="例如：本地玩家"
+              placeholder="例如：本地账号"
               disabled={locked}
               value={view.accountLabel}
               onChange={change("accountLabel")}
@@ -146,7 +146,7 @@ export function WalletPanel({ view, controller }: ViewProps) {
             </p>
           </div>
           <div id="testOptions" hidden={mode !== "test"}>
-            <label htmlFor="account">测试玩家</label>
+            <label htmlFor="account">测试账号</label>
             <select
               id="account"
               value={view.account}
@@ -161,7 +161,7 @@ export function WalletPanel({ view, controller }: ViewProps) {
             </select>
           </div>
           <div id="importOptions" hidden={mode !== "import"}>
-            <label htmlFor="accountFile">DF 导出的账号 JSON</label>
+            <label htmlFor="accountFile">Aztec 账号 JSON 备份</label>
             <input
               key={view.fileVersion}
               id="accountFile"
@@ -176,8 +176,8 @@ export function WalletPanel({ view, controller }: ViewProps) {
               }
             />
             <p className="small">
-              文件只在浏览器中读取，不会上传。导入游戏账号不等于已在本站的独立
-              DF 测试链入局。
+              文件只在浏览器中读取，不会上传。账号连接后可直接发帖，无需 DF
+              入局。
             </p>
           </div>
           <label className="check-label">

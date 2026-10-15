@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Keep the local Aztec node and DF test page alive in one terminal session.
+# Keep the local Aztec node and standalone billboard page alive in one terminal session.
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -38,11 +38,8 @@ node_ready() {
   ' >/dev/null 2>&1
 }
 
-echo 'Building DF billboard contract and test page...'
+echo 'Building standalone billboard contract and test page...'
 npm run build:df
-if [ ! -f .local/df-upstream/contracts/target/core-Core.json ]; then
-  npm run build:df:core
-fi
 npm run build:sdk
 npm run build:df:harness
 
@@ -70,7 +67,7 @@ else
   fi
 fi
 
-echo 'Checking DF contracts on the local chain...'
+echo 'Checking standalone billboard and Sponsored FPC on the local chain...'
 npm run deploy:df:harness >.local/df-test-deploy.log 2>&1 || {
   echo 'Deployment failed; recent output:' >&2
   tail -n 60 .local/df-test-deploy.log >&2

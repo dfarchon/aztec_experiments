@@ -26,7 +26,6 @@ export function initializeRuntime(): Promise<void> {
     // The report route never imports this module or downloads the Aztec SDK.
     for (const src of [
       "/aztec_bundle.js",
-      "/df-hash.js",
       "/df-helpers.js",
       "/df-aztec-lib.js",
     ])

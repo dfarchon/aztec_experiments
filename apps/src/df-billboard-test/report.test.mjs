@@ -115,7 +115,7 @@ new Function("require", "module", "exports", compiled.outputFiles[0].text)(
   module,
   module.exports
 );
-test("report covers the DF-to-billboard contract flow, test results and escaped samples without wallet controls", () => {
+test("report covers standalone sponsored posting, test results and escaped samples without wallet controls", () => {
   const html = renderToStaticMarkup(
     createElement(
       StaticRouter,
@@ -140,9 +140,9 @@ test("report covers the DF-to-billboard contract flow, test results and escaped 
   assert.doesNotMatch(html, /<img|id="walletMenu"|id="connect"/);
   assert.match(html, /6 条人工编写中英文样本/);
   assert.doesNotMatch(html, /basic-reading-v2/);
-  assert.match(html, /Core\.initialize_player/);
-  assert.match(html, /PlayerStorage/);
-  assert.match(html, /首帖核验真实入局/);
+  assert.doesNotMatch(html, /Core\.initialize_player|PlayerStorage/);
+  assert.match(html, /无需 DF 入局、无需存款/);
+  assert.match(html, /post\(text, length\)/);
   assert.match(html, /滚动 86,400 秒内最多 10 条/);
   assert.match(html, /Sponsored FPC/);
   assert.match(html, /get_post_count/);
@@ -166,7 +166,7 @@ test("contract design remains readable when the sample report is unavailable", (
     )
   );
   assert.match(html, /合约设计/);
-  assert.match(html, /Core\.initialize_player/);
+  assert.match(html, /Sponsored FPC/);
   assert.match(html, /样本不可用/);
   assert.doesNotMatch(html, /全部广告 · 基础规则折叠/);
 });

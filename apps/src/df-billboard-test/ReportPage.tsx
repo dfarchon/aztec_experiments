@@ -124,8 +124,8 @@ export function ReportContent({
           <div className="report-title">
             <h1>留言板 · 设计与测试</h1>
             <p>
-              独立于 DF
-              游戏合约的公开频道：入局玩家匿名发帖，所有人可读，客户端自行决定折叠哪些内容。
+              独立公开频道：任何 Aztec
+              账号都可匿名发帖，所有人可读，客户端自行决定折叠哪些内容。
             </p>
             <div className="report-meta">
               基于 DFBillboard 合约与本地测试客户端
@@ -134,8 +134,8 @@ export function ReportContent({
           <section id="overview" className="report-section">
             <h2>01 / 功能概览</h2>
             <div className="report-notice">
-              当前实现：DF
-              入局状态决定发帖资格；首帖自动核验，无须领取凭证。消息正文公开上链。阅读过滤仅在本地折叠，不审核、删除或处罚链上帖子。
+              当前实现：无需 DF 入局、无需存款。L2 发帖由 Sponsored FPC
+              代付，消息正文公开上链。阅读过滤仅在本地折叠，不删除或处罚链上帖子。
             </div>
             <div className="report-table-wrap report-design-table">
               <table>
@@ -149,13 +149,8 @@ export function ReportContent({
                 </thead>
                 <tbody>
                   <tr>
-                    <th scope="row">DF Core / PlayerStorage</th>
-                    <td>完成入局，保存玩家状态根</td>
-                    <td>入局状态根</td>
-                  </tr>
-                  <tr>
                     <th scope="row">DFBillboard 私有调用</th>
-                    <td>验证资格，记录每个账号的发帖时间</td>
+                    <td>记录每个账号的私有发帖时间</td>
                     <td>不直接写发帖地址</td>
                   </tr>
                   <tr>
@@ -176,34 +171,33 @@ export function ReportContent({
             <h2>02 / 完整链路</h2>
             <ol className="design-steps">
               <li>
-                <h3>DF 入局</h3>
+                <h3>连接 Aztec 钱包</h3>
                 <p>
-                  玩家通过 <code>Core.initialize_player</code>{" "}
-                  入局；客户端保存链上 <code>PlayerUpdate</code>{" "}
-                  状态，供首帖证明使用。
+                  创建、导入本地账号或连接 Azguard，注册留言板与 Sponsored
+                  FPC，即可直接发帖。
                 </p>
               </li>
               <li>
                 <h3>私有发帖</h3>
                 <p>
-                  <code>post</code> 从调用者取得账号，在 Aztec
-                  锚定区块读取绑定的 <code>PlayerStorage</code>{" "}
-                  状态根。首帖核验真实入局；之后沿用私有发帖历史，无手动领取步骤。
+                  <code>post(text, length)</code>{" "}
+                  在私有调用中更新账号的发帖历史，以 Aztec
+                  锚定区块时间检查额度。无需 DF 玩家证明或手动领取资格。
                 </p>
               </li>
               <li>
                 <h3>合约公开正文</h3>
                 <p>
-                  资格、额度和字节校验通过后，私有调用排队执行仅合约自身可调用的{" "}
+                  额度和字节校验通过后，私有调用排队执行仅合约自身可调用的{" "}
                   <code>_publish</code>。它分配帖子 ID，并公开写入正文与长度。
                 </p>
               </li>
               <li>
                 <h3>任何人阅读</h3>
                 <p>
-                  客户端调用 <code>get_post_count</code> 与{" "}
+                  合约提供 <code>get_post_count</code> 与{" "}
                   <code>get_post(id)</code>
-                  ，解码原文后再按个人设置折叠。发帖和阅读不依赖审核服务。
+                  。本页按合约产物的存储布局读取同一区块的公开快照，无需连接钱包；解码后按个人设置折叠。
                 </p>
               </li>
             </ol>
@@ -221,18 +215,15 @@ export function ReportContent({
                 </thead>
                 <tbody>
                   <tr>
-                    <th scope="row">赛季绑定</th>
+                    <th scope="row">频道</th>
                     <td>
-                      部署时固定一个非零 PlayerStorage
-                      地址；合约没有自动赛季切换或管理员改址入口。每季需明确对应
-                      DF 部署与留言板。
+                      以网络与留言板合约地址区分，不再绑定 DF 赛季或玩家合约。
                     </td>
                   </tr>
                   <tr>
-                    <th scope="row">入局资格</th>
+                    <th scope="row">发帖资格</th>
                     <td>
-                      每次检查玩家状态根非零；首帖还核对传入 Player
-                      状态哈希及入局时间，并用一次性 nullifier
+                      任何 Aztec 账号均可发帖，无需存款；用一次性 nullifier
                       防止丢弃历史后重置额度。
                     </td>
                   </tr>
@@ -254,15 +245,15 @@ export function ReportContent({
                   <tr>
                     <th scope="row">隐私边界</th>
                     <td>
-                      公开帖子不存发帖地址；资格和额度在私有调用中处理。这不等于保证交易网络元数据或跨行为完全不可关联。
+                      公开帖子不存发帖地址；额度在私有调用中处理。这不等于保证交易网络元数据或跨行为完全不可关联。
                     </td>
                   </tr>
                   <tr>
                     <th scope="row">费用</th>
                     <td>
-                      本地测试客户端使用 Sponsored FPC
-                      为入局、发帖代付；生产环境的 FPC
-                      地址、充值与预算仍需单独确定。
+                      本地测试客户端使用 Sponsored FPC 为 L2
+                      发帖代付；余额不足时停止，不转为用户付费。生产环境的地址、充值与预算另行配置，L1
+                      发布尚未实现。
                     </td>
                   </tr>
                 </tbody>
@@ -284,11 +275,10 @@ export function ReportContent({
             <h2>05 / 测试结果</h2>
             <h3>合约验证覆盖</h3>
             <p className="report-muted">
-              Noir 测试覆盖：未入局与伪造状态拒绝、首帖自动获得资格、10/11
-              条滚动限额、到期后释放名额、正文长度与补零、禁止外部直接调用{" "}
-              <code>_publish</code>、不同玩家额度独立。本地 E2E 另有真实{" "}
-              <code>Core.initialize_player</code>{" "}
-              路径；下方数字只统计阅读过滤样本，不是合约通过率。
+              Noir 测试覆盖：无注册直接发帖、10/11 条滚动限额、24
+              小时边界、防重置额度、正文长度与补零、禁止外部直接调用{" "}
+              <code>_publish</code>、账户与留言板额度独立。本地 E2E
+              检查新账号零余额发帖、实际代付和公开读取；下方数字仅统计阅读过滤样本。
             </p>
             <h3>阅读过滤样本</h3>
             {!report ? (
@@ -553,10 +543,8 @@ export function ReportContent({
             <h2>07 / 边界与待确认</h2>
             <ul>
               <li>
-                合约将 DF <code>PlayerStorage</code>{" "}
-                的玩家状态根槽位固定为当前版本布局；DF
-                升级后需核对槽位或部署适配版本。每季的 DF
-                地址与留言板地址也需明确配对。
+                每个账号 10 帖不等于每人 10
+                帖；开放创建账号后仍需为公开赞助设置预算，避免多账号耗尽代付资金。
               </li>
               <li>
                 本地测试的 Sponsored FPC
@@ -587,11 +575,15 @@ export function ReportContent({
             <details className="report-source">
               <summary>合约与链路验证</summary>
               <pre>
-                <code>{"npm run test:df\nnpm run test:df:core"}</code>
+                <code>
+                  {
+                    "npm run test:df\nnpm run dev:df:harness\nnpm run test:df:e2e"
+                  }
+                </code>
               </pre>
               <p>
-                完整 DF 入局路径需本地节点、PXE 和已部署的 DF；本地 rollup
-                的证明模式仍不等同正式测试网。
+                独立本地链路只部署留言板，不需要 DF 合约；本地 rollup 使用
+                synthetic 模式。可选客户端真实证明验证仍不能替代正式网络验收。
               </p>
             </details>
             {report ? (

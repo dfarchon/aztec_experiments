@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { GasFees } from "@aztec/stdlib/gas";
+
 import {
   AI_CACHE_NAME,
   AI_CATEGORY_THRESHOLDS,
@@ -9,17 +11,6 @@ import {
 import { createBillboardController } from "./controller.ts";
 
 const address = `0x${"1".repeat(64)}`;
-const player = {
-  init_timestamp: 100n,
-  home_planet_id: 1n,
-  last_reveal_timestamp: 0n,
-  score: 0n,
-  space_junk: 0n,
-  space_junk_limit: 100n,
-  claimed_ships: false,
-  last_updated: 100n,
-};
-
 function storage() {
   const data = new Map();
   return {
@@ -42,39 +33,38 @@ function pack(text) {
     bytes.length,
   ];
 }
-
-function fixture(
-  t,
-  { brokenChain = false, joinFailures = 0, occupiedCandidates = 0 } = {}
-) {
+function fixture(t) {
   const deployment = {
+    kind: "standalone-billboard",
+    schemaVersion: 1,
     nodeUrl: "http://127.0.0.1:5180",
     rollupAddress: "rollup",
-    core: "core",
-    config: "config",
-    playerStorage: "player",
     board: "board",
+    boardClassId: "board-class",
     sponsoredFpc: "sponsor",
-    worldRadius: 100,
-    contracts: { PlanetStorage: "planet" },
+    sponsorSalt: "0",
   };
   const account = {
     address,
     secretKey: "0x123",
     salt: "0",
     signingKey: "456",
-    label: "Test player",
+    label: "Test account",
   };
   const calls = [];
-  let joined = false;
-  const posts = [pack("hello forest"), [[], 1], pack("<img src=x>")];
-  const globals = {
+  let sponsorBalance = 100n;
+  let postFailure;
+  const posts = [
+    pack("hello forest"),
+    [Array(17).fill(1n << 248n), 1],
+    pack("<img src=x>"),
+  ];
+  for (const [key, value] of Object.entries({
     window: {},
-    location: new URL("http://127.0.0.1:5001/df-billboard-test.html"),
+    location: new URL("http://127.0.0.1:5001/"),
     localStorage: storage(),
     sessionStorage: storage(),
-  };
-  for (const [key, value] of Object.entries(globals)) {
+  })) {
     const descriptor = Object.getOwnPropertyDescriptor(globalThis, key);
     Object.defineProperty(globalThis, key, {
       configurable: true,
@@ -94,83 +84,80 @@ function fixture(
     if (url === "/df-local-accounts.json")
       return {
         ok: true,
-        json: async () => [account, { ...account, label: "Player 2" }],
+        json: async () => [account, { ...account, label: "Account 2" }],
       };
     const name = /^\/df-(\w+)-artifact.json$/.exec(url)?.[1];
     return {
       ok: Boolean(name),
       json: async () => ({
         name,
-        functions: [
-          {
-            name: "initialize_player",
-            parameters: [{ name: "timestamp", type: { kind: "field" } }],
-          },
-        ],
-        outputs: {
-          structs: { events: [{ path: "player::PlayerUpdate", fields: [] }] },
+        storageLayout: {
+          post_count: { slot: new Fr(2) },
+          post_lengths: { slot: new Fr(3) },
+          post_data: { slot: new Fr(4) },
         },
       }),
     };
   });
   t.mock.method(console, "error", () => {});
   class Fr {
-    static MODULUS = 1n << 254n;
     constructor(value) {
-      this.value = value;
-    }
-    toBuffer() {
-      return new Uint8Array(32);
+      this.value = BigInt(value);
     }
     toString() {
       return String(this.value);
+    }
+    toBigInt() {
+      return this.value;
     }
     static fromString(value) {
       return new Fr(value);
     }
   }
-  const simulate = (value) => ({ simulate: async () => ({ result: value }) });
-  const config = {
-    get_snark_config: () =>
-      simulate({
-        disable_zk_checks: false,
-        planethash_key: 1,
-        spacetype_key: 1,
-        perlin_length_scale: 1,
-      }),
-    get_game_config_core: () =>
-      simulate({
-        max_location_id: 100n,
-        init_perlin_min: 0,
-        init_perlin_max: 32,
-      }),
-    get_planet_level_thresholds: () => simulate({ thresholds: [0, 0] }),
+  const info = {
+    l1ChainId: 31337,
+    rollupVersion: 1,
+    nodeVersion: "5.0.1",
+    realProofs: false,
   };
-  for (const method of [
-    "get_planet_default_stats",
-    "get_world_config",
-    "get_space_junk_config",
-    "get_planet_type_weights_tier",
-  ]) {
-    config[method] = () => simulate({});
-  }
   const node = {
-    getNodeInfo: async () => ({
-      l1ChainId: 31337,
-      rollupVersion: 1,
-      nodeVersion: brokenChain ? "wrong" : "5.0.1",
-    }),
+    getNodeInfo: async () => info,
     getL1ContractAddresses: async () => ({ rollupAddress: "rollup" }),
-    getContract: async (address) => ({ address }),
-    getBlock: async () => ({
-      header: { globalVariables: { timestamp: 100n } },
+    getContract: async (address) => ({
+      address,
+      currentContractClassId: "board-class",
     }),
+    getBlockNumber: async () => 42,
+    getBlock: async () => ({
+      header: { globalVariables: { gasFees: new GasFees(0n, 900n) } },
+    }),
+    getPredictedMinFees: async () => [new GasFees(0n, 250n)],
+    getPublicStorageAt: async (block, contract, slot) => {
+      calls.push(["read", block, contract, slot.toString()]);
+      const [base, key] = slot.toString().split(":").map(Number);
+      return new Fr(
+        base === 2
+          ? posts.length
+          : base === 3
+            ? posts[key][1]
+            : posts[Math.floor(key / 17)][0][key % 17]
+      );
+    },
   };
   const sdk = {
     Fr,
+    GasFees,
     Fq: { fromString: (value) => value },
     AztecAddress: { ZERO: "0", fromStringUnsafe: (value) => value },
+    createAztecNodeClient: () => node,
     loadContractArtifact: (value) => value,
+    deriveStorageSlotInMap: async (base, key) => ({
+      toString: () => `${base}:${key}`,
+    }),
+    getFeeJuiceBalance: async (owner) => {
+      calls.push(["balance", owner]);
+      return sponsorBalance;
+    },
     getContractInstanceFromInstantiationParams: async () => ({
       address: "sponsor",
     }),
@@ -179,81 +166,43 @@ function fixture(
         this.address = address;
       }
     },
-    EventSelector: { fromString: (value) => value },
-    getPublicEvents: async () => ({
-      events: [{ event: { id: address, state: player } }],
-    }),
     Contract: {
-      at: async (address, artifact) => ({
-        methods:
-          artifact.name === "core"
-            ? {
-                initialize_player: (timestamp) => ({
-                  simulate: async () => {
-                    calls.push(["simulateJoin", timestamp]);
-                    if (joinFailures-- > 0)
-                      throw new Error("Timestamp too old");
-                  },
-                  send: async (options) => {
-                    calls.push(["join", options]);
-                    joined = true;
-                    return {
-                      receipt: {
-                        executionResult: "success",
-                        txHash: "join-tx",
-                      },
-                    };
-                  },
-                }),
-              }
-            : artifact.name === "config"
-              ? config
-              : artifact.name === "planet"
-                ? {
-                    is_initialized: () => {
-                      calls.push(["checkPlanet"]);
-                      return simulate(occupiedCandidates-- > 0);
-                    },
-                  }
-                : artifact.name === "player"
-                  ? {
-                      is_initialized: () => simulate(joined),
-                      verify: () => simulate(true),
-                    }
-                  : artifact.name === "board"
-                    ? {
-                        get_post_count: () => simulate(posts.length),
-                        get_post: (id) => simulate(posts[id]),
-                        post: (state, bytes, length) => ({
-                          send: async (options) => {
-                            calls.push(["post", state, bytes, length, options]);
-                            posts.push(
-                              pack(
-                                new TextDecoder().decode(
-                                  new Uint8Array(bytes.slice(0, length))
-                                )
-                              )
-                            );
-                            return {
-                              receipt: {
-                                executionResult: "success",
-                                txHash: "post-tx",
-                              },
-                            };
-                          },
-                        }),
+      at: async (_address, artifact) => {
+        assert(
+          ["board", "sponsor"].includes(artifact.name),
+          "Must not load DF game contracts"
+        );
+        return {
+          methods:
+            artifact.name === "board"
+              ? {
+                  post: (bytes, length) => ({
+                    send: async (options) => {
+                      if (postFailure) {
+                        const error = postFailure;
+                        postFailure = undefined;
+                        throw error;
                       }
-                    : {},
-      }),
-    },
-  };
-  window.__dfHash = {
-    initPoseidon2: async () => {},
-    perlin: () => 13,
-    BarretenbergSync: {
-      getSingleton: () => ({
-        poseidon2Hash: () => ({ hash: new Uint8Array(32) }),
-      }),
+                      calls.push(["post", bytes, length, options]);
+                      posts.push(
+                        pack(
+                          new TextDecoder().decode(
+                            new Uint8Array(bytes.slice(0, length))
+                          )
+                        )
+                      );
+                      return {
+                        receipt: {
+                          executionResult: "success",
+                          txHash: "post-tx",
+                        },
+                      };
+                    },
+                  }),
+                }
+              : {},
+        };
+      },
     },
   };
   const controller = createBillboardController({
@@ -264,17 +213,33 @@ function fixture(
       Object.assign(state, {
         address,
         wallet: {},
-        pxe: {
-          registerContractClass: async () => {},
-          registerContract: async () => {},
-        },
         aztecNode: node,
+        pxe: {
+          registerContractClass: async (artifact) =>
+            calls.push(["registerClass", artifact.name]),
+          registerContract: async (instance) =>
+            calls.push(["register", instance.address]),
+        },
       });
       return true;
     },
   });
   t.after(() => controller.dispose());
-  return { controller, calls, address, sdk, node };
+  return {
+    controller,
+    calls,
+    address,
+    sdk,
+    node,
+    info,
+    deployment,
+    setSponsorBalance: (value) => {
+      sponsorBalance = value;
+    },
+    failNextPost: (error) => {
+      postFailure = error;
+    },
+  };
 }
 
 test("initialization is idempotent, subscribable and does not publish test keys", async (t) => {
@@ -299,8 +264,6 @@ test("initialization is idempotent, subscribable and does not publish test keys"
   controller.setAiHints(true);
   assert.equal(controller.getSnapshot().aiHints, false);
   assert.equal(controller.getSnapshot().aiConsentOpen, true);
-  controller.confirmAiHints();
-  assert.equal(controller.getSnapshot().aiStatus, "没有可分析的消息。");
   controller.setAiHints(false);
 });
 
@@ -366,75 +329,135 @@ test("malformed preferences and unavailable preference storage do not block read
   assert.equal(controller.getSnapshot().rulesEnabled, true);
 });
 
-test("wallet -> Core.initialize_player wiring -> sponsored post preserves state and message decoding", async (t) => {
+test("public feed loads without a wallet and uses one block snapshot", async (t) => {
+  const { controller, calls } = fixture(t);
+  await controller.initialize();
+  assert.equal(controller.getSnapshot().connected, false);
+  assert.equal(controller.getSnapshot().canRead, true);
+  assert.equal(controller.getSnapshot().feedLoaded, true);
+  assert.equal(controller.getSnapshot().posts[1].decodeError, true);
+  assert.equal(controller.getSnapshot().posts[2].text, "<img src=x>");
+  assert(
+    calls.filter(([name]) => name === "read").every(([, block]) => block === 42)
+  );
+  await controller.refresh();
+  assert.equal(controller.getSnapshot().posts.length, 3);
+});
+
+test("wallet connects directly to sponsored posting without DF state or a deposit", async (t) => {
   const { controller, calls } = fixture(t);
   await controller.initialize();
   controller.setField("walletMode", "test");
   await controller.connect();
   assert.equal(controller.getSnapshot().connected, true);
+  assert.equal(controller.getSnapshot().canPost, true);
   assert.equal(controller.getSnapshot().address, address);
-  assert.equal(controller.getSnapshot().canPost, false);
-  assert.equal(controller.getSnapshot().posts[1].decodeError, true);
-  assert.equal(controller.getSnapshot().posts[2].text, "<img src=x>");
+  assert.equal("join" in controller, false);
   controller.setField("walletMode", "extension");
   assert.equal(controller.getSnapshot().walletMode, "test");
-  await controller.join();
-  assert.equal(controller.getSnapshot().joined, true);
-  assert.equal(controller.getSnapshot().canPost, true);
-  assert.equal(calls.find((call) => call[0] === "simulateJoin")[1], 100n);
-  controller.setField("message", "你好，森林");
+  controller.setField("message", "你好，独立留言板");
   await controller.post();
-  const sent = calls.find((call) => call[0] === "post");
-  assert.equal(sent[3], new TextEncoder().encode("你好，森林").length);
-  assert.equal(sent[4].fee.paymentMethod.address, "sponsor");
-  assert.equal(controller.getSnapshot().posts.at(-1).text, "你好，森林");
-  assert.equal(controller.getSnapshot().busy, false);
-});
-
-test("failed connection exits busy state and records a useful error", async (t) => {
-  const { controller } = fixture(t, { brokenChain: true });
-  await controller.initialize();
-  controller.setField("walletMode", "test");
-  await controller.connect();
-  assert.equal(controller.getSnapshot().busy, false);
-  assert.ok(
-    controller
-      .getSnapshot()
-      .logs.some((entry) => entry.message.includes("部署信息与本地链不匹配"))
+  const sent = calls.find(([name]) => name === "post");
+  assert.equal(sent[2], new TextEncoder().encode("你好，独立留言板").length);
+  assert.equal(sent[1].length, 512);
+  assert.equal(sent[3].fee.paymentMethod.address, "sponsor");
+  assert.equal(sent[3].fee.gasSettings.maxFeesPerGas.feePerL2Gas, 1800n);
+  assert.equal(controller.getSnapshot().posts.at(-1).text, "你好，独立留言板");
+  assert.deepEqual(
+    calls.filter(([name]) => name === "register").map(([, id]) => id),
+    ["board", "sponsor"]
   );
-  assert.equal(controller.getSnapshot().progress.failed, true);
-  assert.equal(controller.getSnapshot().connected, false);
-  assert.equal(controller.getSnapshot().address, "");
+  assert(
+    !calls.some(
+      ([name, url]) => name === "fetch" && /core|config|player|planet/.test(url)
+    )
+  );
 });
 
-test("failed join retains reason across refresh, does not send, and can retry", async (t) => {
-  const { controller, calls } = fixture(t, { joinFailures: 1 });
+test("empty sponsor blocks sends without falling back to user fees; refill allows retry", async (t) => {
+  const { controller, calls, setSponsorBalance } = fixture(t);
   await controller.initialize();
   controller.setField("walletMode", "test");
   await controller.connect();
-  await controller.join();
-  assert.equal(controller.getSnapshot().busy, false);
-  assert.equal(controller.getSnapshot().actionError.label, "DF 入局");
-  assert.match(controller.getSnapshot().actionError.guidance, /sync-df-clock/);
-  assert.equal(calls.filter((call) => call[0] === "join").length, 0);
-  await controller.refresh();
-  assert.equal(
+  setSponsorBalance(0n);
+  controller.setField("message", "wait for sponsor");
+  await controller.post();
+  assert.match(
     controller.getSnapshot().actionError.message,
-    "Timestamp too old"
+    /Sponsored FPC 余额不足/
   );
-  await controller.join();
+  assert.equal(calls.filter(([name]) => name === "post").length, 0);
+  assert.equal(controller.getSnapshot().canPost, true);
+  setSponsorBalance(100n);
+  await controller.post();
+  assert.equal(calls.filter(([name]) => name === "post").length, 1);
   assert.equal(controller.getSnapshot().actionError, null);
-  assert.equal(controller.getSnapshot().joined, true);
 });
 
-test("join skips a spawn already initialized by another local player", async (t) => {
-  const { controller, calls } = fixture(t, { occupiedCandidates: 1 });
+test("an unfunded sponsor prevents a partial connection but does not block public reading", async (t) => {
+  const { controller, setSponsorBalance } = fixture(t);
+  setSponsorBalance(0n);
   await controller.initialize();
   controller.setField("walletMode", "test");
   await controller.connect();
-  await controller.join();
-  assert.equal(calls.filter((call) => call[0] === "checkPlanet").length, 2);
-  assert.equal(controller.getSnapshot().joined, true);
+  assert.equal(controller.getSnapshot().connected, false);
+  assert.equal(controller.getSnapshot().canPost, false);
+  assert.equal(controller.getSnapshot().canRead, true);
+  assert.match(controller.getSnapshot().actionError.message, /余额不足/);
+});
+
+test("post failures persist across feed refresh and allow retry", async (t) => {
+  const { controller, calls, failNextPost } = fixture(t);
+  await controller.initialize();
+  controller.setField("walletMode", "test");
+  await controller.connect();
+  controller.setField("message", "retry");
+  failNextPost(new Error("24-hour post limit reached"));
+  await controller.post();
+  assert.equal(controller.getSnapshot().busy, false);
+  assert.equal(controller.getSnapshot().actionError.label, "匿名发帖");
+  await controller.refresh();
+  assert.match(controller.getSnapshot().actionError.message, /24-hour/);
+  await controller.post();
+  assert.equal(calls.filter(([name]) => name === "post").length, 1);
+  assert.equal(controller.getSnapshot().actionError, null);
+});
+
+test("wrong chain prevents connection and never enables posting", async (t) => {
+  const { controller, info } = fixture(t);
+  await controller.initialize();
+  info.nodeVersion = "wrong";
+  controller.setField("walletMode", "test");
+  await controller.connect();
+  assert.equal(controller.getSnapshot().busy, false);
+  assert.equal(controller.getSnapshot().connected, false);
+  assert.equal(controller.getSnapshot().canPost, false);
+  assert.match(
+    controller.getSnapshot().actionError.message,
+    /部署信息与本地链不匹配/
+  );
+});
+
+test("legacy deployment fails visibly and initialization can be retried after replacement", async (t) => {
+  const { controller, deployment } = fixture(t);
+  deployment.kind = "legacy";
+  await assert.rejects(controller.initialize(), /旧版 DF/);
+  assert.equal(controller.getSnapshot().canRead, false);
+  deployment.kind = "standalone-billboard";
+  await controller.initialize();
+  assert.equal(controller.getSnapshot().canRead, true);
+});
+
+test("changed network is checked again before submitting", async (t) => {
+  const { controller, calls, info } = fixture(t);
+  await controller.initialize();
+  controller.setField("walletMode", "test");
+  await controller.connect();
+  controller.setField("message", "do not submit");
+  info.realProofs = true;
+  await controller.post();
+  assert.equal(calls.filter(([name]) => name === "post").length, 0);
+  assert.match(controller.getSnapshot().actionError.message, /不匹配/);
 });
 
 test("extension discovery, emoji confirmation and capability grants preserve the connection flow", async (t) => {
@@ -450,21 +473,28 @@ test("extension discovery, emoji confirmation and capability grants preserve the
         confirmed++;
         return {
           registerContract: async () => {},
-          requestCapabilities: async () => ({
-            granted: [
-              {
-                type: "accounts",
-                accounts: [{ alias: "Test", item: address }],
-              },
-              { type: "contracts", canRegister: true, contracts: "*" },
-              {
-                type: "simulation",
-                utilities: { scope: "*" },
-                transactions: { scope: "*" },
-              },
-              { type: "transaction", scope: "*" },
-            ],
-          }),
+          requestCapabilities: async (request) => {
+            assert.equal(
+              request.capabilities.find((item) => item.type === "transaction")
+                .scope.length,
+              2
+            );
+            return {
+              granted: [
+                {
+                  type: "accounts",
+                  accounts: [{ alias: "Test", item: address }],
+                },
+                { type: "contracts", canRegister: true, contracts: "*" },
+                {
+                  type: "simulation",
+                  utilities: { scope: "*" },
+                  transactions: { scope: "*" },
+                },
+                { type: "transaction", scope: "*" },
+              ],
+            };
+          },
         };
       },
     }),

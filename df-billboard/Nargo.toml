@@ -1,2 +1,2 @@
 [workspace]
-members = ["contract", "test", "../.local/df-upstream/contracts/storage/player"]
+members = ["contract", "test"]

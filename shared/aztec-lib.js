@@ -304,6 +304,7 @@ function createAztecWallet(pxe, aztecNode, rawNode, statusId, opts = {}) {
       this._account = null;
       this._estimatedGasPadding = 0.1;
       this._secretKey = null; // set by ensureAztecSetup
+      this.onTxPrepared = null; // Optional recovery hook, before network submission.
     }
     // v5: Override registerContract to also register the account with the PXE's
     // addressStore. In v5, DeployMethod.request() calls wallet.registerContract(instance,
@@ -312,7 +313,10 @@ function createAztecWallet(pxe, aztecNode, rawNode, statusId, opts = {}) {
     // get_public_keys_and_partial_address fails with "Public keys not registered".
     // We fix this by passing the secret key so BaseWallet registers the account.
     async registerContract(instance, artifact, secretKeyOrKeys) {
-      return super.registerContract(instance, artifact, secretKeyOrKeys ?? this._secretKey);
+      // Only the wallet's own account has these privacy keys. Passing them for
+      // an unrelated application/FPC attempts to register a different address.
+      const accountKey = this._accountManager?.address.equals(instance.address) ? this._secretKey : undefined;
+      return super.registerContract(instance, artifact, secretKeyOrKeys ?? accountKey);
     }
     async getAccountFromAddress() {
       if (!this._account) this._account = await this._accountManager.getAccount();
@@ -379,6 +383,7 @@ function createAztecWallet(pxe, aztecNode, rawNode, statusId, opts = {}) {
       });
       const tx = await provenTx.toTx();
       const txHash = tx.getTxHash();
+      if (this.onTxPrepared) await this.onTxPrepared(txHash.toString());
       log('  Proving complete. Submitting to node...', 'success', S);
 
       // Submit with extended retry (node may be temporarily overloaded).
@@ -417,6 +422,7 @@ function createAztecWallet(pxe, aztecNode, rawNode, statusId, opts = {}) {
 
       // Poll for receipt (also covers the case where the tx was already
       // submitted but we didn't get confirmation due to a transient error)
+      if (opts.wait === a.NO_WAIT) return { txHash };
       const waitOpts = typeof opts.wait === 'object' ? opts.wait : undefined;
       const timeout = waitOpts?.timeout ?? 600;
       const interval = waitOpts?.interval ?? 5;

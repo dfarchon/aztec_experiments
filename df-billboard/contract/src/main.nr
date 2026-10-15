@@ -3,7 +3,6 @@ use aztec::macros::aztec;
 #[aztec]
 pub contract DFBillboard {
     use aztec::{
-        history::storage::public_storage_historical_read,
         keys::getters::get_public_keys,
         macros::{
             functions::{external, initializer, only_self, view},
@@ -13,18 +12,11 @@ pub contract DFBillboard {
         messages::delivery::MessageDelivery,
         note::note_getter_options::NoteGetterOptions,
         protocol::{
-            address::AztecAddress,
-            hash::{poseidon2_hash, poseidon2_hash_with_separator},
-            storage::map::derive_storage_slot_in_map,
-            traits::{Deserialize, FromField, Packable, Serialize, ToField},
+            hash::poseidon2_hash_with_separator,
+            traits::{Deserialize, Packable, Serialize, ToField},
         },
-        state_vars::{Map, Owned, PrivateSet, PublicMutable, StateVariable},
+        state_vars::{Map, Owned, PrivateSet, PublicMutable},
     };
-    use types::storage::player::Player;
-
-    // DF revision pinned in scripts/prepare-df.mjs: five preceding one-slot fields.
-    // This is NOT a user-supplied slot; changing the DF layout requires a new adapter.
-    global PLAYER_ROOTS_SLOT: Field = 6;
     global FIRST_POST_DOMAIN: u32 = 1145455153;
     global POST_LIMIT: u32 = 10;
     global POST_WINDOW_SECONDS: u64 = 86400;
@@ -43,8 +35,6 @@ pub contract DFBillboard {
 
     #[storage]
     struct Storage<Context> {
-        // Written by initializer only. No address migration/admin setter.
-        player_storage: PublicMutable<AztecAddress, Context>,
         histories: Owned<PrivateSet<PostingHistory, Context>, Context>,
         post_count: PublicMutable<u32, Context>,
         post_lengths: Map<u32, PublicMutable<u32, Context>, Context>,
@@ -53,46 +43,31 @@ pub contract DFBillboard {
 
     #[external("public")]
     #[initializer]
-    fn constructor(player_storage: AztecAddress) {
-        assert(!player_storage.is_zero(), "PlayerStorage cannot be zero");
-        self.storage.player_storage.write(player_storage);
+    fn constructor() {
         self.storage.post_count.write(0);
     }
 
     #[external("private")]
-    fn post(player: Player, text: [u8; MAX_BYTES], length: u32) {
+    fn post(text: [u8; MAX_BYTES], length: u32) {
         assert(length > 0, "Empty message");
         assert(length <= MAX_BYTES, "Message too long");
         let owner = self.msg_sender();
         let header = self.context.get_anchor_block_header();
         let now = header.timestamp();
         let board = self.context.this_address();
-        let source = AztecAddress::from_field(public_storage_historical_read(
-            header,
-            self.storage.player_storage.get_storage_slot(),
-            board,
-        ));
-        let slot = derive_storage_slot_in_map(PLAYER_ROOTS_SLOT, owner);
-        let root = public_storage_historical_read(header, slot, source);
-        assert(root != 0, "Player not registered");
-
         let notes = self.storage.histories.at(owner).pop_notes(
             NoteGetterOptions::<PostingHistory, 7, Field, Field>::new().set_limit(1),
         );
         let mut history = if notes.len() == 0 {
-            // A first post proves DF entry. The one-time nullifier prevents a
-            // caller from dropping its history note to reset the rolling limit.
-            assert(root == poseidon2_hash(player.serialize()), "Invalid DF player state");
-            assert(player.init_timestamp > 0, "Player has not joined");
+            // The one-time nullifier prevents an account from dropping its
+            // history note to reset the rolling limit. No registration is needed.
             let secret = self.context.request_nhk_app(get_public_keys(owner).npk_m_hash);
             let first_post_id = poseidon2_hash_with_separator(
-                [board.to_field(), source.to_field(), owner.to_field(), secret],
+                [board.to_field(), owner.to_field(), secret],
                 FIRST_POST_DOMAIN,
             );
             self.context.push_nullifier_unsafe(first_post_id);
-            PostingHistory {
-                timestamp_pairs: [0; 5], next_index: 0, count: 0,
-            }
+            PostingHistory { timestamp_pairs: [0; 5], next_index: 0, count: 0 }
         } else {
             notes.get_unchecked(0)
         };
@@ -165,12 +140,6 @@ pub contract DFBillboard {
     #[view]
     fn get_post_count() -> pub u32 {
         self.storage.post_count.read()
-    }
-
-    #[external("public")]
-    #[view]
-    fn get_player_storage() -> pub AztecAddress {
-        self.storage.player_storage.read()
     }
 
     #[external("public")]

@@ -1,5 +1,5 @@
-// Local automine stops advancing L1/L2 while idle, but public simulation uses
-// elapsed wall time. Keep anchor blocks within DF's 300-second freshness bound.
+// Local automine stops advancing L1/L2 while idle. Keep the anchor clock moving
+// so the billboard's rolling quota follows elapsed time during local testing.
 // Never run against a public network or drive time backwards.
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -21,7 +21,7 @@ export async function syncLocalClock(node, debug, deployment, now = Math.floor(D
   await debug.warpL2TimeAtLeastTo(now);
   const after = await node.getBlock('latest');
   if (Number(after?.header.globalVariables.timestamp) < now) throw new Error('Local clock did not advance');
-  console.log(`DF local clock synced: ${before} → ${after.header.globalVariables.timestamp}`);
+  console.log(`Local anchor clock synced: ${before} → ${after.header.globalVariables.timestamp}`);
   return true;
 }
 
@@ -34,7 +34,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     for (;;) {
       await delay(30_000);
       try { await syncLocalClock(node, debug, deployment); }
-      catch (error) { console.error(`DF clock sync failed: ${error.message}`); }
+      catch (error) { console.error(`Local clock sync failed: ${error.message}`); }
     }
   }
 }

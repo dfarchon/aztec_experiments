@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { encodeDFMessage, decodeDFMessage } from '../shared/df-billboard.mjs';
+import { GasFees } from '@aztec/stdlib/gas';
+import { encodeDFMessage, decodeDFMessage, getBillboardFeeOptions } from '../shared/df-billboard.mjs';
 
 function pack(text) {
   return Array.from({ length: 17 }, (_, i) => {
@@ -26,4 +27,26 @@ test('rejects malformed public data and hidden padding', () => {
   assert.throws(() => decodeDFMessage(pack(text), length), /padding/);
   assert.throws(() => decodeDFMessage([1n << 248n, ...Array(16).fill(0n)], 1), /field/);
   assert.throws(() => decodeDFMessage(pack([255]), 1));
+});
+
+test('sponsored fees cover mined prices and predictions without changing the payer', async () => {
+  const paymentMethod = { sponsor: 'test-sponsor' };
+  const node = {
+    getBlock: async () => ({ header: { globalVariables: { gasFees: new GasFees(10n, 900n) } } }),
+    getPredictedMinFees: async () => [new GasFees(20n, 250n), new GasFees(5n, 1000n)],
+  };
+  const fee = await getBillboardFeeOptions(node, paymentMethod, GasFees);
+  assert.equal(fee.paymentMethod, paymentMethod);
+  assert(fee.gasSettings.maxFeesPerGas.equals(new GasFees(40n, 2000n)));
+  node.getPredictedMinFees = async () => [new GasFees(1n, 250n)];
+  const staleQuote = await getBillboardFeeOptions(node, paymentMethod, GasFees);
+  assert(staleQuote.gasSettings.maxFeesPerGas.equals(new GasFees(20n, 1800n)));
+});
+
+test('missing blocks or predictions stop fee construction instead of guessing', async () => {
+  const node = { getBlock: async () => undefined, getPredictedMinFees: async () => [new GasFees(0n, 1n)] };
+  await assert.rejects(getBillboardFeeOptions(node, {}, GasFees), /unavailable/);
+  node.getBlock = async () => ({ header: { globalVariables: { gasFees: new GasFees(0n, 1n) } } });
+  node.getPredictedMinFees = async () => [];
+  await assert.rejects(getBillboardFeeOptions(node, {}, GasFees), /unavailable/);
 });

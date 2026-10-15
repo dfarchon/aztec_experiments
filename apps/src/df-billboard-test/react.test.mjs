@@ -39,7 +39,7 @@ test("React renders the wallet, composer and disconnected action guards", () => 
   const html = renderToStaticMarkup(createElement(App, { controller }));
   assert.match(html, /id="walletMenu"/);
   assert.match(html, /id="walletPanel"[^>]*hidden/);
-  assert.match(html, /id="join"[^>]*disabled/);
+  assert.doesNotMatch(html, /id="join"|Core\.initialize_player|PlayerStorage/);
   assert.match(html, /id="post"[^>]*disabled/);
   assert.match(html, /id="refresh"[^>]*disabled/);
   assert.match(html, /0 \/ 512 字节/);
@@ -242,7 +242,7 @@ test("action failure is retained in an expandable alert and escapes raw error de
   const view = {
     ...base.getSnapshot(),
     actionError: {
-      label: "DF 入局",
+      label: "匿名发帖",
       message: "Timestamp too old <script>",
       guidance: "检查链时间",
     },
@@ -250,7 +250,7 @@ test("action failure is retained in an expandable alert and escapes raw error de
   const controller = { ...base, getSnapshot: () => view };
   const html = renderToStaticMarkup(createElement(App, { controller }));
   assert.match(html, /role="alert"/);
-  assert.match(html, /DF 入局失败/);
+  assert.match(html, /匿名发帖失败/);
   assert.match(html, /查看原因/);
   assert.match(html, /Timestamp too old &lt;script&gt;/);
   base.dispose();

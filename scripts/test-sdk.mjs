@@ -18,7 +18,7 @@ try {
 } finally {
   globalThis.fetch = originalFetch;
 }
-for (const name of ['createPXE', 'Contract', 'BaseWallet', 'SchnorrInitializerlessAccountContract', 'createIndexedDBStore']) {
+for (const name of ['createPXE', 'Contract', 'BaseWallet', 'SchnorrInitializerlessAccountContract', 'createIndexedDBStore', 'GasFees', 'getFeeJuiceBalance']) {
   assert.equal(typeof a[name], 'function', name);
 }
 const artifact = a.loadContractArtifact(JSON.parse(fs.readFileSync(new URL('../apps/src/billboard/billboard_artifact.json', import.meta.url))));
@@ -59,4 +59,49 @@ const node = {
 };
 assert.equal((await browser.computeL1ToL2MsgHash(node, recipient, amount, secret, index)).toString(), expectedHash.toString());
 await browser.preflightL1ToL2Message(node, recipient, amount, secret, index, 'test');
+// Application contracts must never be registered with the user's account seed.
+const registrations = [];
+browser.window.__aztec = { ...a, BaseWallet: class {
+  registerContract(...args) { registrations.push(args); }
+} };
+const adapter = browser.createAztecWallet({}, {}, {}, 'test');
+const ownAddress = {};
+adapter._accountManager = { address: { equals: address => address === ownAddress } };
+adapter._secretKey = { privateAccountSeed: true };
+await adapter.registerContract({ address: ownAddress }, {});
+await adapter.registerContract({ address: {} }, {});
+const explicit = {};
+await adapter.registerContract({ address: {} }, {}, explicit);
+assert.equal(registrations[0][2], adapter._secretKey);
+assert.equal(registrations[1][2], undefined);
+assert.equal(registrations[2][2], explicit);
+// Browser wallet must honor the SDK's NO_WAIT shape and save a recovery hash
+// before broadcasting. Otherwise a successful tx looks like a failed post.
+const order = [];
+const fakeHash = a.TxHash.random();
+const gas = new a.Gas(100, 100);
+const fees = { gasSettings: a.GasSettings.from({ gasLimits: gas, teardownGasLimits: gas,
+  maxFeesPerGas: new a.GasFees(1n, 1n), maxPriorityFeesPerGas: new a.GasFees(0n, 0n) }) };
+browser.toAztec = value => String(value);
+browser.window.__aztec = { ...a, BaseWallet: class {
+  constructor(pxe) { this.pxe = pxe; }
+  async completeFeeOptions() { return fees; }
+  async simulateViaEntrypoint() { return { gasUsed: { totalGas: gas, teardownGas: gas } }; }
+  async createTxExecutionRequestFromPayloadAndFee() { return {}; }
+  scopesFrom() { return []; }
+  senderForTagsFrom() { return undefined; }
+} };
+const preparedWallet = browser.createAztecWallet({
+  proveTx: async () => ({ toTx: async () => ({ getTxHash: () => fakeHash }) }),
+}, {}, {
+  sendTx: async () => { order.push('send'); },
+  getTxReceipt: async () => { throw new Error('NO_WAIT must not poll'); },
+}, 'test');
+preparedWallet.onTxPrepared = hash => { assert.equal(hash, fakeHash.toString()); order.push('saved'); };
+const immediate = await preparedWallet.sendTx({}, { from: {}, wait: a.NO_WAIT });
+assert.equal(immediate.txHash.toString(), fakeHash.toString());
+assert.deepEqual(order, ['saved', 'send']);
+preparedWallet.onTxPrepared = () => { throw new Error('Storage unavailable'); };
+await assert.rejects(() => preparedWallet.sendTx({}, { from: {}, wait: a.NO_WAIT }), /Storage unavailable/);
+assert.deepEqual(order, ['saved', 'send']);
 console.log('PASS embedded Noir WASM (no URL/fetch), SDK exports, artifact/class derivation, store persistence, network isolation and Buffer-free message helpers');

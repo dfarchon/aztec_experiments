@@ -43,7 +43,7 @@ export interface BillboardView extends EditableFields {
   busy: boolean;
   connected: boolean;
   address: string;
-  joined: boolean;
+  canRead: boolean;
   canPost: boolean;
   hasLocalAccount: boolean;
   walletOpen: boolean;
@@ -58,15 +58,13 @@ export interface BillboardView extends EditableFields {
   grantedAccount: string;
   deployment: {
     nodeUrl: string;
-    core: string;
-    playerStorage: string;
     board: string;
+    sponsoredFpc: string;
   } | null;
   progress: Progress | null;
   actionError: { label: string; message: string; guidance: string } | null;
   localStatus: string;
   extensionStatus: string;
-  joinedStatus: string;
   copied: boolean;
   logs: { id: number; message: string; type: string; time: string }[];
   posts: PostData[];
@@ -102,7 +100,6 @@ export interface BillboardController {
   confirmWallet(): Promise<void>;
   cancelWallet(): void;
   selectGrantedAccount(value: string): Promise<void>;
-  join(): Promise<void>;
   post(): Promise<void>;
   refresh(): Promise<void>;
 }

@@ -1,8 +1,9 @@
-// @ts-nocheck -- The legacy Aztec wallet adapter is migrated without changing transaction behavior.
+// @ts-nocheck -- SDK wallet objects retain the legacy adapter's dynamic types.
 // Its public surface remains typed; internal SDK state can be tightened separately.
 import {
   decodeDFMessage,
   encodeDFMessage,
+  getBillboardFeeOptions,
 } from "../../../shared/df-billboard.mjs";
 import { AI_CACHE_NAME, AI_MODEL_VERSION, safetyResult } from "./ai-config.ts";
 import { parseKeywords } from "./keywords.ts";
@@ -27,7 +28,7 @@ export function createBillboardController(deps = {}): BillboardController {
     busy: false,
     connected: false,
     address: "",
-    joined: false,
+    canRead: false,
     canPost: false,
     hasLocalAccount: false,
     walletOpen: false,
@@ -52,7 +53,6 @@ export function createBillboardController(deps = {}): BillboardController {
     actionError: null,
     localStatus: "等待初始化本地钱包",
     extensionStatus: "等待连接 Azguard",
-    joinedStatus: "连接钱包后检查入局状态",
     copied: false,
     message: "",
     logs: [],
@@ -100,6 +100,8 @@ export function createBillboardController(deps = {}): BillboardController {
   let deployment;
   let accounts;
   let contracts;
+  let boardArtifact;
+  let publicNode;
   let providers = [];
   let pendingConnection = null;
   let busy = false;
@@ -129,17 +131,6 @@ export function createBillboardController(deps = {}): BillboardController {
       /* Restricted/full storage: controls still work in this session. */
     }
   }
-  const playerFields = [
-    "init_timestamp",
-    "home_planet_id",
-    "last_reveal_timestamp",
-    "score",
-    "space_junk",
-    "space_junk_limit",
-    "claimed_ships",
-    "last_updated",
-  ];
-
   function showProgress(label, step, total) {
     clearTimeout(progressHideTimer);
     const determinate =
@@ -234,7 +225,7 @@ export function createBillboardController(deps = {}): BillboardController {
       salt,
       signingKey,
       address: derived.address.toString(),
-      label: view.accountLabel.trim() || "本地玩家",
+      label: view.accountLabel.trim() || "本地账号",
       createdAt: Date.now(),
     };
   }
@@ -243,39 +234,13 @@ export function createBillboardController(deps = {}): BillboardController {
     patch({ walletOpen: open });
   }
 
-  function storageKey() {
-    return `df-harness:${deployment.rollupAddress}:${deployment.playerStorage}:${state.address}`;
-  }
-  function savePlayer(player) {
-    const value = Object.fromEntries(
-      playerFields.map((key) => [
-        key,
-        key === "claimed_ships" ? Boolean(player[key]) : player[key].toString(),
-      ])
-    );
-    localStorage.setItem(storageKey(), JSON.stringify(value));
-  }
-  function loadPlayer() {
-    const saved = localStorage.getItem(storageKey());
-    if (!saved) return null;
-    const value = JSON.parse(saved);
-    return Object.fromEntries(
-      playerFields.map((key) => [
-        key,
-        key === "claimed_ships" ? Boolean(value[key]) : BigInt(value[key]),
-      ])
-    );
-  }
-  function result(value) {
-    return value && "result" in value ? value.result : value;
-  }
   function fail(error, label = "操作") {
     const message = error?.message || String(error);
     const guidance = message.includes("Timestamp too old")
       ? "本地链空闲后区块时间可能过旧。请在项目终端运行 node scripts/sync-df-clock.mjs --watch，等待同步完成后重试。不要清除钱包或重置链。"
       : /fetch|connect|network/i.test(message)
         ? "检查本地 Aztec 节点和钱包所选网络；恢复连接后再试。"
-        : "请查看下方原始错误及运行记录。若已提交交易，先核对入局状态再重试，避免重复提交。";
+        : "请查看下方原始错误及运行记录。若已提交交易，先核对消息列表和交易回执再重试。";
     patch({ actionError: { label, message, guidance } });
     log(message, "error", "log");
     console.error(error);
@@ -283,9 +248,9 @@ export function createBillboardController(deps = {}): BillboardController {
   async function action(fn, label = "操作") {
     if (busy) return;
     busy = true;
-    // A different action (such as refreshing the feed) must not erase a join error.
+    // Refreshing the feed must not erase an unrelated transaction error.
     if (view.actionError?.label === label) patch({ actionError: null });
-    if (label === "DF 入局" || label === "匿名发帖") pauseAiHints();
+    if (label === "匿名发帖") pauseAiHints();
     let succeeded = false;
     showProgress(`${label}…`);
     publishSession();
@@ -310,8 +275,9 @@ export function createBillboardController(deps = {}): BillboardController {
       connected: Boolean(state.wallet),
       address: state.address?.toString() || "",
       hasLocalAccount: Boolean(state.localAccount),
-      joined: Boolean(state.joined),
-      canPost: Boolean(state.wallet && state.joined && loadPlayer()),
+      canPost: Boolean(
+        state.wallet && state.feePaymentMethod && contracts?.board
+      ),
       pendingConnection: Boolean(pendingConnection),
     });
   }
@@ -331,12 +297,13 @@ export function createBillboardController(deps = {}): BillboardController {
   }
   async function attachContract(name, address) {
     const a = A();
-    const artifact = await readArtifact(name);
+    const artifact =
+      name === "board" ? boardArtifact : await readArtifact(name);
     const addr = a.AztecAddress.fromStringUnsafe(address);
     const instance =
       name === "sponsor"
         ? await a.getContractInstanceFromInstantiationParams(artifact, {
-            salt: new a.Fr(0n),
+            salt: a.Fr.fromString(deployment.sponsorSalt),
           })
         : await state.aztecNode.getContract(addr);
     if (!instance || instance.address.toString() !== addr.toString()) {
@@ -402,6 +369,13 @@ export function createBillboardController(deps = {}): BillboardController {
       throw new Error("未找到本地部署。请先运行 npm run deploy:df:harness");
     deployment = await response.json();
     ensureLocal(deployment.nodeUrl);
+    if (
+      deployment.kind !== "standalone-billboard" ||
+      deployment.schemaVersion !== 1
+    )
+      throw new Error(
+        "部署配置仍是旧版 DF 留言板；请运行 npm run deploy:df:harness"
+      );
     if (!deployment.sponsoredFpc)
       throw new Error(
         "本地部署缺少 Sponsor FPC；请重新运行 npm run deploy:df:harness"
@@ -424,15 +398,32 @@ export function createBillboardController(deps = {}): BillboardController {
         (accounts.length > 1 ? "1" : "0"),
     });
     window.RPC_CONFIG = { nodeUrl: deployment.nodeUrl };
+    publicNode = A().createAztecNodeClient(deployment.nodeUrl);
+    await checkChain();
+    boardArtifact = await readArtifact("board");
+    const instance = await publicNode.getContract(
+      A().AztecAddress.fromStringUnsafe(deployment.board)
+    );
+    if (
+      !instance ||
+      instance.currentContractClassId.toString() !== deployment.boardClassId
+    )
+      throw new Error(
+        "留言板部署或合约版本不匹配，请重新运行 npm run deploy:df:harness"
+      );
+    patch({ canRead: true });
+    await refresh(false);
     publishSession();
   }
 
   async function checkChain() {
-    const info = await state.aztecNode.getNodeInfo();
-    const l1 = await state.aztecNode.getL1ContractAddresses();
+    const node = state.aztecNode || publicNode;
+    const info = await node.getNodeInfo();
+    const l1 = await node.getL1ContractAddresses();
     if (
       Number(info.l1ChainId) !== 31337 ||
       info.nodeVersion !== "5.0.1" ||
+      info.realProofs !== false ||
       l1.rollupAddress.toString() !== deployment.rollupAddress
     ) {
       throw new Error("部署信息与本地链不匹配，请重新部署测试合约");
@@ -440,60 +431,44 @@ export function createBillboardController(deps = {}): BillboardController {
     return info;
   }
 
+  async function checkSponsorBalance() {
+    const balance = await A().getFeeJuiceBalance(
+      A().AztecAddress.fromStringUnsafe(deployment.sponsoredFpc),
+      state.aztecNode || publicNode
+    );
+    if (balance <= 0n)
+      throw new Error(
+        "Sponsored FPC 余额不足，请充值代付合约后重试；不会扣除用户余额"
+      );
+  }
+
   async function finishConnect(label) {
-    showProgress("校验本地链并加载 DF 合约…");
+    showProgress("校验本地链并加载留言板…", 0, 2);
     await checkChain();
     contracts = {};
-    showProgress("加载 DF 合约 · Core", 0, 5);
-    contracts.core = await attachContract("core", deployment.core);
-    showProgress("加载 DF 合约 · Config", 1, 5);
-    contracts.config = await attachContract("config", deployment.config);
-    showProgress("加载 DF 合约 · PlayerStorage", 2, 5);
-    contracts.player = await attachContract("player", deployment.playerStorage);
-    contracts.planet = await attachContract(
-      "planet",
-      deployment.contracts.PlanetStorage
-    );
-    showProgress("加载 DF 合约 · Billboard", 3, 5);
     contracts.board = await attachContract("board", deployment.board);
-    showProgress("加载本地 Sponsor FPC", 4, 5);
+    showProgress("加载 Sponsored FPC…", 1, 2);
     contracts.sponsor = await attachContract(
       "sponsor",
       deployment.sponsoredFpc
     );
+    await checkSponsorBalance();
     state.feePaymentMethod = new (A().SponsoredFeePaymentMethod)(
       A().AztecAddress.fromStringUnsafe(deployment.sponsoredFpc)
     );
-    showProgress("DF 合约及代付合约已加载", 5, 5);
+    showProgress("留言板及代付合约已就绪", 2, 2);
     publishSession();
-    showProgress("检查玩家入局状态…");
-    state.joined = Boolean(
-      result(
-        await contracts.player.methods
-          .is_initialized(state.address)
-          .simulate({ from: state.address })
-      )
-    );
-    patch({
-      joinedStatus: state.joined
-        ? loadPlayer()
-          ? "已入局，可以直接发帖；滚动 24 小时内最多 10 条。"
-          : "已入局，但此浏览器没有该账号的 PlayerUpdate 记录，无法完成首帖校验。请切换未入局的测试玩家。"
-        : "尚未入局，可以点击下方按钮开始。",
-    });
     log(
-      `已连接 ${label}。${state.joined ? "已入局" : "等待入局"}`,
-      "success",
-      "log"
+      `已连接 ${label}，可以直接匿名发帖。L2 gas 由 Sponsored FPC 代付。`,
+      "success"
     );
     setWalletPanel(false);
-    showProgress("读取公开消息…");
     await refresh(false);
   }
 
   async function readImportedAccount() {
     const file = view.accountFile;
-    if (!file) throw new Error("请选择 DF 导出的账号 JSON 文件");
+    if (!file) throw new Error("请选择 Aztec 账号 JSON 备份");
     if (file.size > 64 * 1024) throw new Error("账号文件过大");
     const account = JSON.parse(await file.text());
     if (
@@ -574,7 +549,7 @@ export function createBillboardController(deps = {}): BillboardController {
         state.localAccount = account;
       }
       await finishConnect(
-        account.label || (mode === "test" ? "预置测试玩家" : "DF 本地账号")
+        account.label || (mode === "test" ? "预置测试账号" : "Aztec 本地账号")
       );
       patch({
         localStatus:
@@ -603,7 +578,7 @@ export function createBillboardController(deps = {}): BillboardController {
         chainId: a.Fr.fromString(info.l1ChainId.toString()),
         version: a.Fr.fromString(info.rollupVersion.toString()),
       },
-      appId: "dfpunk",
+      appId: "df-billboard",
       timeout: 60000,
     });
     providers = [];
@@ -655,7 +630,7 @@ export function createBillboardController(deps = {}): BillboardController {
       );
     patch({ extensionStatus: `正在请求 ${provider.name} 建立安全连接…` });
     showProgress(`等待 ${provider.name} 建立安全连接…`);
-    pendingConnection = await provider.establishSecureChannel("dfpunk");
+    pendingConnection = await provider.establishSecureChannel("df-billboard");
     patch({
       emoji: Array.from(
         A().hashToEmoji(pendingConnection.verificationHash, 9)
@@ -668,20 +643,16 @@ export function createBillboardController(deps = {}): BillboardController {
 
   function requestedCapabilities() {
     const a = A();
-    const addresses = [
-      deployment.core,
-      deployment.config,
-      deployment.playerStorage,
-      deployment.board,
-      deployment.sponsoredFpc,
-    ].map((value) => a.AztecAddress.fromStringUnsafe(value));
+    const addresses = [deployment.board, deployment.sponsoredFpc].map((value) =>
+      a.AztecAddress.fromStringUnsafe(value)
+    );
     const scope = addresses.map((contract) => ({ contract, function: "*" }));
     return {
       version: "1.0",
       metadata: {
         name: "DF Billboard Local Test",
         version: "0.0.0",
-        description: "Dark Forest local join and billboard test",
+        description: "Standalone anonymous billboard with sponsored posting",
         url: location.origin,
       },
       capabilities: [
@@ -754,7 +725,7 @@ export function createBillboardController(deps = {}): BillboardController {
         !transactionCoverage
       ) {
         throw new Error(
-          "钱包未完整授权账号、合约注册、模拟或交易能力，无法完成 DF 测试"
+          "钱包未完整授权账号、合约注册、模拟或交易能力，无法完成留言板测试"
         );
       }
       patch({
@@ -811,7 +782,7 @@ export function createBillboardController(deps = {}): BillboardController {
         state.wallet = null;
         state.address = null;
         state.localAccount = null;
-        state.joined = false;
+        state.feePaymentMethod = null;
         contracts = null;
         patch({
           localStatus: `连接失败：${error.message || String(error)}。可刷新页面后重试。`,
@@ -821,231 +792,26 @@ export function createBillboardController(deps = {}): BillboardController {
     }
   }
 
-  function zero(type) {
-    if (type.kind === "boolean") return false;
-    if (type.kind === "field" || type.kind === "integer") return 0n;
-    if (type.kind === "array")
-      return Array.from({ length: type.length }, () => zero(type.type));
-    if (type.kind === "struct") {
-      if (type.path.endsWith("::AztecAddress")) return A().AztecAddress.ZERO;
-      return Object.fromEntries(
-        type.fields.map((field) => [field.name, zero(field.type)])
-      );
-    }
-    throw new Error(`不支持的 ABI 类型: ${type.kind}`);
-  }
-  function field(number) {
-    const a = A();
-    return new a.Fr((BigInt(number) + a.Fr.MODULUS) % a.Fr.MODULUS).toBuffer();
-  }
-  function bytesToBigInt(bytes) {
-    return BigInt(
-      `0x${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`
-    );
-  }
-  async function findSpawn(snark, game, thresholds, radius) {
-    await window.__dfHash.initPoseidon2();
-    const a = A();
-    const api = window.__dfHash.BarretenbergSync.getSingleton();
-    const key = field(snark.planethash_key);
-    const max = BigInt(game.max_location_id.toString());
-    for (let i = 0; i < 2_000_000; i++) {
-      if (i % 4096 === 0) {
-        if (i > 0) log(`已检查 ${i} 个出生点候选…`, "info", "log");
-        showProgress(`寻找出生点 · 已检查 ${i} 个候选`);
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      }
-      const angle = i * 2.399963229728653;
-      const distance = radius * (0.9901 + 0.0097 * ((i % 997) / 997));
-      const x = Math.trunc(Math.cos(angle) * distance);
-      const y = Math.trunc(Math.sin(angle) * distance);
-      const squared = BigInt(x) ** 2n + BigInt(y) ** 2n;
-      if (
-        squared >= BigInt(radius) ** 2n ||
-        squared * 100n <= 98n * BigInt(radius) ** 2n
-      )
-        continue;
-      const hash = api.poseidon2Hash({
-        inputs: [key, field(x), field(y)],
-      }).hash;
-      const location = bytesToBigInt(hash);
-      if (location >= max) continue;
-      const levelBytes = BigInt(hash[4] * 65536 + hash[5] * 256 + hash[6]);
-      if (levelBytes < BigInt(thresholds.thresholds[1])) continue;
-      const noise = window.__dfHash.perlin(
-        { x, y },
-        {
-          key: Number(snark.spacetype_key),
-          scale: Number(snark.perlin_length_scale),
-          mirrorX: snark.perlin_mirror_x,
-          mirrorY: snark.perlin_mirror_y,
-          floor: true,
-        }
-      );
-      if (
-        noise >= Number(game.init_perlin_min) &&
-        noise < Number(game.init_perlin_max)
-      ) {
-        // All browsers scan the same deterministic candidates. Never reuse a
-        // planet already initialized by an earlier test player.
-        const occupied = result(
-          await contracts.planet.methods
-            .is_initialized(location)
-            .simulate({ from: state.address })
-        );
-        if (occupied) continue;
-        return {
-          x: new a.Fr(field(x)),
-          y: new a.Fr(field(y)),
-          location,
-          perlin: noise,
-          candidates: i + 1,
-        };
-      }
-    }
-    throw new Error("未找到有效出生点；未关闭 DF 的 ZK 检查");
-  }
-
-  async function join() {
-    const a = A();
-    const from = state.address;
-    const view = (call) => call.simulate({ from }).then(result);
-    showProgress("读取 DF 入局条件…", 0, 4);
-    if (await view(contracts.player.methods.is_initialized(from)))
-      throw new Error("这个账号已经入局");
-    const snark = await view(contracts.config.methods.get_snark_config());
-    if (snark.disable_zk_checks)
-      throw new Error("DF 的 ZK 检查被关闭，拒绝进行本测试");
-    const game = await view(contracts.config.methods.get_game_config_core());
-    const thresholds = await view(
-      contracts.config.methods.get_planet_level_thresholds()
-    );
-    const radius = Number(deployment.worldRadius);
-    showProgress("DF 入局条件已读取", 1, 4);
-    log("正在浏览器中寻找有效出生点…", "working", "log");
-    const spawn = await findSpawn(snark, game, thresholds, radius);
-    showProgress("出生点已找到，准备入局交易…", 2, 4);
-    log(
-      `出生点找到：检查了 ${spawn.candidates} 个候选，开始构造入局交易…`,
-      "success",
-      "log"
-    );
-    const artifact = await readArtifact("core");
-    const parameters = artifact.functions.find(
-      (fn) => fn.name === "initialize_player"
-    ).parameters;
-    const args = Object.fromEntries(
-      parameters.map((parameter) => [parameter.name, zero(parameter.type)])
-    );
-    // Match DF's own onboarding fixture: anchor the private input to the last
-    // actual L2 block. A simulated future slot can be ahead of the block that
-    // the local automine sequencer ultimately produces.
-    const latestBlock = await state.aztecNode.getBlock("latest");
-    if (!latestBlock) throw new Error("Aztec 节点尚未产生 L2 区块，请稍后重试");
-    const timestamp = BigInt(
-      latestBlock.header.globalVariables.timestamp.toString()
-    );
-    Object.assign(args, {
-      x: spawn.x,
-      y: spawn.y,
-      radius: BigInt(radius),
-      location_id: spawn.location,
-      perlin: spawn.perlin,
-      level: 0,
-      timestamp,
-      provided_snark_config: snark,
-      planet_default_stats: await view(
-        contracts.config.methods.get_planet_default_stats(0)
-      ),
-      world_config: await view(contracts.config.methods.get_world_config()),
-      game_config_core: game,
-      planet_level_thresholds: thresholds,
-      space_junk_config: await view(
-        contracts.config.methods.get_space_junk_config()
-      ),
-      world: {
-        paused: false,
-        radius: BigInt(radius),
-        misc_nonce: 0n,
-        next_change_block: 0,
-      },
-    });
-    for (let tier = 0; tier < 4; tier++) {
-      args[`planet_type_weights_tier_${tier}`] = await view(
-        contracts.config.methods.get_planet_type_weights_tier(tier)
-      );
-    }
-    showProgress("模拟 DF 入局交易…");
-    await contracts.core.methods
-      .initialize_player(...parameters.map((parameter) => args[parameter.name]))
-      .simulate({ from });
-    showProgress("DF 入局模拟通过", 3, 4);
-    log(`DF 入局时间校验通过：${timestamp}`, "success", "log");
-    log(
-      "正在签名并提交 Core.initialize_player，可能需要几分钟…",
-      "working",
-      "log"
-    );
-    showProgress("生成证明并提交入局交易，等待链上确认…");
-    const tx = await contracts.core.methods
-      .initialize_player(...parameters.map((parameter) => args[parameter.name]))
-      .send({
-        from,
-        fee: { paymentMethod: state.feePaymentMethod },
-      });
-    if (tx.receipt.executionResult !== "success")
-      throw new Error(`入局失败: ${tx.receipt.executionResult}`);
-    showProgress("入局交易已确认，校验玩家记录…");
-    const playerArtifact = await readArtifact("player");
-    const event = playerArtifact.outputs.structs.events.find((entry) =>
-      entry.path.endsWith("::PlayerUpdate")
-    );
-    const updates = await a.getPublicEvents(
-      state.aztecNode,
-      {
-        abiType: event,
-        eventSelector: a.EventSelector.fromString("0x6994fffb"),
-        fieldNames: event.fields.map((entry) => entry.name),
-      },
-      {
-        contractAddress: a.AztecAddress.fromStringUnsafe(
-          deployment.playerStorage
-        ),
-        txHash: tx.receipt.txHash,
-      }
-    );
-    const match = updates.events
-      .map((entry) => entry.event)
-      .find((entry) => entry.id.toString() === from.toString());
-    if (!match)
-      throw new Error("入局交易成功，但未找到 PlayerStorage.PlayerUpdate");
-    savePlayer(match.state);
-    const verified = await view(
-      contracts.player.methods.verify(from, match.state)
-    );
-    if (!verified)
-      throw new Error("PlayerUpdate 与 PlayerStorage 当前状态不一致");
-    showProgress("DF 入局与玩家记录校验完成", 4, 4);
-    state.joined = true;
-    patch({ joinedStatus: `已入局 · 出生星球 ${spawn.location}` });
-    log(`真实 DF 入局成功：${tx.receipt.txHash}`, "success", "log");
-  }
-
   async function post() {
     const from = state.address;
-    const player = loadPlayer();
-    if (!player) throw new Error("缺少入局时的 PlayerUpdate，无法完成首帖校验");
     showProgress("检查消息并编码…", 0, 2);
     const { text, length } = encodeDFMessage(view.message);
+    if (!state.wallet || !contracts?.board || !state.feePaymentMethod)
+      throw new Error("请先连接 Aztec 钱包");
+    await checkChain();
+    await checkSponsorBalance();
     showProgress("消息已编码，准备发帖交易", 1, 2);
     showProgress("生成证明并提交匿名消息，等待链上确认…");
-    const tx = await contracts.board.methods.post(player, text, length).send({
+    const tx = await contracts.board.methods.post(text, length).send({
       from,
-      fee: { paymentMethod: state.feePaymentMethod },
+      fee: await getBillboardFeeOptions(
+        state.aztecNode,
+        state.feePaymentMethod,
+        A().GasFees
+      ),
     });
     if (tx.receipt.executionResult !== "success")
       throw new Error(`发帖失败: ${tx.receipt.executionResult}`);
-    state.posted = true;
     log(`匿名消息已上链：${tx.receipt.txHash}`, "success", "log");
     showProgress("消息已上链，更新公开列表…");
     await refresh(false);
@@ -1147,7 +913,7 @@ export function createBillboardController(deps = {}): BillboardController {
   }
 
   function aiCacheKey() {
-    return `df-signal:ai:${deployment.rollupAddress}:${deployment.season ?? deployment.core}:${deployment.board}:${AI_MODEL_VERSION}`;
+    return `df-signal:ai:${deployment.rollupAddress}:${deployment.board}:${AI_MODEL_VERSION}`;
   }
 
   function readAiCache() {
@@ -1267,15 +1033,31 @@ export function createBillboardController(deps = {}): BillboardController {
   async function refresh(reportProgress = true) {
     // Cancel analysis of the previous feed before replacing its post objects.
     pauseAiHints();
-    const from = state.address;
+    if (!publicNode || !boardArtifact) throw new Error("留言板尚未初始化");
+    const sdk = A();
+    const addr = sdk.AztecAddress.fromStringUnsafe(deployment.board);
+    const layout = boardArtifact.storageLayout;
+    // Read one consistent public-state snapshot; no wallet or simulation needed.
+    const block = await publicNode.getBlockNumber();
+    const read = (slot) => publicNode.getPublicStorageAt(block, addr, slot);
     if (reportProgress) showProgress("读取公开消息数量…");
-    const count = Number(
-      result(await contracts.board.methods.get_post_count().simulate({ from }))
-    );
+    const count = Number((await read(layout.post_count.slot)).toBigInt());
     const posts = [];
     for (let id = 0; id < count; id++) {
-      const [fields, length] = result(
-        await contracts.board.methods.get_post(id).simulate({ from })
+      const lengthSlot = await sdk.deriveStorageSlotInMap(
+        layout.post_lengths.slot,
+        new sdk.Fr(BigInt(id))
+      );
+      const length = Number((await read(lengthSlot)).toBigInt());
+      const fields = await Promise.all(
+        Array.from({ length: 17 }, async (_, index) =>
+          read(
+            await sdk.deriveStorageSlotInMap(
+              layout.post_data.slot,
+              new sdk.Fr(BigInt(id * 17 + index))
+            )
+          )
+        )
       );
       try {
         posts.push({ id, text: decodeDFMessage(fields, length) });
@@ -1411,13 +1193,7 @@ export function createBillboardController(deps = {}): BillboardController {
   }
   function accountBackup() {
     if (!state.localAccount) return null;
-    const payload = [
-      "secretKey",
-      "salt",
-      "signingKey",
-      "address",
-      "homeCoordinates",
-    ].reduce(
+    const payload = ["secretKey", "salt", "signingKey", "address"].reduce(
       (value, key) =>
         state.localAccount[key] === undefined
           ? value
@@ -1425,7 +1201,7 @@ export function createBillboardController(deps = {}): BillboardController {
       {}
     );
     return {
-      filename: `dark-forest-privacy-${state.localAccount.address.slice(0, 10)}.json`,
+      filename: `billboard-account-${state.localAccount.address.slice(0, 10)}.json`,
       contents: JSON.stringify(payload, null, 2),
     };
   }
@@ -1435,7 +1211,12 @@ export function createBillboardController(deps = {}): BillboardController {
       return () => listeners.delete(listener);
     },
     getSnapshot: () => view,
-    initialize: () => (initializing ||= initialize().catch(fail)),
+    initialize: () =>
+      (initializing ||= initialize().catch((error) => {
+        initializing = undefined;
+        fail(error, "加载留言板");
+        throw error;
+      })),
     log,
     setField,
     setWalletPanel,
@@ -1455,7 +1236,6 @@ export function createBillboardController(deps = {}): BillboardController {
         state.address = state.grantedAccounts[Number(value)].item;
         await finishConnect(state.provider.name);
       }, "切换钱包账号"),
-    join: () => action(join, "DF 入局"),
     post: () => action(post, "匿名发帖"),
     refresh: () => action(refresh, "刷新消息"),
     dispose: () => {

@@ -14,9 +14,9 @@ export { EventSelector, FunctionCall, FunctionSelector, FunctionType, encodeArgu
 export { getPublicEvents } from '@aztec/aztec.js/events';
 export { FeeJuicePaymentMethodWithClaim, SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
 export { Fq, Fr } from '@aztec/aztec.js/fields';
-export { Gas, GasSettings } from '@aztec/stdlib/gas';
+export { Gas, GasFees, GasSettings } from '@aztec/stdlib/gas';
 export { MerkleTreeId } from '@aztec/aztec.js/trees';
-export { ProtocolContractAddress, ProtocolContractAddress as FeeJuiceAddressHolder } from '@aztec/protocol-contracts';
+export { ProtocolContractAddress } from '@aztec/protocol-contracts';
 import { ProtocolContractAddress } from '@aztec/protocol-contracts';
 export const FeeJuiceAddress = ProtocolContractAddress.FeeJuice;
 export { FeeJuiceArtifact } from '@aztec/protocol-contracts/fee-juice';
@@ -28,6 +28,7 @@ export { computeFeeJuiceMessageNullifier, computeFeeJuiceMessageNullifier as com
 export { computePartialAddress } from '@aztec/stdlib/contract';
 export { computeSecretHash, siloNullifier } from '@aztec/stdlib/hash';
 export { createAztecNodeClient, waitForNode, waitForTx } from '@aztec/aztec.js/node';
+export { getFeeJuiceBalance } from '@aztec/aztec.js/utils';
 import { AztecIndexedDBStore } from '@aztec/kv-store/deprecated/indexeddb';
 import { createLogger } from '@aztec/foundation/log';
 // Preserve the existing browser/CLI storage API without opening old-version stores.
@@ -45,8 +46,7 @@ export async function createPXE(...args) {
   return createBundledPXE(...args);
 }
 export { deriveKeys, deriveKeysFromMasterSecretKeys, deriveMasterMessageSigningSecretKey,
-  deriveMasterMessageSigningSecretKey as deriveSigningKey,
-  deriveMasterMessageSigningSecretKey as deriveMasterMessageSigningSecretKeyAlias } from '@aztec/stdlib/keys';
+  deriveMasterMessageSigningSecretKey as deriveSigningKey } from '@aztec/stdlib/keys';
 export { deriveStorageSlotInMap } from '@aztec/stdlib/hash';
 export { poseidon2Hash, poseidon2HashBytes, poseidon2HashWithSeparator } from '@aztec/foundation/crypto/poseidon';
 export { sha256ToField } from '@aztec/foundation/crypto/sha256';

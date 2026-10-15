@@ -1,135 +1,136 @@
-// Local-only node/PXE integration. --real-proofs independently verifies posts'
-// client proofs; the local rollup itself still runs in synthetic-proof mode.
-// Run npm run build:df and npm run start:local before this script.
+// Standalone local integration: fresh zero-balance accounts -> sponsored posts.
+// --real-proofs additionally verifies the client's proof and rejects a tampered
+// copy. The local rollup itself still runs in synthetic-proof mode.
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createAztecNodeClient } from '@aztec/aztec.js/node';
-import { createAztecNodeDebugClient } from '@aztec/stdlib/interfaces/client';
+import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { EmbeddedWallet } from '@aztec/wallets/embedded';
-import { getInitialTestAccountsData } from '@aztec/accounts/testing';
-import { Contract } from '@aztec/aztec.js/contracts';
+import { Contract, getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
 import { loadContractArtifact } from '@aztec/aztec.js/abi';
-import { Fr } from '@aztec/aztec.js/fields';
+import { Fr, Fq } from '@aztec/aztec.js/fields';
+import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
+import { getFeeJuiceBalance } from '@aztec/aztec.js/utils';
+import { SponsoredFPCContract } from '@aztec/noir-contracts.js/SponsoredFPC';
 import { Tx } from '@aztec/aztec.js/tx';
-import { encodeDFMessage, decodeDFMessage } from '../shared/df-billboard.mjs';
+import { GasFees } from '@aztec/stdlib/gas';
+import { encodeDFMessage, decodeDFMessage, getBillboardFeeOptions } from '../shared/df-billboard.mjs';
 
-const node = createAztecNodeClient('http://127.0.0.1:5180');
-const debug = createAztecNodeDebugClient('http://127.0.0.1:5180');
-async function waitForLocalNode() {
-  const deadline = Date.now() + 120_000;
-  while (true) {
-    try { return await node.getNodeInfo(); }
-    catch (error) {
-      if (Date.now() >= deadline) throw error;
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-  }
-}
-const info = await waitForLocalNode();
+const deployment = JSON.parse(fs.readFileSync(new URL('../.local/billboard-harness.json', import.meta.url)));
+assert.equal(deployment.kind, 'standalone-billboard', 'Run npm run deploy:df:harness first');
+assert(['127.0.0.1', 'localhost'].includes(new URL(deployment.nodeUrl).hostname));
+assert(!process.argv.includes('--df-core'), 'DF eligibility was removed; use the standalone E2E');
+const node = createAztecNodeClient(deployment.nodeUrl);
+const info = await node.getNodeInfo();
 assert.equal(info.l1ChainId, 31337, 'Refusing non-local chain');
 assert.equal(info.nodeVersion, '5.0.1');
 assert.equal(info.realProofs, false, 'Expected synthetic-proof local network');
+assert.equal((await node.getL1ContractAddresses()).rollupAddress.toString(), deployment.rollupAddress);
 const wallet = await EmbeddedWallet.create(node, { ephemeral: true, pxeConfig: { proverEnabled: false } });
 const realProofs = process.argv.includes('--real-proofs');
-const useDFCore = process.argv.includes('--df-core');
+const sponsor = AztecAddress.fromStringUnsafe(deployment.sponsoredFpc);
+const sponsorInstance = await getContractInstanceFromInstantiationParams(SponsoredFPCContract.artifact, {
+  salt: Fr.fromString(deployment.sponsorSalt),
+});
+assert(sponsorInstance.address.equals(sponsor));
+const paymentMethod = new SponsoredFeePaymentMethod(sponsor);
 let verifier;
 let verifiedProofs = 0;
 let verifyNext = false;
+const payers = [];
 const originalSend = node.sendTx.bind(node);
 node.sendTx = async tx => {
+  assert(tx.data.feePayer.equals(sponsor), 'Every submitted transaction must use Sponsored FPC');
+  payers.push(tx.data.feePayer.toString());
   if (verifyNext) {
     assert.equal((await verifier.verifyProof(tx)).valid, true, 'Client proof must verify');
     const tampered = Tx.fromBuffer(tx.toBuffer());
     tampered.chonkProof.fields[0] = tampered.chonkProof.fields[0].add(Fr.ONE);
     assert.equal((await verifier.verifyProof(tampered)).valid, false, 'Tampered proof must fail');
     verifiedProofs++;
-    console.log('PASS real client proof verified; tampered proof rejected');
   }
   return originalSend(tx);
 };
-let advancing = false;
-const clock = setInterval(async () => {
-  if (advancing) return;
-  advancing = true;
-  // DF validates a 300-second timestamp window; do not race its heavier proof
-  // generation by advancing local time seven times faster than wall time.
-  try { await debug.warpL2TimeAtLeastBy(useDFCore ? 12 : 72); }
-  catch (error) { console.error('Local clock:', error.message); }
-  finally { advancing = false; }
-}, 10000);
-const artifact = name => loadContractArtifact(JSON.parse(fs.readFileSync(new URL(`../df-billboard/target/${name}.json`, import.meta.url))));
 try {
   if (realProofs) {
     const { BBCircuitVerifier } = await import('@aztec/bb-prover/verifier');
     verifier = await BBCircuitVerifier.new({
-      bbWorkingDirectory: fileURLToPath(new URL('../.local/df-verifier', import.meta.url)),
+      bbWorkingDirectory: fileURLToPath(new URL('../.local/billboard-verifier', import.meta.url)),
       numConcurrentIVCVerifiers: 1,
     });
   }
-  const accounts = await getInitialTestAccountsData();
-  for (const a of accounts) await wallet.createSchnorrInitializerlessAccount(a.secret, a.salt, a.signingKey);
-  const admin = accounts[0].address;
-  const owner = accounts[1].address;
-  const outsider = accounts[2].address;
-  const send = async (call, from = owner) => {
-    const result = await call.send({ from });
-    assert.equal(result.receipt.executionResult, 'success');
-    return result;
-  };
-  const sendPrivate = async call => {
-    wallet.pxe.proverEnabled = realProofs;
-    verifyNext = realProofs;
-    try { return await send(call); }
-    finally { wallet.pxe.proverEnabled = false; verifyNext = false; }
-  };
-  const view = async call => {
-    const value = await call.simulate({ from: outsider });
-    return value.result ?? value;
-  };
-  let source;
-  let dfCore;
-  let state = {
-    init_timestamp: 1n, home_planet_id: 42n, last_reveal_timestamp: 0n,
-    score: 0n, space_junk: 0n, space_junk_limit: 0n, claimed_ships: false, last_updated: 1n,
-  };
-  if (useDFCore) {
-    const { initializeDFPlayer } = await import('./df-core-fixture.mjs');
-    const fixture = await initializeDFPlayer({ wallet, node, owner, admin, outsider, send, sendPrivate, view });
-    source = fixture.source;
-    state = fixture.state;
-    dfCore = fixture.metadata;
-  } else {
-    ({ contract: source } = await Contract.deploy(wallet, artifact('player-PlayerStorage'), [admin]).send({ from: admin }));
-    await send(source.methods.set(owner, state), admin);
-    console.log('PASS real PlayerStorage deployment and state write');
-  }
-  const { contract: board } = await Contract.deploy(wallet, artifact('df_billboard-DFBillboard'), [source.address]).send({ from: admin });
-  const message = '黑暗森林：匿名入局资格 → 公开消息 🌲';
+  const owner = (await wallet.createSchnorrInitializerlessAccount(Fr.random(), Fr.random(), Fq.random())).address;
+  const other = (await wallet.createSchnorrInitializerlessAccount(Fr.random(), Fr.random(), Fq.random())).address;
+  const artifact = loadContractArtifact(JSON.parse(fs.readFileSync(
+    new URL('../df-billboard/target/df_billboard-DFBillboard.json', import.meta.url))));
+  const instance = await node.getContract(AztecAddress.fromStringUnsafe(deployment.board));
+  assert(instance, 'Billboard must be deployed on this chain');
+  await wallet.registerContract(instance, artifact);
+  await wallet.registerContract(sponsorInstance, SponsoredFPCContract.artifact);
+  const board = Contract.at(instance.address, artifact, wallet);
+  const initialCount = BigInt((await node.getPublicStorageAt('latest', instance.address, artifact.storageLayout.post_count.slot)).toString());
+  const before = await getFeeJuiceBalance(owner, node);
+  const sponsorBefore = await getFeeJuiceBalance(sponsor, node);
+  assert.equal(before, 0n, 'Fresh account must have no Fee Juice');
+  assert(sponsorBefore > 0n, 'Sponsor must be funded');
+
+  const message = '独立匿名留言板：无需 DF 入局、无需存款，Sponsored FPC 代付 🌲';
   const { text, length } = encodeDFMessage(message);
-  await assert.rejects(() => board.methods.post(state, text, length).simulate({ from: outsider }), /Player not registered/);
-  await assert.rejects(() => board.methods.post({ ...state, score: 100n }, text, length).simulate({ from: owner }), /Invalid DF player state/);
-  const posted = await sendPrivate(board.methods.post(state, text, length));
-  const [fields, byteLength] = await view(board.methods.get_post(0));
+  const receipts = [];
+  const send = async (from) => {
+    // Verify two proofs when requested; the other sends still exercise the same
+    // wallet/private-history path without repeating expensive proof generation.
+    verifyNext = realProofs && receipts.length < 2;
+    wallet.pxe.proverEnabled = verifyNext;
+    try {
+      const fee = await getBillboardFeeOptions(node, paymentMethod, GasFees);
+      const posted = await board.methods.post(text, length).send({ from, fee });
+      assert.equal(posted.receipt.executionResult, 'success');
+      receipts.push({ txHash: posted.receipt.txHash.toString(), transactionFee: posted.receipt.transactionFee?.toString() });
+    } finally {
+      wallet.pxe.proverEnabled = false;
+      verifyNext = false;
+    }
+  };
+  for (let i = 0; i < 10; i++) {
+    await send(owner);
+    console.log(`PASS sponsored post ${i + 1}/10 from a fresh zero-balance account`);
+  }
+  await assert.rejects(
+    async () => board.methods.post(text, length).simulate({ from: owner, fee: await getBillboardFeeOptions(node, paymentMethod, GasFees) }),
+    /24-hour post limit reached/);
+  console.log('PASS 11th post rejected inside rolling 24-hour window');
+  await send(other);
+  await assert.rejects(
+    async () => board.methods._publish(Array(17).fill(0n), 1).simulate({ from: other, fee: await getBillboardFeeOptions(node, paymentMethod, GasFees) }),
+    /only be called by the same contract/);
+  const count = BigInt((await node.getPublicStorageAt('latest', instance.address, artifact.storageLayout.post_count.slot)).toString());
+  assert.equal(count, initialCount + 11n);
+  const value = await board.methods.get_post(initialCount).simulate({ from: other });
+  const [fields, byteLength] = value.result ?? value;
   assert.equal(decodeDFMessage(fields, byteLength), message);
-  const second = await sendPrivate(board.methods.post(state, text, length));
-  assert.equal(BigInt(await view(board.methods.get_post_count())), 2n);
-  await assert.rejects(() => board.methods._publish(Array(17).fill(0n), 1).simulate({ from: outsider }), /only be called by the same contract/);
-  console.log('PASS first post validates DF entry; second post reuses private rolling history');
-  console.log('PASS outsider reads without eligibility; forged state, outsider and public bypass rejected');
+  const after = await getFeeJuiceBalance(owner, node);
+  const otherAfter = await getFeeJuiceBalance(other, node);
+  const sponsorAfter = await getFeeJuiceBalance(sponsor, node);
+  assert.equal(after, 0n, 'Posting must not charge the author');
+  assert.equal(otherAfter, 0n, 'Second account must remain unfunded');
+  assert(sponsorAfter < sponsorBefore, 'Sponsor must actually pay transaction fees');
+  assert(payers.length >= 11);
+  assert.equal(verifiedProofs, realProofs ? 2 : 0);
   const result = {
     completedAt: new Date().toISOString(), nodeVersion: info.nodeVersion,
     rollupRealProofs: false, clientRealProofs: realProofs, verifiedProofs,
-    playerStorage: source.address.toString(), board: board.address.toString(),
-    postTx: posted.receipt.txHash.toString(), secondPostTx: second.receipt.txHash.toString(), message,
-    qualificationFixture: useDFCore ? 'Core.initialize_player with ZK checks enabled; PlayerUpdate from chain' : 'Real PlayerStorage.set by admin; not Core.initialize_player',
-    dfCore,
+    board: instance.address.toString(), sponsoredFpc: sponsor.toString(),
+    owner: owner.toString(), other: other.toString(),
+    initialPostCount: initialCount.toString(), finalPostCount: count.toString(),
+    ownerBalanceBefore: before.toString(), ownerBalanceAfter: after.toString(),
+    sponsorBalanceBefore: sponsorBefore.toString(), sponsorBalanceAfter: sponsorAfter.toString(),
+    quotaRejected: true, noPlayerRegistration: true, noDeposit: true, receipts, message,
   };
-  assert.equal(verifiedProofs, realProofs ? (useDFCore ? 3 : 2) : 0);
-  fs.writeFileSync(new URL(`../.local/df-e2e${useDFCore ? '-core' : ''}${realProofs ? '-real' : ''}-result.json`, import.meta.url), JSON.stringify(result, null, 2));
-  console.log('DF LOCAL E2E PASSED');
+  fs.writeFileSync(new URL('../.local/billboard-e2e-result.json', import.meta.url), JSON.stringify(result, null, 2) + '\n');
+  console.log('STANDALONE BILLBOARD E2E PASSED');
 } finally {
-  clearInterval(clock);
   await wallet.stop();
   await verifier?.stop();
 }

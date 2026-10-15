@@ -120,7 +120,7 @@ export function Feed({ view, controller }: ViewProps) {
         <button
           id="refresh"
           type="button"
-          disabled={view.busy || !view.connected}
+          disabled={view.busy || !view.canRead}
           onClick={controller.refresh}
         >
           刷新消息

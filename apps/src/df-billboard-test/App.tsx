@@ -47,9 +47,8 @@ function DebugPanel({ view }: { view: BillboardView }) {
         <dl className="debug-grid">
           {[
             ["RPC", "rpcAddress", "nodeUrl"],
-            ["Core", "coreAddress", "core"],
-            ["PlayerStorage", "playerAddress", "playerStorage"],
             ["Billboard", "boardAddress", "board"],
+            ["Sponsored FPC", "sponsorAddress", "sponsoredFpc"],
           ].map(([label, id, key]) => (
             <div className="debug-pair" key={key}>
               <dt>{label}</dt>
@@ -108,7 +107,7 @@ export function App({ controller }: { controller: BillboardController }) {
               ◈
             </span>
             <span>
-              Dark Forest <span className="brand-sub">/ Billboard</span>
+              DFArchon <span className="brand-sub">/ Billboard</span>
             </span>
           </div>
           <div className="header-spacer" />
@@ -127,11 +126,11 @@ export function App({ controller }: { controller: BillboardController }) {
           <h1>
             留言板{" "}
             <Hint label="留言板说明">
-              当前赛季公共频道。入局资格由 DF 合约验证；每位玩家在任意连续 24
-              小时内可发布最多 10 条消息。
+              任何 Aztec 账号都可匿名发帖，无需入局或存款。每个账号在滚动 24
+              小时内最多发 10 条，L2 gas 由 Sponsored FPC 代付。
             </Hint>
           </h1>
-          <span className="eyebrow">LOCALNET / AZTEC / DF</span>
+          <span className="eyebrow">LOCALNET / AZTEC</span>
         </section>
         {view.actionError && (
           <section className="action-error" role="alert">
@@ -172,26 +171,6 @@ export function App({ controller }: { controller: BillboardController }) {
           </button>
         </section>
         <div className="dashboard">
-          <section className="card">
-            <h2>
-              DF 入局{" "}
-              <Hint label="入局说明">
-                在浏览器中寻找出生点，使用已连接的钱包调用
-                Core.initialize_player。已入局账号不能重复入局。
-              </Hint>
-            </h2>
-            <div id="joined" className="join-status">
-              {view.joinedStatus}
-            </div>
-            <button
-              id="join"
-              type="button"
-              disabled={view.busy || !view.connected || view.joined}
-              onClick={controller.join}
-            >
-              {view.joined ? "已入局" : "寻找出生点并入局"}
-            </button>
-          </section>
           <section className="card">
             <h2>
               匿名发帖{" "}

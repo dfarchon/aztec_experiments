@@ -7,5 +7,3 @@ compiler_version = ">=1.0.0"
 [dependencies]
 aztec = { git = "https://github.com/AztecProtocol/aztec-nr", tag = "v5.0.1", directory = "aztec" }
 df_billboard = { path = "../contract" }
-player = { path = "../../.local/df-upstream/contracts/storage/player" }
-types = { path = "../../.local/df-upstream/contracts/types" }

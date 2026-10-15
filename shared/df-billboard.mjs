@@ -1,6 +1,20 @@
 export const MAX_DF_MESSAGE_BYTES = 512;
 export const DF_MESSAGE_FIELDS = 17;
 
+// The local automine node can quote less than its latest mined gas price after
+// idling. Bound fees using both predictions and that observed price. Inject the
+// SDK constructor so the browser keeps using its existing bundled SDK instance.
+export async function getBillboardFeeOptions(node, paymentMethod, GasFees) {
+  const [block, predicted] = await Promise.all([node.getBlock('latest'), node.getPredictedMinFees()]);
+  if (!block || !predicted.length) throw new Error('Billboard fee estimate unavailable');
+  const prices = [block.header.globalVariables.gasFees, ...predicted];
+  const highest = key => prices.reduce((max, fees) => fees[key] > max ? fees[key] : max, 0n);
+  return {
+    paymentMethod,
+    gasSettings: { maxFeesPerGas: new GasFees(highest('feePerDaGas') * 2n, highest('feePerL2Gas') * 2n) },
+  };
+}
+
 // The contract wire format is a byte array plus its length, not JS string.length.
 export function encodeDFMessage(message) {
   if (typeof message !== 'string' || !message.isWellFormed()) throw new Error('Invalid Unicode text');

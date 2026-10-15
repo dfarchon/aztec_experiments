@@ -1,112 +1,89 @@
-// Deploy the minimal real DF onboarding contracts and the independent board.
-// This script does not initialize a player; the browser harness does that.
+// Local-only standalone billboard deployment. No DF contracts or player setup.
 import fs from 'node:fs';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { EmbeddedWallet } from '@aztec/wallets/embedded';
 import { getInitialTestAccountsData } from '@aztec/accounts/testing';
-import { Contract, getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
+import { Contract, getContractInstanceFromInstantiationParams, getContractClassFromArtifact } from '@aztec/aztec.js/contracts';
 import { Fr } from '@aztec/aztec.js/fields';
+import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
+import { getFeeJuiceBalance } from '@aztec/aztec.js/utils';
 import { SponsoredFPCContract } from '@aztec/noir-contracts.js/SponsoredFPC';
 import { loadContractArtifact } from '@aztec/aztec.js/abi';
-import { deployDFCore } from './df-core-fixture.mjs';
+import { GasFees } from '@aztec/stdlib/gas';
+import { getBillboardFeeOptions } from '../shared/df-billboard.mjs';
 
 const url = process.env.DF_NODE_URL ?? 'http://127.0.0.1:5180';
-const parsed = new URL(url);
-assert(['127.0.0.1', 'localhost'].includes(parsed.hostname), 'Only local nodes are allowed');
+assert(['127.0.0.1', 'localhost'].includes(new URL(url).hostname), 'Only local nodes are allowed');
 const node = createAztecNodeClient(url);
 const info = await node.getNodeInfo();
 assert.equal(info.l1ChainId, 31337, 'Expected Anvil chain 31337');
 assert.equal(info.nodeVersion, '5.0.1', 'Expected Aztec 5.0.1');
+assert.equal(info.realProofs, false, 'Expected synthetic-proof local network');
 const l1 = await node.getL1ContractAddresses();
-const manifestUrl = new URL('../.local/df-harness.json', import.meta.url);
+const manifestUrl = new URL('../.local/billboard-harness.json', import.meta.url);
 const publicUrl = new URL('../apps/dist/df-local.json', import.meta.url);
-const artifactUrl = new URL('../df-billboard/target/df_billboard-DFBillboard.json', import.meta.url);
-const artifactText = fs.readFileSync(artifactUrl, 'utf8');
+const artifactText = fs.readFileSync(new URL('../df-billboard/target/df_billboard-DFBillboard.json', import.meta.url), 'utf8');
+const artifact = loadContractArtifact(JSON.parse(artifactText));
 const boardArtifactHash = createHash('sha256').update(artifactText).digest('hex');
+const boardClass = await getContractClassFromArtifact(artifact);
+const sponsorInstance = await getContractInstanceFromInstantiationParams(SponsoredFPCContract.artifact, { salt: new Fr(0n) });
+const sponsoredFpc = sponsorInstance.address.toString();
+const sponsorBalance = await getFeeJuiceBalance(sponsorInstance.address, node);
+assert(sponsorBalance > 0n, 'Sponsored FPC is empty; fund the local sponsor before deploying');
 const accounts = await getInitialTestAccountsData();
-function writeBrowserAccounts() {
-  const browserAccounts = accounts.slice(1).map((account, index) => ({
-    label: `Local player ${index + 1}`,
-    address: account.address.toString(),
-    secretKey: account.secret.toString(),
-    signingKey: account.signingKey.toString(),
-    salt: account.salt.toString(),
-  }));
-  fs.writeFileSync(new URL('../apps/dist/df-local-accounts.json', import.meta.url), JSON.stringify(browserAccounts, null, 2));
-}
+const deployer = accounts[0].address;
 const previous = fs.existsSync(manifestUrl) ? JSON.parse(fs.readFileSync(manifestUrl, 'utf8')) : null;
-const deployed = async address => {
-  try { return Boolean(await node.getContract(AztecAddress.fromStringUnsafe(address))); }
-  catch { return false; }
-};
-const sponsoredFpc = (await getContractInstanceFromInstantiationParams(SponsoredFPCContract.artifact, {
-  salt: new Fr(0n),
-})).address.toString();
-// The local network prefunds this deterministic address at genesis. SponsoredFPC
-// has only a private function, so it need not appear in node.getContract().
-const sameCore = previous && previous.rollupAddress === l1.rollupAddress.toString() &&
-  previous.nodeUrl === url && await deployed(previous.core) && await deployed(previous.playerStorage);
-if (sameCore && previous.boardArtifactHash === boardArtifactHash && await deployed(previous.board)) {
-  previous.deploymentId ??= randomUUID();
-  previous.sponsoredFpc = sponsoredFpc;
-  fs.mkdirSync(new URL('../apps/dist/', import.meta.url), { recursive: true });
-  fs.writeFileSync(manifestUrl, JSON.stringify(previous, null, 2));
-  fs.writeFileSync(publicUrl, JSON.stringify(previous, null, 2));
-  writeBrowserAccounts();
-  console.log('Existing DF harness deployment reused:', previous.board);
-} else {
+let boardAddress;
+if (previous?.kind === 'standalone-billboard' && previous.nodeUrl === url &&
+    previous.rollupAddress === l1.rollupAddress.toString() && previous.boardArtifactHash === boardArtifactHash) {
+  const instance = await node.getContract(AztecAddress.fromStringUnsafe(previous.board));
+  if (instance?.currentContractClassId.equals(boardClass.id)) boardAddress = instance.address.toString();
+}
+let deploymentTx;
+if (!boardAddress) {
   const wallet = await EmbeddedWallet.create(node, { ephemeral: true, pxeConfig: { proverEnabled: false } });
   try {
-    for (const account of accounts) {
-      await wallet.createSchnorrInitializerlessAccount(account.secret, account.salt, account.signingKey);
-    }
-    const admin = accounts[0].address;
-    const send = async (call, from = admin) => {
-      const result = await call.send({ from });
-      assert.equal(result.receipt.executionResult, 'success');
-      return result;
-    };
-    const artifact = loadContractArtifact(JSON.parse(artifactText));
-    if (sameCore) {
-      const { contract: board } = await Contract.deploy(wallet, artifact, [
-        AztecAddress.fromStringUnsafe(previous.playerStorage),
-      ]).send({ from: admin });
-      const manifest = { ...previous, deploymentId: randomUUID(), board: board.address.toString(), boardArtifactHash, sponsoredFpc };
-      fs.mkdirSync(new URL('../apps/dist/', import.meta.url), { recursive: true });
-      fs.writeFileSync(manifestUrl, JSON.stringify(manifest, null, 2));
-      fs.writeFileSync(publicUrl, JSON.stringify(manifest, null, 2));
-      writeBrowserAccounts();
-      console.log('Updated DF board deployed; existing Core and player state preserved:', board.address.toString());
-    } else {
-      const { deployed, source, core, config, world } = await deployDFCore({ wallet, admin, send });
-      const { contract: board } = await Contract.deploy(wallet, artifact, [source.address]).send({ from: admin });
-      const manifest = {
-        deploymentId: randomUUID(),
-        nodeUrl: url,
-        chainId: Number(info.l1ChainId),
-        rollupAddress: l1.rollupAddress.toString(),
-        admin: admin.toString(),
-        core: core.address.toString(),
-        config: config.address.toString(),
-        playerStorage: source.address.toString(),
-        board: board.address.toString(),
-        sponsoredFpc,
-        boardArtifactHash,
-        worldRadius: world.radius.toString(),
-        contracts: Object.fromEntries(Object.entries(deployed).map(([name, contract]) => [name, contract.address.toString()])),
-      };
-      fs.mkdirSync(new URL('../.local/', import.meta.url), { recursive: true });
-      fs.mkdirSync(new URL('../apps/dist/', import.meta.url), { recursive: true });
-      fs.writeFileSync(manifestUrl, JSON.stringify(manifest, null, 2));
-      fs.writeFileSync(publicUrl, JSON.stringify(manifest, null, 2));
-      writeBrowserAccounts();
-      console.log('DF harness deployed (no player initialized):');
-      console.log(JSON.stringify(manifest, null, 2));
-    }
+    await wallet.createSchnorrInitializerlessAccount(accounts[0].secret, accounts[0].salt, accounts[0].signingKey);
+    await wallet.registerContract(sponsorInstance, SponsoredFPCContract.artifact);
+    const result = await Contract.deploy(wallet, artifact, []).send({
+      from: deployer,
+      fee: await getBillboardFeeOptions(node, new SponsoredFeePaymentMethod(sponsorInstance.address), GasFees),
+    });
+    assert.equal(result.receipt.executionResult, 'success');
+    boardAddress = result.contract.address.toString();
+    deploymentTx = result.receipt.txHash.toString();
   } finally {
     await wallet.stop();
   }
 }
+const manifest = {
+  kind: 'standalone-billboard',
+  schemaVersion: 1,
+  nodeUrl: url,
+  chainId: Number(info.l1ChainId),
+  rollupVersion: info.rollupVersion.toString(),
+  rollupAddress: l1.rollupAddress.toString(),
+  board: boardAddress,
+  sponsoredFpc,
+  sponsorSalt: '0',
+  boardArtifactHash,
+  boardClassId: boardClass.id.toString(),
+};
+fs.mkdirSync(new URL('../.local/', import.meta.url), { recursive: true });
+fs.mkdirSync(new URL('../apps/dist/', import.meta.url), { recursive: true });
+fs.writeFileSync(manifestUrl, JSON.stringify(manifest, null, 2) + '\n');
+fs.writeFileSync(publicUrl, JSON.stringify(manifest, null, 2) + '\n');
+// Public, deterministic local test keys only; the guards above forbid remote use.
+fs.writeFileSync(new URL('../apps/dist/df-local-accounts.json', import.meta.url), JSON.stringify(
+  accounts.slice(1).map((account, index) => ({
+    label: `Local account ${index + 1}`,
+    address: account.address.toString(),
+    secretKey: account.secret.toString(),
+    signingKey: account.signingKey.toString(),
+    salt: account.salt.toString(),
+  })), null, 2) + '\n');
+console.log(deploymentTx ? 'Standalone billboard deployed:' : 'Existing standalone billboard reused:');
+console.log(JSON.stringify({ ...manifest, deploymentTx, sponsorBalance: sponsorBalance.toString() }, null, 2));
