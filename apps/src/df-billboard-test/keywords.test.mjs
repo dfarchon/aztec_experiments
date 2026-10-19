@@ -55,10 +55,10 @@ test("AI uses independent sigmoid scores and default thresholds, never malformed
   );
   assert.throws(
     () => safetyResult([{ label: "unsafe", score: 0.5 }]),
-    /不完整/
+    /Incomplete/
   );
   assert.throws(
     () => safetyResult([...rows, { label: "unsafe", score: NaN }]),
-    /不完整/
+    /Incomplete/
   );
 });

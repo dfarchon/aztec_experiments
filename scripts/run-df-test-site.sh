@@ -76,7 +76,7 @@ npm run deploy:df:harness >.local/df-test-deploy.log 2>&1 || {
 }
 
 echo "DF test page: http://127.0.0.1:${SITE_PORT}/"
-echo "Test report: http://127.0.0.1:${SITE_PORT}/reports"
+echo "Design and testing: df-billboard/README.md"
 node scripts/sync-df-clock.mjs
 node scripts/sync-df-clock.mjs --watch >.local/df-clock.log 2>&1 &
 CLOCK_PID=$!

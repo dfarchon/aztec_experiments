@@ -478,7 +478,7 @@ async function ensureAztecSetup(state, statusId, opts = {}) {
   if (state.wallet && state.pxe) return true;
 
   // Step 1: Derive keys
-  progress(1, '推导账号地址');
+  progress(1, 'Deriving account address');
   log('Step 1: Deriving account keys...', 'info', S);
   const derived = await deriveAccountAddress(sk, saltVal, opts.signingKey);
   const { secretKey, accountContract, artifact, instance, address, partialAddress } = derived;
@@ -491,7 +491,7 @@ async function ensureAztecSetup(state, statusId, opts = {}) {
   state.instance = instance;
 
   // Step 2: Create node client with retry
-  progress(2, '连接 Aztec 节点');
+  progress(2, 'Connecting to Aztec node');
   log('Step 2: Connecting to Aztec node...', 'info', S);
   const rawNode = a.createAztecNodeClient(nodeUrl);
   state.rawNode = rawNode;
@@ -500,11 +500,11 @@ async function ensureAztecSetup(state, statusId, opts = {}) {
   const nodeInfo = await aztecNode.getNodeInfo();
   log('  L1 chain ID: ' + nodeInfo.l1ChainId, 'info', S);
 
-  // Start the block monitor (top-right indicator)
-  startBlockMonitor(aztecNode);
+  // Legacy apps use the indicator; React clients can disable its DOM and polling.
+  if (opts.blockMonitor !== false) startBlockMonitor(aztecNode);
 
   // Step 3: Init CRS (if not done)
-  progress(3, '准备证明环境');
+  progress(3, 'Preparing proof environment');
   if (!state.crsInit && opts.proverEnabled !== false) {
     log('Step 3: Initializing CRS (one-time ~68MB download)...', 'info', S);
     await initCRS(S);
@@ -516,7 +516,7 @@ async function ensureAztecSetup(state, statusId, opts = {}) {
   }
 
   // Step 4: Create PXE
-  progress(4, '创建浏览器 PXE');
+  progress(4, 'Creating browser PXE');
   // v5 defaults to SQLite-OPFS store which requires a Worker (./worker.js) —
   // that fails in a static IIFE bundle. Use the deprecated IndexedDB store instead,
   // which runs entirely on the main thread without Workers.
@@ -536,7 +536,7 @@ async function ensureAztecSetup(state, statusId, opts = {}) {
   log('  PXE created.', 'success', S);
 
   // Step 5: Register account BEFORE syncing so the PXE discovers historical notes
-  progress(5, '注册本地账号');
+  progress(5, 'Registering local account');
   // belonging to this account. If we sync first, all blocks are processed without
   // knowing about the account, and notes from previous sessions are never found.
   log('Step 5: Registering account with PXE...', 'info', S);
@@ -545,7 +545,7 @@ async function ensureAztecSetup(state, statusId, opts = {}) {
   log('  Account registered.', 'success', S);
 
   // Step 6: Register account contract class
-  progress(6, '注册账号合约');
+  progress(6, 'Registering account contract');
   log('Step 6: Registering Schnorr initializerless account contract...', 'info', S);
   const retry = createRetryFn(S, 'register', 5);
   await retry(() => pxe.registerContractClass(a.SchnorrInitializerlessAccountContractArtifact));
@@ -559,7 +559,7 @@ async function ensureAztecSetup(state, statusId, opts = {}) {
   log('  PXE synced.', 'success', S);
 
   // Step 7: Create wallet
-  progress(7, '创建钱包');
+  progress(7, 'Creating wallet');
   log('Step 7: Creating wallet...', 'info', S);
   const wallet = createAztecWallet(pxe, aztecNode, rawNode, S, { preProveHook: opts.preProveHook });
   const accountManager = await a.AccountManager.create(wallet, secretKey, accountContract, { salt: new a.Fr(saltVal) });
@@ -569,7 +569,7 @@ async function ensureAztecSetup(state, statusId, opts = {}) {
   log('  Wallet ready.', 'success', S);
 
   // Step 8: Store signing key capsule for initializerless account contract.
-  progress(8, '准备签名密钥');
+  progress(8, 'Preparing signing keys');
   // The SchnorrInitializerlessAccountContract's is_valid_impl loads the signing
   // public key from a capsule (in-memory PXE store) rather than a note. The
   // constructor utility function stores this capsule. We must simulate it here

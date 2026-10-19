@@ -217,5 +217,5 @@ test("unavailable storage leaves new jobs visible with a recovery warning", asyn
   };
   queue.add(hash, "still visible");
   assert.equal(queue.snapshot().jobs[0].l2Tx, hash);
-  assert.match(queue.snapshot().error, /无法保存 L1 进度/);
+  assert.match(queue.snapshot().error, /Unable to save L1 progress/);
 });

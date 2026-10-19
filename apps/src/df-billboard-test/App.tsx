@@ -1,9 +1,13 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import { Link } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 
+import { AsciiClouds } from "./AsciiClouds";
+import { Brand } from "./Brand";
 import { Feed } from "./Feed";
 import { Hint } from "./Hint";
+import { Icon } from "./Icon";
 import { L1Panel } from "./L1Panel";
+import { ReadingSettings } from "./ReadingSettings";
 import type {
   BillboardController,
   BillboardView,
@@ -12,26 +16,49 @@ import type {
 import { WalletPanel } from "./WalletPanel";
 
 function Progress({ progress }: { progress: ProgressData | null }) {
+  const toastRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const toast = toastRef.current;
+    const composer = toast
+      ?.closest(".billboard-app")
+      ?.querySelector(".compose-card");
+    if (!toast || !composer) return;
+    // On small screens, keep the toast above the composer, including fee notices.
+    const update = () => {
+      toast.style.setProperty(
+        "--composer-clearance",
+        `${Math.max(12, window.innerHeight - composer.getBoundingClientRect().top + 12)}px`
+      );
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(composer);
+    window.addEventListener("resize", update);
+    update();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, []);
   return (
     <div
       id="operationProgress"
+      ref={toastRef}
       className={`operation-progress${progress?.failed ? " failed" : ""}`}
       role="status"
       aria-live="polite"
+      aria-atomic="true"
       hidden={!progress}
     >
-      <div className="operation-progress-inner">
-        <div className="operation-progress-text">
-          <span id="operationLabel">{progress?.label}</span>
-          <span id="operationCount">{progress?.count}</span>
-        </div>
-        <progress
-          id="operationBar"
-          max={progress?.total || 1}
-          value={progress?.value}
-          aria-label="当前操作进度"
-        />
+      <div className="operation-progress-text">
+        <span id="operationLabel">{progress?.label}</span>
+        <span id="operationCount">{progress?.count}</span>
       </div>
+      <progress
+        id="operationBar"
+        max={progress?.total || 1}
+        value={progress?.value}
+        aria-label="Current operation progress"
+      />
     </div>
   );
 }
@@ -43,7 +70,7 @@ function DebugPanel({ view }: { view: BillboardView }) {
   }, [view.logs]);
   return (
     <details className="card debug-card">
-      <summary>本地链与运行记录</summary>
+      <summary>Connection details & activity log</summary>
       <div className="debug-inner">
         <dl className="debug-grid">
           {[
@@ -57,7 +84,7 @@ function DebugPanel({ view }: { view: BillboardView }) {
                 {String(
                   view.deployment?.[
                     key as keyof NonNullable<BillboardView["deployment"]>
-                  ] || "加载中…"
+                  ] || "Loading…"
                 )}
               </dd>
             </div>
@@ -81,113 +108,172 @@ function DebugPanel({ view }: { view: BillboardView }) {
   );
 }
 
-function downloadBackup(controller: BillboardController) {
-  const backup = controller.accountBackup();
-  if (!backup) return;
-  const url = URL.createObjectURL(
-    new Blob([backup.contents], { type: "application/json" })
-  );
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = backup.filename;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 export function App({ controller }: { controller: BillboardController }) {
+  const mainRef = useRef<HTMLDivElement>(null);
+  const [params, setParams] = useSearchParams();
+  const selected = params.get("view");
+  const section =
+    selected === "settings" || selected === "activity" ? selected : "board";
+  const navigate = (value: string) => {
+    setParams(value === "board" ? {} : { view: value });
+  };
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0 });
+  }, [section]);
   const view = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
     controller.getSnapshot
   );
   const bytes = new TextEncoder().encode(view.message).length;
+  const pending =
+    view.l1?.jobs.filter((job) => job.stage !== "published").length || 0;
+  const title = {
+    board: "Public board",
+    settings: "Settings",
+    activity: "Ethereum copies",
+  }[section];
   return (
-    <>
+    <div className="billboard-app">
+      <AsciiClouds paused={view.busy} />
+      <a href="#main-content" className="skip-link">
+        Skip to content
+      </a>
       <header className="site-header">
         <div className="header-inner">
-          <div className="brand">
-            <span className="brand-mark" aria-hidden="true">
-              ◈
-            </span>
-            <span>
-              DFArchon <span className="brand-sub">/ Billboard</span>
-            </span>
-          </div>
+          <Brand />
           <div className="header-spacer" />
-          <Link className="report-link" to="/reports">
-            设计与测试 →
-          </Link>
-          <span id="network" className="network-pill">
-            {view.deployment ? "Aztec Localnet · 31337" : "加载本地部署信息"}
-          </span>
-          <WalletPanel view={view} controller={controller} />
+          <div className="header-actions">
+            <nav
+              className="product-navigation"
+              aria-label="Billboard navigation"
+            >
+              {(
+                [
+                  ["settings", "Settings"],
+                  ["activity", "Ethereum copies"],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  hidden={
+                    key === "activity" && !pending && section !== "activity"
+                  }
+                  className={`header-action nav-item nav-${key}${section === key ? " active" : ""}`}
+                  aria-current={section === key ? "page" : undefined}
+                  onClick={() => navigate(key)}
+                >
+                  <strong>{label}</strong>
+                  {key === "activity" && pending > 0 && (
+                    <span className="nav-count">{pending}</span>
+                  )}
+                </button>
+              ))}
+            </nav>
+            <WalletPanel view={view} controller={controller} />
+          </div>
         </div>
       </header>
-      <Progress progress={view.progress} />
-      <main className="shell">
-        <section className="hero">
-          <h1>
-            留言板{" "}
-            <Hint label="留言板说明">
-              任何 Aztec 账号都可匿名发帖，无需入局或存款。每个账号在滚动 24
-              小时内最多发 10 条，L2 gas 由 Sponsored FPC 代付。
-            </Hint>
-          </h1>
-          <span className="eyebrow">LOCALNET / AZTEC</span>
-        </section>
-        {view.actionError && (
-          <section className="action-error" role="alert">
-            <span>⚠ {view.actionError.label}失败</span>
-            <details>
-              <summary>查看原因</summary>
-              <p>{view.actionError.guidance}</p>
-              <pre>{view.actionError.message}</pre>
-            </details>
-          </section>
-        )}
-        <section
-          id="accountBar"
-          className="account-strip"
-          aria-label="已连接钱包"
-          hidden={!view.connected}
-        >
-          <span className="account-strip-label">已连接地址</span>
-          <span id="accountAddress" className="account-strip-address">
-            {view.address}
-          </span>
-          <button
-            id="copyAddress"
-            type="button"
-            disabled={view.busy || !view.address}
-            onClick={controller.copyAddress}
+      <div className="product-layout">
+        <main id="main-content" className="product-main" tabIndex={-1}>
+          <div
+            className={`board-content${section === "board" ? " is-board" : ""}`}
+            ref={mainRef}
           >
-            {view.copied ? "已复制" : "复制地址"}
-          </button>
-          <button
-            id="backupAccount"
-            type="button"
-            hidden={!view.hasLocalAccount}
-            disabled={view.busy}
-            onClick={() => downloadBackup(controller)}
+            <div className="page-heading" hidden={section === "board"}>
+              {section !== "board" && (
+                <button
+                  className="back-button"
+                  aria-label="Back to board"
+                  onClick={() => navigate("board")}
+                >
+                  <span aria-hidden="true">←</span> Back
+                </button>
+              )}
+              <h1>{title}</h1>
+            </div>
+            {view.actionError && (
+              <section className="action-error" role="alert">
+                <span>⚠ {view.actionError.label} failed</span>
+                <details>
+                  <summary>View details</summary>
+                  <p>{view.actionError.guidance}</p>
+                  <pre>{view.actionError.message}</pre>
+                </details>
+              </section>
+            )}
+            <div className="board-page" hidden={section !== "board"}>
+              <Feed view={view} controller={controller} />
+            </div>
+            <section
+              hidden={section !== "settings"}
+              className="preferences-page"
+              aria-label="Settings"
+            >
+              <p className="section-description">
+                Filters only change your view. Originals remain available.
+              </p>
+              <ReadingSettings view={view} controller={controller} />
+              <details className="advanced-settings">
+                <summary>Advanced</summary>
+                <label className="l1-choice" htmlFor="publishToL1">
+                  <input
+                    id="publishToL1"
+                    type="checkbox"
+                    checked={view.publishToL1 || false}
+                    disabled={view.busy || !view.l1?.available}
+                    onChange={(event) =>
+                      controller.setField("publishToL1", event.target.checked)
+                    }
+                  />
+                  Also publish an Ethereum copy
+                  <Hint label="Cross-chain fees">
+                    Publish on L2 first, then wait for a proof. MetaMask pays
+                    the L1 submission gas; the payer address is public.
+                  </Hint>
+                </label>
+                <button
+                  className="text-button"
+                  onClick={() => navigate("activity")}
+                >
+                  Ethereum copies <Icon name="arrow" />
+                </button>
+                <DebugPanel view={view} />
+              </details>
+            </section>
+            <section
+              hidden={section !== "activity"}
+              className="activity-page"
+              aria-label="Ethereum copies"
+            >
+              <p className="section-description">
+                Copy tasks saved in this browser. L1 gas is paid separately.
+              </p>
+              <L1Panel view={view} controller={controller} />
+              {!view.l1?.available && !view.l1?.error && (
+                <div className="empty-state">
+                  <Icon name="activity" />
+                  <h2>Cross-chain publishing is not configured</h2>
+                  <p>You can still publish Aztec posts on the public board.</p>
+                  <button onClick={() => navigate("board")}>
+                    Go to public board
+                  </button>
+                </div>
+              )}
+            </section>
+          </div>
+          <section
+            className="card compose-card"
+            aria-label="Write a post"
+            hidden={section !== "board"}
           >
-            下载账号备份
-          </button>
-        </section>
-        <div className="dashboard">
-          <section className="card">
-            <h2>
-              匿名发帖{" "}
-              <Hint label="发帖说明">
-                公开文本上链；作者地址不会随消息展示。最多 512 UTF-8 字节，滚动
-                24 小时内最多 10 条。
-              </Hint>
-            </h2>
-            <label htmlFor="message" className="small">
-              消息内容
+            <label htmlFor="message" className="sr-only">
+              Message
             </label>
             <textarea
               id="message"
-              placeholder="写下你想留在黑暗森林中的话…"
+              rows={2}
+              placeholder="Leave a message…"
               value={view.message}
               disabled={view.busy}
               onChange={(event) =>
@@ -195,38 +281,76 @@ export function App({ controller }: { controller: BillboardController }) {
               }
             />
             <div className="compose-footer">
-              <span id="bytes">{bytes} / 512 字节</span>
+              <div className="compose-cost">
+                <span className="sponsored-label">L2 fees sponsored</span>
+                <Hint label="About posting">
+                  Posts are public and stored onchain; filtering does not delete
+                  them. The author address is not shown, but network metadata
+                  may allow correlation. Up to 512 UTF-8 bytes and 10 posts per
+                  rolling 24 hours. Posting requires an available sponsor.
+                </Hint>
+                <span
+                  id="bytes"
+                  className={bytes > 512 ? "over-limit" : ""}
+                  role="status"
+                >
+                  {bytes} / 512 bytes
+                </span>
+              </div>
               <button
                 id="post"
                 type="button"
-                disabled={view.busy || !view.canPost || !bytes || bytes > 512}
-                onClick={controller.post}
+                aria-label={
+                  !view.busy && !view.connected ? "Connect to post" : undefined
+                }
+                disabled={
+                  view.busy ||
+                  (view.connected && (!view.canPost || !bytes || bytes > 512))
+                }
+                onClick={() =>
+                  view.connected
+                    ? void controller.post()
+                    : controller.setWalletPanel(true)
+                }
               >
-                发布消息
+                {view.busy ? (
+                  "Processing…"
+                ) : view.connected ? (
+                  "Post"
+                ) : (
+                  <>
+                    <span className="post-connect-label">Connect to post</span>
+                    <span
+                      className="post-connect-label-mobile"
+                      aria-hidden="true"
+                    >
+                      Connect
+                    </span>
+                  </>
+                )}{" "}
+                <Icon name="arrow" />
               </button>
             </div>
-            <label className="l1-choice" htmlFor="publishToL1">
-              <input
-                id="publishToL1"
-                type="checkbox"
-                checked={view.publishToL1 || false}
-                disabled={view.busy || !view.l1?.available}
-                onChange={(event) =>
-                  controller.setField("publishToL1", event.target.checked)
-                }
-              />
-              同时发布到 L1
-              <Hint label="跨链费用">
-                先发到 L2，再等待证明。L1 提交由 MetaMask 支付
-                gas；付款地址公开。
-              </Hint>
-            </label>
+            {view.publishToL1 && (
+              <p className="publish-notice">
+                Ethereum copy enabled · L1 gas required; payer address public.{" "}
+                <button
+                  className="text-button"
+                  onClick={() => navigate("settings")}
+                >
+                  Change
+                </button>
+              </p>
+            )}
           </section>
-        </div>
-        <L1Panel view={view} controller={controller} />
-        <Feed view={view} controller={controller} />
-        <DebugPanel view={view} />
-      </main>
-    </>
+        </main>
+      </div>
+      <footer className="site-footer">
+        <a className="documentation-link" href="/billboard-readme.md">
+          About ↗
+        </a>
+      </footer>
+      <Progress progress={view.progress} />
+    </div>
   );
 }

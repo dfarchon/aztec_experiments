@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 
 import { App } from "./App";
 import { controller, initializeRuntime } from "./runtime";
@@ -26,18 +25,19 @@ export default function BoardRoute() {
   if (!ready)
     return (
       <main className="shell">
-        <h1>Dark Forest Billboard</h1>
+        <span className="eyebrow">DFARCHON / BILLBOARD</span>
+        <h1>Opening the board</h1>
         {error ? (
           <div role="alert">
             <p>{error}</p>
             <button onClick={() => setAttempt((value) => value + 1)}>
-              重试
+              Retry
             </button>
           </div>
         ) : (
-          <p role="status">正在加载本地 Aztec 环境…</p>
+          <p role="status">Getting the board ready…</p>
         )}
-        <Link to="/reports">查看留言板设计与测试</Link>
+        <a href="/billboard-readme.md">README</a>
       </main>
     );
   return <App controller={controller} />;

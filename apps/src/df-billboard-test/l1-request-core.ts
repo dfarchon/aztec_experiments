@@ -189,10 +189,13 @@ export async function recoverRequest(
   rpc: JsonRpcProvider,
   hash: string
 ) {
-  if (!/^0x[0-9a-fA-F]{64}$/.test(hash)) throw new Error("交易哈希格式不正确");
+  if (!/^0x[0-9a-fA-F]{64}$/.test(hash))
+    throw new Error("Invalid transaction hash format");
   const candidate = { ...job, l1Tx: hash };
   if (!(await readRequestReceipt(config, candidate, rpc)))
-    throw new Error("该 L1 交易尚未确认，请稍后重试");
+    throw new Error(
+      "This L1 transaction is not confirmed yet. Try again later."
+    );
   return candidate;
 }
 

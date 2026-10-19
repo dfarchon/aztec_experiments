@@ -37,19 +37,6 @@ const adultSolicitationPattern =
 const repeatedCallPattern =
   /(?:点击|点此|扫码|进群|入群|领取福利|免费礼物)|\b(?:click here|join (?:our|my) (?:group|channel)|free gift|sign up now)\b/i;
 
-export const AD_TIER_LABELS = {
-  likely: "推广线索较强",
-  possible: "推广线索不完整／语境不确定",
-  context: "广告讨论／风险提醒语境",
-  policy: "玩家交易／社区活动 · 规则待定",
-};
-export const RULE_CATEGORY_LABELS: Record<RuleCategory, string> = {
-  promotion: "明显推广",
-  "credential-request": "索取钱包凭证",
-  "token-claim-link": "代币领取引流",
-  "adult-solicitation": "成人内容招揽",
-  "repeated-solicitation": "重复外部招揽",
-};
 export const isPromotion = (post: PostData): boolean =>
   post.adTier === "likely" || post.adTier === "possible";
 export const canFoldPromotion = (post: PostData): boolean =>
@@ -58,19 +45,11 @@ export const canFoldBasicRules = (post: PostData): boolean =>
   Boolean(post.ruleMatches?.length);
 
 export function normalizeMessage(text: string): string {
-  // Conservative grouping: preserve case, character forms and word boundaries.
+  // Count repetitions conservatively: preserve case, forms and word boundaries.
   return text
     .replace(/\r\n?/g, "\n")
     .replace(/[ \t]+/g, " ")
     .trim();
-}
-
-function variantKey(text: string): string {
-  return text
-    .normalize("NFKC")
-    .replace(/[\u200b-\u200d\ufeff]/g, "")
-    .replace(/\s+/g, "")
-    .toLowerCase();
 }
 
 export function hasContactSignal(text: string): boolean {
@@ -94,9 +73,7 @@ export function classifyRulePosts<T extends PostData>(
   adTier: string;
   adReasons: string[];
   ruleMatches: RuleCategory[];
-  similarTo: string | number | null;
 })[] {
-  const variants = new Map<string, { id: string | number; strict: string }>();
   const repeats = new Map<string, number>();
   for (const post of posts) {
     if (post.decodeError || typeof post.text !== "string") continue;
@@ -194,36 +171,6 @@ export function classifyRulePosts<T extends PostData>(
         ruleMatches.push("repeated-solicitation");
       }
     }
-    // Approximate variants are only annotated; NEVER use this key for grouping or repetition rules.
-    const loose = variantKey(text);
-    const strict = normalizeMessage(text);
-    const previous = loose && variants.get(loose);
-    const similarTo =
-      previous && previous.strict !== strict ? previous.id : null;
-    if (loose && !previous) variants.set(loose, { id: post.id, strict });
-    return { ...post, adTier, adReasons, ruleMatches, similarTo };
+    return { ...post, adTier, adReasons, ruleMatches };
   });
-}
-
-// Preserve every original ID/text/AI label. This is display grouping only.
-export function groupDuplicatePosts<T extends PostData>(
-  posts: T[],
-  enabled = true
-): T[][] {
-  const groups: T[][] = [];
-  const seen = new Map<string, T[]>();
-  for (const post of posts) {
-    const key =
-      enabled && !post.decodeError && typeof post.text === "string"
-        ? normalizeMessage(post.text)
-        : "";
-    const existing = key && seen.get(key);
-    if (existing) existing.push(post);
-    else {
-      const group = [post];
-      groups.push(group);
-      if (key) seen.set(key, group);
-    }
-  }
-  return groups;
 }

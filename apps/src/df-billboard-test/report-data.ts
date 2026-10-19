@@ -6,12 +6,7 @@ import {
   isPromotion,
   MODERATION_RULE_VERSION,
 } from "./moderation.ts";
-import type {
-  Category,
-  ReadingReport,
-  ReportOptions,
-  ReportRow,
-} from "./types";
+import type { Category, ReadingReport, ReportRow } from "./types";
 
 export const EXAMPLE_KEYWORDS = ["代练", "微信", "boosting", "VPN"];
 export const CATEGORIES: Record<Category, string> = {
@@ -122,20 +117,5 @@ export function createReadingReport({
         aiRisk: selected.filter((row) => row.aiRisk).length,
       };
     }),
-  };
-}
-
-export function reportEffect(
-  row: ReportRow,
-  { keyword, rules, ai }: ReportOptions
-) {
-  const keywordFolded = Boolean(keyword && row.keywordHits.length);
-  const ruleFolded = Boolean(rules && row.ruleFold);
-  const aiFolded = Boolean(ai && row.aiRisk);
-  return {
-    folded: keywordFolded || ruleFolded || aiFolded,
-    keywordFolded,
-    ruleFolded,
-    aiFolded,
   };
 }

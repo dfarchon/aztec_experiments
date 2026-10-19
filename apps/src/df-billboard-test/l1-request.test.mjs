@@ -96,11 +96,11 @@ test("recovery authenticates zero value, target, calldata and matching receipt e
   assert.equal(await readRequestReceipt(config, { ...original }, rpc), false);
   await assert.rejects(
     () => recoverRequest(config, saved, rpc, original.l1Tx),
-    /尚未确认/
+    /not confirmed yet/
   );
   await assert.rejects(
     () => recoverRequest(config, saved, rpc, "bad hash"),
-    /格式/
+    /format/
   );
   assert.equal(saved.l1Tx, undefined);
 });

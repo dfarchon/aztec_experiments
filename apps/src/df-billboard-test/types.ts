@@ -15,7 +15,6 @@ export interface PostData {
   adTier?: string;
   adReasons?: string[];
   ruleMatches?: RuleCategory[];
-  similarTo?: number | string | null;
   keywordHits?: string[];
   aiLabels?: string[];
   aiAnalyzed?: boolean;
@@ -37,7 +36,6 @@ export interface EditableFields {
   provider: string;
   message: string;
   publishToL1: boolean;
-  mergeDuplicates: boolean;
   rulesEnabled: boolean;
   keywordEnabled: boolean;
   keywordMode: KeywordMode;
@@ -133,11 +131,6 @@ export interface ReportRow {
   ruleFold: boolean;
   aiRisk: boolean;
   aiLabels: string[];
-}
-export interface ReportOptions {
-  keyword: boolean;
-  rules: boolean;
-  ai: boolean;
 }
 export interface ReadingReport {
   available: true;

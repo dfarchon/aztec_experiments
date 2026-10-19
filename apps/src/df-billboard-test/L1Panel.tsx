@@ -3,11 +3,11 @@ import { emptyL1View, type L1Stage } from "./l1";
 import type { ViewProps } from "./types";
 
 const labels: Record<L1Stage, string> = {
-  "waiting-proof": "等待证明",
-  ready: "可发布到 L1",
-  signing: "等待 MetaMask 确认",
-  confirming: "L1 确认中",
-  published: "L1 发布成功",
+  "waiting-proof": "Waiting for proof",
+  ready: "Ready for L1",
+  signing: "Awaiting MetaMask approval",
+  confirming: "Confirming on L1",
+  published: "Published on L1",
 };
 export function L1Panel({ view, controller }: ViewProps) {
   const l1 = view.l1 || emptyL1View;
@@ -15,11 +15,11 @@ export function L1Panel({ view, controller }: ViewProps) {
   return (
     <section className="card l1-panel" id="l1Panel">
       <h2>
-        Ethereum L1{" "}
-        <Hint label="L1 发布说明">
-          L2 发帖仍匿名且由 FPC 代付；L1 gas 由 MetaMask
-          支付，提交地址公开。等待证明期间不必重新发帖。本地按钮只用于 Anvil
-          测试。
+        Ethereum copy{" "}
+        <Hint label="About L1 publishing">
+          L2 posting remains anonymous with FPC-sponsored fees. MetaMask pays L1
+          gas and the submitting address is public. Do not repost while waiting
+          for a proof. Local tools are for Anvil testing only.
         </Hint>
       </h2>
       <div className="l1-toolbar">
@@ -28,35 +28,40 @@ export function L1Panel({ view, controller }: ViewProps) {
           disabled={l1.busy || !l1.available}
           onClick={controller.connectL1}
         >
-          {l1.address ? "重新连接 MetaMask" : "连接 MetaMask"}
-        </button>
-        <button
-          id="fundL1"
-          disabled={l1.busy || !l1.address}
-          onClick={controller.fundL1}
-        >
-          领取本地 ETH
-        </button>
-        <button
-          id="proveL1"
-          disabled={
-            l1.busy || !l1.jobs.some((job) => job.stage === "waiting-proof")
-          }
-          onClick={controller.proveL1}
-        >
-          生成本地证明
+          {l1.address ? "Reconnect MetaMask" : "Connect MetaMask"}
         </button>
         <button
           id="refreshL1"
           disabled={l1.busy || !l1.available}
           onClick={controller.refreshL1}
         >
-          检查状态
+          Check status
         </button>
       </div>
+      <details className="local-tools">
+        <summary>Local development tools</summary>
+        <div className="l1-toolbar">
+          <button
+            id="fundL1"
+            disabled={l1.busy || !l1.address}
+            onClick={controller.fundL1}
+          >
+            Get local test ETH
+          </button>
+          <button
+            id="proveL1"
+            disabled={
+              l1.busy || !l1.jobs.some((job) => job.stage === "waiting-proof")
+            }
+            onClick={controller.proveL1}
+          >
+            Generate local proof
+          </button>
+        </div>
+      </details>
       {l1.address && (
         <p className="small l1-address">
-          L1 付款地址：<span id="l1Payer">{l1.address}</span> · Anvil 31337
+          L1 payer: <span id="l1Payer">{l1.address}</span> · Anvil 31337
         </p>
       )}
       {l1.error && (
@@ -65,7 +70,13 @@ export function L1Panel({ view, controller }: ViewProps) {
         </p>
       )}
       {!l1.jobs.length && (
-        <p className="small">发帖时选择“同时发布到 L1”，可在这里继续提交。</p>
+        <div className="empty-state">
+          <h2>No cross-chain posts yet</h2>
+          <p>
+            Enable an Ethereum copy under Publishing options, then return here
+            to submit it.
+          </p>
+        </div>
       )}
       <div className="l1-jobs">
         {l1.jobs.map((job) => (
@@ -77,21 +88,21 @@ export function L1Panel({ view, controller }: ViewProps) {
           >
             <div className="l1-job-header">
               <span>
-                帖子 {job.postId === undefined ? "待识别" : `#${job.postId}`}
+                Post {job.postId === undefined ? "pending" : `#${job.postId}`}
               </span>
               <strong role="status">{labels[job.stage]}</strong>
             </div>
             <p className="l1-body">{job.text}</p>
-            <div className="small l1-hash">L2：{job.l2Tx}</div>
-            {job.l1Tx && <div className="small l1-hash">L1：{job.l1Tx}</div>}
+            <div className="small l1-hash">L2: {job.l2Tx}</div>
+            {job.l1Tx && <div className="small l1-hash">L1: {job.l1Tx}</div>}
             {job.gas && job.stage === "ready" && (
               <p className="small">
-                预估 {job.gas} gas · 费用上限约 {job.fee} 本地 ETH
+                Estimated {job.gas} gas · Fee cap approx. {job.fee} local ETH
               </p>
             )}
             {job.error && (
               <details className="l1-error">
-                <summary>查看原因</summary>
+                <summary>View details</summary>
                 <p>{job.error}</p>
               </details>
             )}
@@ -101,7 +112,7 @@ export function L1Panel({ view, controller }: ViewProps) {
                 disabled={l1.busy || !l1.address}
                 onClick={() => controller.publishL1(job.l2Tx)}
               >
-                用 MetaMask 发布到 L1
+                Publish to L1 with MetaMask
               </button>
             )}
           </article>

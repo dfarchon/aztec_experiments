@@ -4,7 +4,6 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
-import { buildDFReport } from './build-df-report.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const dist = path.join(root, 'apps/dist');
@@ -46,9 +45,8 @@ for (const name of ['aztec_bundle.js', 'main.worker.js', 'thread.worker.js']) {
 }
 fs.copyFileSync(path.join(root, 'shared/helpers.js'), path.join(dist, 'df-helpers.js'));
 fs.copyFileSync(path.join(root, 'shared/aztec-lib.js'), path.join(dist, 'df-aztec-lib.js'));
-buildDFReport(root, dist);
 // Compatibility for static hosts as well as Vite's redirect middleware.
-for (const [file, route] of [['df-billboard-test.html', '/'], ['df-billboard-report.html', '/reports']]) {
-  fs.writeFileSync(path.join(dist, file), `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${route}"><title>Dark Forest Billboard</title></head><body><a href="${route}">继续访问</a></body></html>`);
+for (const [file, route] of [['df-billboard-test.html', '/'], ['df-billboard-report.html', '/']]) {
+  fs.writeFileSync(path.join(dist, file), `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${route}"><title>Dark Forest Billboard</title></head><body><a href="${route}">Continue to Billboard</a></body></html>`);
 }
 console.log('Prepared standalone billboard runtime assets in apps/dist');

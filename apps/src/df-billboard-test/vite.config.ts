@@ -10,6 +10,11 @@ const root = fileURLToPath(new URL(".", import.meta.url));
 const repository = path.resolve(root, "../../..");
 const dist = path.join(repository, "apps/dist");
 const worker = path.join(dist, "df-toxicity.worker.js");
+const fontLicense = path.join(
+  repository,
+  "node_modules/@fontsource/fira-sans/LICENSE"
+);
+const readme = path.join(repository, "df-billboard/README.md");
 const headers = {
   "Cross-Origin-Opener-Policy": "same-origin",
   "Cross-Origin-Embedder-Policy": "credentialless",
@@ -26,7 +31,7 @@ const isolationHeaders: Connect.NextHandleFunction = (
 };
 const aliases: Record<string, string> = {
   "/df-billboard-test.html": "/",
-  "/df-billboard-report.html": "/reports",
+  "/df-billboard-report.html": "/",
 };
 const redirect: Connect.NextHandleFunction = (request, response, next) => {
   const url = new URL(request.url || "/", "http://localhost");
@@ -40,6 +45,18 @@ const redirect: Connect.NextHandleFunction = (request, response, next) => {
 function localRuntimeAssets(): Plugin {
   return {
     name: "df-local-runtime-assets",
+    generateBundle() {
+      this.emitFile({
+        type: "asset",
+        fileName: "billboard-readme.md",
+        source: readFileSync(readme, "utf8"),
+      });
+      this.emitFile({
+        type: "asset",
+        fileName: "font-license.txt",
+        source: readFileSync(fontLicense, "utf8"),
+      });
+    },
     configurePreviewServer(server) {
       server.middlewares.use(isolationHeaders);
       server.middlewares.use(redirect);
@@ -50,6 +67,20 @@ function localRuntimeAssets(): Plugin {
       server.middlewares.use((request, response, next) => {
         const pathname = new URL(request.url || "/", "http://localhost")
           .pathname;
+        if (pathname === "/billboard-readme.md") {
+          response.writeHead(200, {
+            "Content-Type": "text/plain; charset=utf-8",
+          });
+          response.end(readFileSync(readme, "utf8"));
+          return;
+        }
+        if (pathname === "/font-license.txt") {
+          response.writeHead(200, {
+            "Content-Type": "text/plain; charset=utf-8",
+          });
+          response.end(readFileSync(fontLicense, "utf8"));
+          return;
+        }
         if (
           !/^\/(?:df-[\w.-]+\.(?:js|json)|aztec_bundle\.js|(?:main|thread)\.worker\.js|(?:onnx|crs)\/[\w.-]+)$/.test(
             pathname

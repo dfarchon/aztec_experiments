@@ -209,6 +209,7 @@ function fixture(t) {
     sdk: () => sdk,
     deriveAccountAddress: async () => ({ address }),
     ensureAztecSetup: async (state, _, options) => {
+      assert.equal(options.blockMonitor, false);
       options.onProgress(1, 8, "测试钱包");
       Object.assign(state, {
         address,
@@ -275,20 +276,20 @@ test("legacy reading preferences migrate without enabling broader basic rules", 
     JSON.stringify({ mergeDuplicates: false, adMode: "fold", aiHints: true })
   );
   await controller.initialize();
-  assert.equal(controller.getSnapshot().mergeDuplicates, false);
+  assert.equal("mergeDuplicates" in controller.getSnapshot(), false);
   assert.equal(controller.getSnapshot().rulesEnabled, false);
   assert.equal(controller.getSnapshot().aiHints, false);
   assert.equal(controller.getSnapshot().aiConsentGiven, false);
   controller.setField("adMode", "fold");
-  controller.setField("mergeDuplicates", "false");
   assert.equal(controller.getSnapshot().rulesEnabled, false);
-  assert.equal(controller.getSnapshot().mergeDuplicates, false);
   controller.setField("rulesEnabled", true);
+  // Retired preferences must not be reintroduced through the generic setter.
   controller.setField("mergeDuplicates", true);
+  assert.equal("mergeDuplicates" in controller.getSnapshot(), false);
   const saved = JSON.parse(
     localStorage.getItem("df-signal:reading-preferences:v5")
   );
-  assert.equal(saved.mergeDuplicates, true);
+  assert.equal("mergeDuplicates" in saved, false);
   assert.equal(saved.rulesEnabled, true);
   assert.equal(saved.aiConsentVersion, null);
 });
@@ -363,6 +364,7 @@ test("wallet connects directly to sponsored posting without DF state or a deposi
   assert.equal(sent[3].fee.paymentMethod.address, "sponsor");
   assert.equal(sent[3].fee.gasSettings.maxFeesPerGas.feePerL2Gas, 1800n);
   assert.equal(controller.getSnapshot().posts.at(-1).text, "你好，独立留言板");
+  assert.equal(controller.getSnapshot().message, "");
   assert.deepEqual(
     calls.filter(([name]) => name === "register").map(([, id]) => id),
     ["board", "sponsor"]
@@ -384,7 +386,7 @@ test("empty sponsor blocks sends without falling back to user fees; refill allow
   await controller.post();
   assert.match(
     controller.getSnapshot().actionError.message,
-    /Sponsored FPC 余额不足/
+    /Sponsored FPC has insufficient balance/
   );
   assert.equal(calls.filter(([name]) => name === "post").length, 0);
   assert.equal(controller.getSnapshot().canPost, true);
@@ -403,7 +405,10 @@ test("an unfunded sponsor prevents a partial connection but does not block publi
   assert.equal(controller.getSnapshot().connected, false);
   assert.equal(controller.getSnapshot().canPost, false);
   assert.equal(controller.getSnapshot().canRead, true);
-  assert.match(controller.getSnapshot().actionError.message, /余额不足/);
+  assert.match(
+    controller.getSnapshot().actionError.message,
+    /insufficient balance/
+  );
 });
 
 test("post failures persist across feed refresh and allow retry", async (t) => {
@@ -415,12 +420,35 @@ test("post failures persist across feed refresh and allow retry", async (t) => {
   failNextPost(new Error("24-hour post limit reached"));
   await controller.post();
   assert.equal(controller.getSnapshot().busy, false);
-  assert.equal(controller.getSnapshot().actionError.label, "匿名发帖");
+  assert.equal(controller.getSnapshot().actionError.label, "Anonymous posting");
+  assert.equal(controller.getSnapshot().message, "retry");
   await controller.refresh();
   assert.match(controller.getSnapshot().actionError.message, /24-hour/);
+  assert.equal(controller.getSnapshot().message, "retry");
   await controller.post();
   assert.equal(calls.filter(([name]) => name === "post").length, 1);
   assert.equal(controller.getSnapshot().actionError, null);
+  assert.equal(controller.getSnapshot().message, "");
+});
+
+test("confirmed posts clear the draft even when refreshing the feed fails", async (t) => {
+  const { controller, calls, node } = fixture(t);
+  await controller.initialize();
+  controller.setField("walletMode", "test");
+  await controller.connect();
+  controller.setField("message", "already published");
+  t.mock.method(node, "getPublicStorageAt", async () => {
+    throw new Error("Feed unavailable");
+  });
+  await controller.post();
+  assert.equal(calls.filter(([name]) => name === "post").length, 1);
+  assert.equal(controller.getSnapshot().message, "");
+  assert.match(
+    controller.getSnapshot().actionError.message,
+    /Feed unavailable/
+  );
+  await controller.post();
+  assert.equal(calls.filter(([name]) => name === "post").length, 1);
 });
 
 test("wrong chain prevents connection and never enables posting", async (t) => {
@@ -434,14 +462,14 @@ test("wrong chain prevents connection and never enables posting", async (t) => {
   assert.equal(controller.getSnapshot().canPost, false);
   assert.match(
     controller.getSnapshot().actionError.message,
-    /部署信息与本地链不匹配/
+    /Deployment does not match the local chain/
   );
 });
 
 test("legacy deployment fails visibly and initialization can be retried after replacement", async (t) => {
   const { controller, deployment } = fixture(t);
   deployment.kind = "legacy";
-  await assert.rejects(controller.initialize(), /旧版 DF/);
+  await assert.rejects(controller.initialize(), /Legacy DF/);
   assert.equal(controller.getSnapshot().canRead, false);
   deployment.kind = "standalone-billboard";
   await controller.initialize();
@@ -457,7 +485,7 @@ test("changed network is checked again before submitting", async (t) => {
   info.realProofs = true;
   await controller.post();
   assert.equal(calls.filter(([name]) => name === "post").length, 0);
-  assert.match(controller.getSnapshot().actionError.message, /不匹配/);
+  assert.match(controller.getSnapshot().actionError.message, /does not match/);
 });
 
 test("extension discovery, emoji confirmation and capability grants preserve the connection flow", async (t) => {
@@ -568,7 +596,7 @@ test("AI publishes labels to subscribers, reuses cache and stops when disabled",
   }
   const analyzed = async () => {
     for (let i = 0; i < 100; i++) {
-      if (controller.getSnapshot().aiStatus.startsWith("AI 已分析")) return;
+      if (controller.getSnapshot().aiStatus.startsWith("AI analyzed")) return;
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
     assert.fail(controller.getSnapshot().aiStatus);
@@ -586,7 +614,7 @@ test("AI publishes labels to subscribers, reuses cache and stops when disabled",
   controller.setAiHints(true);
   await analyzed();
   assert.equal(requests, 1);
-  assert.match(controller.getSnapshot().aiStatus, /0 条新分析/);
+  assert.match(controller.getSnapshot().aiStatus, /0 newly analyzed/);
 });
 
 test("keyword settings validate input, persist and remain independent of rules and AI", async (t) => {
@@ -759,7 +787,7 @@ test("model failures preserve posts, rules and keywords; late cancelled results 
     data: { id: instance.message.id, error: "download failed" },
   });
   await new Promise((r) => setTimeout(r, 10));
-  assert.match(controller.getSnapshot().aiStatus, /不可用/);
+  assert.match(controller.getSnapshot().aiStatus, /unavailable/);
   assert.equal(controller.getSnapshot().posts.length, 3);
   assert.equal(controller.getSnapshot().keywordEnabled, true);
   assert.equal(controller.getSnapshot().rulesEnabled, false);

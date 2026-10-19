@@ -18,7 +18,7 @@ export function loadAztecRuntime(): Promise<void> {
         };
         script.onerror = () => {
           script.remove();
-          reject(new Error(`无法加载 ${src}`));
+          reject(new Error(`Unable to load ${src}`));
         };
         document.head.append(script);
       });

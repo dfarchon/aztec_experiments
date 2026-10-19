@@ -1,50 +1,45 @@
 import { lazy, Suspense, useEffect } from "react";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
-const L1PostLabPage = lazy(() => import("./L1PostLabPage"));
 const BoardRoute = lazy(() => import("./BoardRoute"));
-const ReportPage = lazy(() =>
-  import("./ReportPage").then((module) => ({ default: module.ReportPage }))
-);
+const L1PostLabPage = lazy(() => import("./L1PostLabPage"));
 
 export function SiteRoutes() {
   const location = useLocation();
   useEffect(() => {
-    document.title = location.pathname.startsWith("/reports")
-      ? "留言板设计与测试 · Dark Forest Billboard"
-      : "Dark Forest Billboard";
+    document.title = "Billboard · DFArchon";
     if (!location.hash) window.scrollTo(0, 0);
   }, [location.pathname, location.hash]);
   return (
     <Suspense
       fallback={
         <main className="shell">
-          <p role="status">正在加载页面…</p>
+          <p role="status">Loading page…</p>
         </main>
       }
     >
       <Routes>
         <Route path="/" element={<BoardRoute />} />
-        <Route path="/l1-post-lab" element={<L1PostLabPage />} />
+        <Route path="/reports" element={<Navigate to="/" replace />} />
         <Route
           path="/fee-lab"
           element={<Navigate to="/l1-post-lab" replace />}
         />
-        <Route path="/reports" element={<ReportPage />} />
+        <Route path="/l1-post-lab" element={<L1PostLabPage />} />
         <Route
           path="/df-billboard-test.html"
           element={<Navigate to="/" replace />}
         />
         <Route
           path="/df-billboard-report.html"
-          element={<Navigate to="/reports" replace />}
+          element={<Navigate to="/" replace />}
         />
         <Route
           path="*"
           element={
             <main className="shell">
-              <h1>页面不存在</h1>
-              <Link to="/">返回留言板</Link>
+              <h1>Page not found</h1>
+              <Link to="/">Back to Billboard</Link>
             </main>
           }
         />

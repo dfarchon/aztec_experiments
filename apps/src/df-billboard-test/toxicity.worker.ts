@@ -64,7 +64,9 @@ async function classify(id, texts) {
   try {
     const model = await getModel(id);
     if (model.model.config.problem_type !== "multi_label_classification")
-      throw new Error("模型不支持预期的多标签分类");
+      throw new Error(
+        "The model does not support the expected multi-label classification"
+      );
     const results = [];
     // Short posts, one at a time: avoid padded large batches while DF is mining.
     for (const text of texts) {

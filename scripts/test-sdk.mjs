@@ -39,6 +39,26 @@ await isolated.delete();
 const browser = vm.createContext({ window: { __aztec: a }, crypto: globalThis.crypto, log: () => {} });
 vm.runInContext(fs.readFileSync(new URL('../shared/aztec-lib.js', import.meta.url), 'utf8'), browser);
 assert.equal(vm.runInContext('typeof Buffer', browser), 'undefined');
+// React opts out of the legacy indicator before any DOM or polling starts.
+const monitorRealm = vm.createContext({
+  window: { __aztec: { createAztecNodeClient: () => ({ getNodeInfo: async () => ({ l1ChainId: 31337 }) }) } },
+  log: () => {},
+});
+vm.runInContext(fs.readFileSync(new URL('../shared/aztec-lib.js', import.meta.url), 'utf8'), monitorRealm);
+monitorRealm.getNodeUrl = () => 'http://127.0.0.1:5180';
+monitorRealm.wrapWithRetry = node => node;
+monitorRealm.deriveAccountAddress = async () => ({ address: 'test' });
+let monitorStarts = 0;
+monitorRealm.startBlockMonitor = () => { monitorStarts++; };
+const stopAfterMonitor = new Error('Stop before CRS setup');
+monitorRealm.initCRS = async () => { throw stopAfterMonitor; };
+for (const blockMonitor of [false, undefined, true]) {
+  await assert.rejects(
+    monitorRealm.ensureAztecSetup({}, 'test', { secretKey: 'test', salt: '0', blockMonitor }),
+    error => error === stopAfterMonitor,
+  );
+  assert.equal(monitorStarts, blockMonitor === false ? 0 : blockMonitor === undefined ? 1 : 2);
+}
 const recipient = new a.Fr(9n), secret = new a.Fr(7n), amount = 100n, index = 2n;
 const shaField = bytes => BigInt('0x' + createHash('sha256').update(bytes).digest('hex').slice(0, 62));
 const content = shaField(Buffer.concat([

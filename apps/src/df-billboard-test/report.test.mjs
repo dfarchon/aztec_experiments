@@ -1,14 +1,7 @@
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 
-import { build } from "esbuild";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { StaticRouter } from "react-router-dom/server.js";
-
-import { createReadingReport, reportEffect } from "./report-data.ts";
+import { createReadingReport } from "./report-data.ts";
 
 function fixture() {
   const original = {
@@ -71,19 +64,6 @@ test("report derives category counts and separates promotion from discussion lab
   );
 });
 
-test("all switch combinations fold on any active rule and count each post once", () => {
-  const report = createReadingReport(fixture());
-  for (const keyword of [false, true])
-    for (const rules of [false, true])
-      for (const ai of [false, true]) {
-        const options = { keyword, rules, ai };
-        const result = reportEffect(report.rows[2], options);
-        assert.equal(result.folded, keyword || rules);
-        assert.equal(reportEffect(report.rows[3], options).folded, ai);
-        assert.equal(reportEffect(report.rows[3], options).aiFolded, ai);
-      }
-});
-
 test("incomplete, duplicated or changed evidence fails closed instead of reporting zero errors", () => {
   const input = fixture();
   input.browser.done = false;
@@ -94,79 +74,4 @@ test("incomplete, duplicated or changed evidence fails closed instead of reporti
   const duplicate = fixture();
   duplicate.browser.rows[1] = duplicate.browser.rows[0];
   assert.throws(() => createReadingReport(duplicate), /不一致/);
-});
-
-const compiled = await build({
-  stdin: {
-    contents: "export { ReportContent } from './ReportPage.tsx';",
-    resolveDir: fileURLToPath(new URL(".", import.meta.url)),
-  },
-  bundle: true,
-  platform: "node",
-  format: "cjs",
-  jsx: "automatic",
-  write: false,
-  loader: { ".css": "empty" },
-  external: ["react", "react/jsx-runtime", "react-router-dom"],
-});
-const module = { exports: {} };
-new Function("require", "module", "exports", compiled.outputFiles[0].text)(
-  createRequire(import.meta.url),
-  module,
-  module.exports
-);
-test("report covers standalone sponsored posting, test results and escaped samples without wallet controls", () => {
-  const html = renderToStaticMarkup(
-    createElement(
-      StaticRouter,
-      { location: "/reports" },
-      createElement(module.exports.ReportContent, {
-        report: createReadingReport(fixture()),
-      })
-    )
-  );
-  for (const id of [
-    "overview",
-    "flow",
-    "contract",
-    "reading",
-    "results",
-    "samples",
-    "limits",
-    "evidence",
-  ])
-    assert.match(html, new RegExp(`id="${id}"`));
-  assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
-  assert.doesNotMatch(html, /<img|id="walletMenu"|id="connect"/);
-  assert.match(html, /6 条人工编写中英文样本/);
-  assert.doesNotMatch(html, /basic-reading-v2/);
-  assert.doesNotMatch(html, /Core\.initialize_player|PlayerStorage/);
-  assert.match(html, /无需 DF 入局、无需存款/);
-  assert.match(html, /post\(text, length\)/);
-  assert.match(html, /滚动 86,400 秒内最多 10 条/);
-  assert.match(html, /Sponsored FPC/);
-  assert.match(html, /get_post_count/);
-  assert.match(html, /客户端要求 1–512 字节有效 UTF-8/);
-  assert.match(html, /中文广告 · 基础规则折叠/);
-  assert.match(html, /英文广告 · 基础规则折叠/);
-  assert.match(html, /正常聊天＋边界 · 误折叠/);
-  assert.match(html, /2\/2<\/strong><span>全部广告/);
-  assert.match(html, /1\/1<\/strong><span>英文广告/);
-  assert.match(html, /0\/3<\/strong><span>正常聊天＋边界/);
-  assert.match(html, /df-test-report.json/);
-  assert.match(html, /本页读取历史 AI 结果，不会重新推理/);
-});
-
-test("contract design remains readable when the sample report is unavailable", () => {
-  const html = renderToStaticMarkup(
-    createElement(
-      StaticRouter,
-      { location: "/reports" },
-      createElement(module.exports.ReportContent, { error: "样本不可用" })
-    )
-  );
-  assert.match(html, /合约设计/);
-  assert.match(html, /Sponsored FPC/);
-  assert.match(html, /样本不可用/);
-  assert.doesNotMatch(html, /全部广告 · 基础规则折叠/);
 });

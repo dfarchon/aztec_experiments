@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { Icon } from "./Icon";
 import { keywordMatches } from "./keywords.ts";
-import { canFoldBasicRules, groupDuplicatePosts } from "./moderation.ts";
-import { ReadingSettings } from "./ReadingSettings";
-import type { BillboardView, PostData, ViewProps } from "./types";
+import { canFoldBasicRules } from "./moderation.ts";
+import type { PostData, ViewProps } from "./types";
 
-function shouldFold(post: PostData, rulesEnabled: boolean, aiEnabled: boolean) {
+const PAGE_SIZE = 10;
+
+function isFiltered(post: PostData, rulesEnabled: boolean, aiEnabled: boolean) {
   return Boolean(
     post.keywordHits?.length ||
     (rulesEnabled && canFoldBasicRules(post)) ||
@@ -13,85 +15,22 @@ function shouldFold(post: PostData, rulesEnabled: boolean, aiEnabled: boolean) {
   );
 }
 
-function Post({
-  post,
-  rulesEnabled,
-  expanded,
-  aiEnabled,
-}: {
-  post: PostData;
-  rulesEnabled: boolean;
-  expanded: boolean;
-  aiEnabled: boolean;
-}) {
-  const folded = shouldFold(post, rulesEnabled, aiEnabled);
-  const [open, setOpen] = useState(expanded);
-  useEffect(() => setOpen(expanded), [expanded, folded]);
-  return (
-    <article data-post-id={post.id} className={folded ? "is-folded" : ""}>
-      <div className="post-meta">
-        <span>消息 #{post.id}</span>
-      </div>
-      {post.decodeError ? (
-        <div>这条链上消息无法解码为 UTF-8，已跳过内容展示。</div>
-      ) : folded ? (
-        <details
-          open={open}
-          onToggle={(event) => setOpen(event.currentTarget.open)}
-        >
-          <summary>已折叠 · 查看原文</summary>
-          <p>{post.text}</p>
-        </details>
-      ) : (
-        <div className="post-text">{post.text}</div>
-      )}
-    </article>
-  );
-}
-
-function PostGroup({
-  posts,
-  view,
-  showFolded,
-}: {
-  posts: PostData[];
-  view: BillboardView;
-  showFolded: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (showFolded) setOpen(true);
-  }, [showFolded]);
-  const props = {
-    rulesEnabled: view.rulesEnabled,
-    expanded: showFolded,
-    aiEnabled: view.aiHints,
-  };
-  return (
-    <li className="post-group">
-      <Post post={posts[0]} {...props} />
-      {posts.length > 1 && (
-        <details
-          className="duplicates"
-          open={open}
-          onToggle={(event) => setOpen(event.currentTarget.open)}
-        >
-          <summary>另有 {posts.length - 1} 条相同消息 · 展开原文</summary>
-          <ul>
-            {posts.slice(1).map((post) => (
-              <li key={post.id}>
-                <Post post={post} {...props} />
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-    </li>
-  );
+export function pageNumbers(current: number, total: number) {
+  const numbers = new Set([1, total, current - 1, current, current + 1]);
+  return [...numbers]
+    .filter((page) => page >= 1 && page <= total)
+    .sort((a, b) => a - b);
 }
 
 export function Feed({ view, controller }: ViewProps) {
-  const [showFolded, setShowFolded] = useState(false);
+  const [filteredView, setFilteredView] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [order, setOrder] = useState("newest");
+  const [page, setPage] = useState(1);
+  // Freeze the available IDs while browsing older pages, not the live feed itself.
+  const [ceiling, setCeiling] = useState<number | null>(null);
+  const root = useRef<HTMLElement>(null);
   const posts = view.posts.map((post) => ({
     ...post,
     keywordHits:
@@ -99,73 +38,241 @@ export function Feed({ view, controller }: ViewProps) {
         ? keywordMatches(post.text, view.keywords, view.keywordMode)
         : [],
   }));
-  const groups = groupDuplicatePosts(posts, view.mergeDuplicates);
-  const folded = posts.filter((post) =>
-    shouldFold(post, view.rulesEnabled, view.aiHints)
+  const filteredCount = posts.filter((post) =>
+    isFiltered(post, view.rulesEnabled, view.aiHints)
   ).length;
-  useEffect(
-    () => setShowFolded(false),
-    [
-      view.keywordEnabled,
-      view.keywords,
-      view.keywordMode,
-      view.rulesEnabled,
-      view.aiHints,
-    ]
-  );
+  const matching = posts
+    .filter(
+      (post) =>
+        (ceiling === null || Number(post.id) <= ceiling) &&
+        isFiltered(post, view.rulesEnabled, view.aiHints) === filteredView &&
+        `${post.id} ${post.text || ""}`
+          .toLocaleLowerCase()
+          .includes(query.trim().toLocaleLowerCase())
+    )
+    .sort((a, b) =>
+      order === "newest"
+        ? Number(b.id) - Number(a.id)
+        : Number(a.id) - Number(b.id)
+    );
+  const totalPages = Math.max(1, Math.ceil(matching.length / PAGE_SIZE));
+  const current = Math.min(page, totalPages);
+  const offset = (current - 1) * PAGE_SIZE;
+  const numbers = pageNumbers(current, totalPages);
+
+  function resetPage() {
+    setPage(1);
+    setCeiling(null);
+  }
+  function navigate(next: number) {
+    setPage(next);
+    setCeiling(
+      next === 1
+        ? null
+        : (ceiling ?? Math.max(...posts.map((post) => Number(post.id))))
+    );
+    root.current?.querySelector(".feed-scroll")?.scrollTo({ top: 0 });
+  }
+  useEffect(() => {
+    resetPage();
+    setFilteredView(false);
+  }, [
+    view.keywordEnabled,
+    view.keywords,
+    view.keywordMode,
+    view.rulesEnabled,
+    view.aiHints,
+  ]);
+
   return (
-    <section className="card feed-card">
-      <div className="card-head">
-        <h2>公开消息</h2>
-        <button
-          id="refresh"
-          type="button"
-          disabled={view.busy || !view.canRead}
-          onClick={controller.refresh}
+    <section className="card feed-card" ref={root}>
+      <div className="feed-heading">
+        <div className="card-head">
+          <h1>
+            {filteredView ? "Filtered posts" : "Public board"}
+            <span className="count-badge">
+              {view.feedLoaded
+                ? filteredView
+                  ? filteredCount
+                  : posts.length - filteredCount
+                : "—"}
+            </span>
+          </h1>
+          <div className="feed-toolbar">
+            {(filteredCount > 0 || filteredView) && (
+              <button
+                id="showFiltered"
+                type="button"
+                aria-pressed={filteredView}
+                onClick={() => {
+                  setFilteredView((value) => !value);
+                  resetPage();
+                }}
+              >
+                {filteredView ? "← All posts" : `Filtered (${filteredCount})`}
+              </button>
+            )}
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Search and sort posts"
+              title="Search and sort posts"
+              aria-expanded={searchOpen}
+              aria-controls="feedSearch"
+              onClick={() => {
+                setSearchOpen((value) => !value);
+                if (searchOpen) {
+                  setQuery("");
+                  setOrder("newest");
+                  resetPage();
+                }
+              }}
+            >
+              <Icon name="search" />
+            </button>
+            <button
+              id="refresh"
+              type="button"
+              className="icon-button"
+              aria-label="Refresh posts"
+              title="Refresh posts"
+              disabled={view.busy || !view.canRead}
+              onClick={controller.refresh}
+            >
+              <Icon name="refresh" />
+            </button>
+          </div>
+        </div>
+        <div id="feedSearch" className="feed-search" hidden={!searchOpen}>
+          <label className="search-field">
+            <Icon name="search" />
+            <span className="sr-only">Search loaded posts</span>
+            <input
+              type="search"
+              value={query}
+              placeholder="Search loaded posts…"
+              onChange={(event) => {
+                setQuery(event.target.value);
+                resetPage();
+              }}
+            />
+          </label>
+          <select
+            aria-label="Sort posts"
+            value={order}
+            onChange={(event) => {
+              setOrder(event.target.value);
+              resetPage();
+            }}
+          >
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+          </select>
+        </div>
+      </div>
+      <div
+        className="feed-scroll"
+        tabIndex={0}
+        role="region"
+        aria-label="Posts"
+      >
+        <div
+          id="filterStatus"
+          className="sr-only"
+          role="status"
+          aria-live="polite"
         >
-          刷新消息
-        </button>
-      </div>
-      <ReadingSettings view={view} controller={controller} />
-      <div className="feed-controls" aria-label="本地内容过滤设置">
-        <label>
-          <input
-            id="mergeDuplicates"
-            type="checkbox"
-            disabled={view.busy}
-            checked={view.mergeDuplicates}
-            onChange={(event) =>
-              controller.setField("mergeDuplicates", event.target.checked)
-            }
-          />
-          合并重复消息
-        </label>
-        <button
-          id="showFolded"
-          type="button"
-          disabled={view.busy || !folded}
-          onClick={() => setShowFolded((value) => !value)}
+          {view.feedLoaded
+            ? `${posts.length} posts · ${filteredCount} filtered · Page ${current} of ${totalPages}`
+            : "Waiting to load public posts"}
+        </div>
+        {view.feedLoaded && matching.length === 0 && (
+          <div className="empty-state">
+            <h2>
+              {query
+                ? "No matching posts"
+                : filteredView
+                  ? "No filtered posts"
+                  : posts.length
+                    ? "No visible posts"
+                    : "No posts yet"}
+            </h2>
+            {query && (
+              <button
+                onClick={() => {
+                  setQuery("");
+                  resetPage();
+                }}
+              >
+                Clear search
+              </button>
+            )}
+          </div>
+        )}
+        {!view.feedLoaded && (
+          <div className="empty-state" role="status">
+            <p>
+              {view.canRead ? "Loading posts…" : "Connecting to the board…"}
+            </p>
+          </div>
+        )}
+        <ol
+          id="feed"
+          aria-label={filteredView ? "Filtered posts" : "Public posts"}
+          start={offset + 1}
         >
-          {showFolded && folded
-            ? "收起已折叠内容"
-            : `查看已折叠内容 (${folded})`}
-        </button>
+          {matching.slice(offset, offset + PAGE_SIZE).map((post) => (
+            <li className="post-row" key={post.id}>
+              <article data-post-id={post.id}>
+                <span className="post-number">#{post.id}</span>
+                <div className="post-text">
+                  {post.decodeError
+                    ? "This onchain message could not be decoded as UTF-8."
+                    : post.text}
+                </div>
+              </article>
+            </li>
+          ))}
+        </ol>
       </div>
-      <div id="filterStatus" role="status" aria-live="polite">
-        {view.feedLoaded
-          ? `${view.posts.length} 条消息 · ${folded} 条折叠`
-          : "等待读取公开消息"}
-      </div>
-      <ol id="feed">
-        {groups.map((posts) => (
-          <PostGroup
-            key={posts[0].id}
-            posts={posts}
-            view={view}
-            showFolded={showFolded}
-          />
-        ))}
-      </ol>
+      {view.feedLoaded && matching.length > 0 && (
+        <div className="feed-footer">
+          <span className="page-range">
+            {offset + 1}–{Math.min(offset + PAGE_SIZE, matching.length)} /{" "}
+            {matching.length}
+          </span>
+          <nav className="feed-pagination" aria-label="Post pagination">
+            <button
+              disabled={current === 1}
+              onClick={() => navigate(current - 1)}
+              aria-label="Previous page"
+            >
+              ←
+            </button>
+            {numbers.map((number, index) => (
+              <span className="page-slot" key={number}>
+                {index > 0 && number - numbers[index - 1] > 1 && (
+                  <span className="page-gap">…</span>
+                )}
+                <button
+                  aria-label={`Page ${number}`}
+                  aria-current={number === current ? "page" : undefined}
+                  onClick={() => navigate(number)}
+                >
+                  {number}
+                </button>
+              </span>
+            ))}
+            <button
+              disabled={current === totalPages}
+              onClick={() => navigate(current + 1)}
+              aria-label="Next page"
+            >
+              →
+            </button>
+          </nav>
+        </div>
+      )}
     </section>
   );
 }

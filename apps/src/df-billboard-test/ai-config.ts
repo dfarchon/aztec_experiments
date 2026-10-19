@@ -21,7 +21,8 @@ export const AI_CATEGORY_THRESHOLDS = {
 };
 
 export function safetyResult(predictions: { label: string; score: number }[]) {
-  if (!Array.isArray(predictions)) throw new Error("模型返回格式不正确");
+  if (!Array.isArray(predictions))
+    throw new Error("Unexpected model response format");
   const scores = Object.fromEntries(
     predictions.map(({ label, score }) => [label, score])
   );
@@ -31,7 +32,7 @@ export function safetyResult(predictions: { label: string; score: number }[]) {
       scores[label] < 0 ||
       scores[label] > 1
     )
-      throw new Error("模型分类分数不完整");
+      throw new Error("Incomplete model classification scores");
   }
   const flagged = scores.unsafe >= 0.5;
   const labels = flagged

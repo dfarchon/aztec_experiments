@@ -1,4 +1,23 @@
-# Billboard — Anonymous Message Board on Aztec
+# DFArchon Billboard
+
+The current independent billboard lives in `df-billboard/` and
+`apps/src/df-billboard-test/`. Its React client provides a public feed, sponsored
+Aztec posting, personal reading preferences and optional Ethereum publication.
+
+**[Current product design, setup and test results → df-billboard/README.md](df-billboard/README.md)**
+
+The former `/reports` web page has moved to that README. The local
+`/l1-post-lab` route verifies per-post MetaMask L1 gas payment with sponsored
+L2 execution, without prepayment. It uses a separate deployment from the homepage.
+
+## Original upstream experiment (historical reference)
+
+The remainder of this file documents the original deposit-and-censor prototype,
+not the independent DFBillboard client. Its deployment addresses, validation
+claims and privacy descriptions must not be treated as verification of the
+current fork.
+
+### Billboard — Anonymous Message Board on Aztec
 
 An anonymous billboard on Aztec v5 mainnet. Users deposit ETH on L1, post messages anonymously on L2, and withdraw their ETH back to L1. Posts are fully anonymous — no sender address appears in public call data, and there is no link to the L1 deposit.
 

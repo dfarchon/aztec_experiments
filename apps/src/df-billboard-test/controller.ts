@@ -57,8 +57,8 @@ export function createBillboardController(deps = {}): BillboardController {
     deployment: null,
     progress: null,
     actionError: null,
-    localStatus: "等待初始化本地钱包",
-    extensionStatus: "等待连接 Azguard",
+    localStatus: "Browser wallet not initialized",
+    extensionStatus: "Waiting to connect Azguard",
     copied: false,
     message: "",
     publishToL1: false,
@@ -66,9 +66,8 @@ export function createBillboardController(deps = {}): BillboardController {
     logs: [],
     posts: [],
     feedLoaded: false,
-    mergeDuplicates: true,
     aiHints: false,
-    aiStatus: "AI 折叠未启用",
+    aiStatus: "AI filtering is off",
     rulesEnabled: false,
     keywordEnabled: false,
     keywords: [],
@@ -92,7 +91,7 @@ export function createBillboardController(deps = {}): BillboardController {
           id: ++logId,
           message: String(message),
           type,
-          time: new Date().toLocaleTimeString(),
+          time: new Date().toLocaleTimeString("en-GB"),
         },
       ],
     });
@@ -128,7 +127,6 @@ export function createBillboardController(deps = {}): BillboardController {
       localStorage.setItem(
         preferencesKey,
         JSON.stringify({
-          mergeDuplicates: view.mergeDuplicates,
           rulesEnabled: view.rulesEnabled,
           keywordEnabled: view.keywordEnabled,
           keywords: view.keywords,
@@ -151,13 +149,13 @@ export function createBillboardController(deps = {}): BillboardController {
         failed: false,
         total: determinate ? total : 1,
         value: determinate ? Math.min(Math.max(step, 0), total) : undefined,
-        count: determinate ? `${step}/${total}` : "进行中",
+        count: determinate ? `${step}/${total}` : "In progress",
       },
     });
   }
   function finishProgress(label, succeeded) {
     showProgress(
-      `${label}${succeeded ? "已完成" : "失败"}`,
+      `${label}${succeeded ? " completed" : " failed"}`,
       succeeded ? 1 : 0,
       1
     );
@@ -235,7 +233,7 @@ export function createBillboardController(deps = {}): BillboardController {
       salt,
       signingKey,
       address: derived.address.toString(),
-      label: view.accountLabel.trim() || "本地账号",
+      label: view.accountLabel.trim() || "Browser account",
       createdAt: Date.now(),
     };
   }
@@ -244,23 +242,23 @@ export function createBillboardController(deps = {}): BillboardController {
     patch({ walletOpen: open });
   }
 
-  function fail(error, label = "操作") {
+  function fail(error, label = "Operation") {
     const message = error?.message || String(error);
     const guidance = message.includes("Timestamp too old")
-      ? "本地链空闲后区块时间可能过旧。请在项目终端运行 node scripts/sync-df-clock.mjs --watch，等待同步完成后重试。不要清除钱包或重置链。"
+      ? "The local chain timestamp may be stale after inactivity. Run node scripts/sync-df-clock.mjs --watch in the project terminal, wait for synchronization, then retry. Do not clear your wallet or reset the chain."
       : /fetch|connect|network/i.test(message)
-        ? "检查本地 Aztec 节点和钱包所选网络；恢复连接后再试。"
-        : "请查看下方原始错误及运行记录。若已提交交易，先核对消息列表和交易回执再重试。";
+        ? "Check the local Aztec node and the network selected in your wallet, then retry."
+        : "Check the error details and activity log below. If a transaction was submitted, check the post list and receipt before retrying.";
     patch({ actionError: { label, message, guidance } });
     log(message, "error", "log");
     console.error(error);
   }
-  async function action(fn, label = "操作") {
+  async function action(fn, label = "Operation") {
     if (busy) return;
     busy = true;
     // Refreshing the feed must not erase an unrelated transaction error.
     if (view.actionError?.label === label) patch({ actionError: null });
-    if (label === "匿名发帖") pauseAiHints();
+    if (label === "Anonymous posting") pauseAiHints();
     let succeeded = false;
     showProgress(`${label}…`);
     publishSession();
@@ -295,14 +293,16 @@ export function createBillboardController(deps = {}): BillboardController {
   function ensureLocal(url) {
     const parsed = new URL(url);
     if (!["127.0.0.1", "localhost"].includes(parsed.hostname))
-      throw new Error("仅允许连接本地 Aztec 节点");
+      throw new Error("Only local Aztec nodes are supported");
     if (!["127.0.0.1", "localhost"].includes(location.hostname))
-      throw new Error("测试页必须从 localhost 打开");
+      throw new Error("Open this test page from localhost");
   }
   async function readArtifact(name) {
     const response = await fetch(`/df-${name}-artifact.json`);
     if (!response.ok)
-      throw new Error(`缺少 ${name} 合约产物，请重新构建测试页`);
+      throw new Error(
+        `Missing ${name} contract artifact. Rebuild the test site.`
+      );
     return A().loadContractArtifact(await response.json());
   }
   async function attachContract(name, address) {
@@ -317,7 +317,9 @@ export function createBillboardController(deps = {}): BillboardController {
           })
         : await state.aztecNode.getContract(addr);
     if (!instance || instance.address.toString() !== addr.toString()) {
-      throw new Error(`${name} 尚未部署在当前本地链或地址不一致`);
+      throw new Error(
+        `${name} is not deployed on this local chain or its address does not match`
+      );
     }
     if (state.pxe) {
       await state.pxe.registerContractClass(artifact);
@@ -340,10 +342,6 @@ export function createBillboardController(deps = {}): BillboardController {
           "{}"
       );
       patch({
-        mergeDuplicates:
-          typeof preferences.mergeDuplicates === "boolean"
-            ? preferences.mergeDuplicates
-            : true,
         // The old promotion switch never silently opts users into broader rules.
         rulesEnabled: Boolean(current && preferences.rulesEnabled === true),
         keywordEnabled: preferences.keywordEnabled === true,
@@ -359,7 +357,8 @@ export function createBillboardController(deps = {}): BillboardController {
           preferences.aiConsentVersion === AI_MODEL_VERSION
         ),
       });
-      if (view.aiHints) patch({ aiStatus: "AI 已启用，等待读取公开消息。" });
+      if (view.aiHints)
+        patch({ aiStatus: "AI enabled. Waiting to load public posts." });
       try {
         patch({
           keywords: parseKeywords(
@@ -369,14 +368,19 @@ export function createBillboardController(deps = {}): BillboardController {
           ),
         });
       } catch {
-        patch({ keywords: [], keywordError: "保存的词表无效，请重新填写" });
+        patch({
+          keywords: [],
+          keywordError: "The saved keyword list is invalid. Enter it again.",
+        });
       }
     } catch {
       /* Unavailable or malformed storage must not block wallet setup. */
     }
     const response = await fetch("/df-local.json", { cache: "no-store" });
     if (!response.ok)
-      throw new Error("未找到本地部署。请先运行 npm run deploy:df:harness");
+      throw new Error(
+        "No local deployment found. Run npm run deploy:df:harness first."
+      );
     deployment = await response.json();
     ensureLocal(deployment.nodeUrl);
     if (
@@ -384,11 +388,11 @@ export function createBillboardController(deps = {}): BillboardController {
       deployment.schemaVersion !== 1
     )
       throw new Error(
-        "部署配置仍是旧版 DF 留言板；请运行 npm run deploy:df:harness"
+        "Legacy DF deployment configuration. Run npm run deploy:df:harness."
       );
     if (!deployment.sponsoredFpc)
       throw new Error(
-        "本地部署缺少 Sponsor FPC；请重新运行 npm run deploy:df:harness"
+        "Local deployment is missing Sponsored FPC. Run npm run deploy:df:harness again."
       );
     const accountResponse = await fetch("/df-local-accounts.json", {
       cache: "no-store",
@@ -419,7 +423,7 @@ export function createBillboardController(deps = {}): BillboardController {
       instance.currentContractClassId.toString() !== deployment.boardClassId
     )
       throw new Error(
-        "留言板部署或合约版本不匹配，请重新运行 npm run deploy:df:harness"
+        "Billboard deployment or contract version mismatch. Run npm run deploy:df:harness again."
       );
     patch({ canRead: true });
     if (deployment.l1) {
@@ -429,7 +433,10 @@ export function createBillboardController(deps = {}): BillboardController {
           const abiType = boardArtifact.outputs.structs.events.find((event) =>
             event.path.endsWith("::L1PostQueued")
           );
-          if (!abiType) throw new Error("留言板缺少 L1 事件，请重新部署。");
+          if (!abiType)
+            throw new Error(
+              "Billboard artifact is missing the L1 event. Redeploy the contract."
+            );
           const found = await a.getPublicEvents(
             publicNode,
             {
@@ -447,7 +454,9 @@ export function createBillboardController(deps = {}): BillboardController {
             }
           );
           if (found.events.length !== 1)
-            throw new Error("未找到本次交易对应的 L1 帖子事件。");
+            throw new Error(
+              "No matching L1 post event found for this transaction."
+            );
           const event = found.events[0].event;
           const content = new a.Fr(BigInt(event.content)).toString();
           const leaf = l1MessageLeaf(
@@ -462,7 +471,10 @@ export function createBillboardController(deps = {}): BillboardController {
           const index = effect.data.l2ToL1Msgs.findIndex(
             (message) => message.toString() === leaf
           );
-          if (index < 0) throw new Error("跨链消息与目标接收合约不匹配。");
+          if (index < 0)
+            throw new Error(
+              "Cross-chain message does not match the receiver contract."
+            );
           return { id: event.id.toString(), leaf, index };
         },
         witness: async (hash, leaf, index) => {
@@ -519,7 +531,9 @@ export function createBillboardController(deps = {}): BillboardController {
       info.realProofs !== false ||
       l1.rollupAddress.toString() !== deployment.rollupAddress
     ) {
-      throw new Error("部署信息与本地链不匹配，请重新部署测试合约");
+      throw new Error(
+        "Deployment does not match the local chain. Redeploy the test contracts."
+      );
     }
     return info;
   }
@@ -531,16 +545,16 @@ export function createBillboardController(deps = {}): BillboardController {
     );
     if (balance <= 0n)
       throw new Error(
-        "Sponsored FPC 余额不足，请充值代付合约后重试；不会扣除用户余额"
+        "Sponsored FPC has insufficient balance. Fund the sponsor contract and retry; your balance will not be charged."
       );
   }
 
   async function finishConnect(label) {
-    showProgress("校验本地链并加载留言板…", 0, 2);
+    showProgress("Checking the local chain and loading Billboard…", 0, 2);
     await checkChain();
     contracts = {};
     contracts.board = await attachContract("board", deployment.board);
-    showProgress("加载 Sponsored FPC…", 1, 2);
+    showProgress("Loading Sponsored FPC…", 1, 2);
     contracts.sponsor = await attachContract(
       "sponsor",
       deployment.sponsoredFpc
@@ -549,10 +563,10 @@ export function createBillboardController(deps = {}): BillboardController {
     state.feePaymentMethod = new (A().SponsoredFeePaymentMethod)(
       A().AztecAddress.fromStringUnsafe(deployment.sponsoredFpc)
     );
-    showProgress("留言板及代付合约已就绪", 2, 2);
+    showProgress("Billboard and sponsor contract ready", 2, 2);
     publishSession();
     log(
-      `已连接 ${label}，可以直接匿名发帖。L2 gas 由 Sponsored FPC 代付。`,
+      `Connected ${label}. Anonymous posting is ready, with L2 gas paid by Sponsored FPC.`,
       "success"
     );
     setWalletPanel(false);
@@ -561,8 +575,9 @@ export function createBillboardController(deps = {}): BillboardController {
 
   async function readImportedAccount() {
     const file = view.accountFile;
-    if (!file) throw new Error("请选择 Aztec 账号 JSON 备份");
-    if (file.size > 64 * 1024) throw new Error("账号文件过大");
+    if (!file) throw new Error("Select an Aztec account JSON backup");
+    if (file.size > 64 * 1024)
+      throw new Error("Account backup file is too large");
     const account = JSON.parse(await file.text());
     if (
       !account ||
@@ -572,7 +587,7 @@ export function createBillboardController(deps = {}): BillboardController {
       )
     ) {
       throw new Error(
-        "账号备份需要 secretKey、salt、signingKey、address 四个字段"
+        "Account backup requires secretKey, salt, signingKey and address fields"
       );
     }
     if (
@@ -581,7 +596,7 @@ export function createBillboardController(deps = {}): BillboardController {
       !/^(0x)?[\da-f]{1,64}$/i.test(account.signingKey) ||
       !/^0x[\da-f]{64}$/i.test(account.address)
     ) {
-      throw new Error("账号密钥或 salt 格式无效");
+      throw new Error("Invalid account key or salt format");
     }
     return account;
   }
@@ -589,7 +604,7 @@ export function createBillboardController(deps = {}): BillboardController {
   async function connectLocal() {
     const a = A();
     const mode = view.walletMode;
-    showProgress("准备本地 Aztec 账号…");
+    showProgress("Preparing the browser Aztec account…");
     const account =
       mode === "create"
         ? await createLocalAccount()
@@ -600,7 +615,7 @@ export function createBillboardController(deps = {}): BillboardController {
                 (item) => item.address === view.savedAccount
               )
             : accounts[Number(view.account)];
-    if (!account) throw new Error("无效测试账号");
+    if (!account) throw new Error("Invalid test account");
     const signingKey = /^0x/i.test(account.signingKey)
       ? `0x${account.signingKey.slice(2)}`
       : `0x${account.signingKey}`;
@@ -613,12 +628,14 @@ export function createBillboardController(deps = {}): BillboardController {
     if (
       derived.address.toString().toLowerCase() !== account.address.toLowerCase()
     ) {
-      throw new Error("账号地址与密钥推导地址不一致");
+      throw new Error(
+        "Account address does not match the address derived from the keys"
+      );
     }
     // Persist new/imported credentials before the slower PXE setup. A failed
-    // initialization can then be retried through "已保存账号" after reloading.
+    // initialization can then be retried through "Saved accounts" after reloading.
     if (mode === "create" || mode === "import") rememberLocalAccount(account);
-    patch({ localStatus: "正在初始化本地 Aztec 钱包…" });
+    patch({ localStatus: "Initializing the browser Aztec wallet…" });
     try {
       const connected = await ensureAztecSetup(state, "log", {
         secretKey: account.secretKey,
@@ -626,29 +643,35 @@ export function createBillboardController(deps = {}): BillboardController {
         dataDirPrefix: `pxe_df_harness_${deployment.rollupAddress}_${account.address}_`,
         signingKey: signingField,
         proverEnabled: view.realProofs,
+        blockMonitor: false,
         onProgress: (step, total, message) => {
-          patch({ localStatus: `钱包初始化 ${step}/${total} · ${message}` });
-          showProgress(`钱包初始化 · ${message}`, step, total);
+          patch({
+            localStatus: `Wallet initialization ${step}/${total} · ${message}`,
+          });
+          showProgress(`Wallet initialization · ${message}`, step, total);
         },
       });
-      if (!connected) throw new Error("钱包初始化失败");
+      if (!connected) throw new Error("Wallet initialization failed");
       if (
         state.address.toString().toLowerCase() !== account.address.toLowerCase()
       ) {
-        throw new Error("本地账号地址与备份不一致");
+        throw new Error("Browser account address does not match the backup");
       }
       if (mode !== "test") {
         rememberLocalAccount(account);
         state.localAccount = account;
       }
       await finishConnect(
-        account.label || (mode === "test" ? "预置测试账号" : "Aztec 本地账号")
+        account.label ||
+          (mode === "test"
+            ? "Preconfigured test account"
+            : "Aztec browser account")
       );
       patch({
         localStatus:
           mode === "create"
-            ? "账号已创建并连接。请点击“下载账号备份”妥善保存密钥。"
-            : "本地钱包已连接。",
+            ? "Account created and connected. Use Download account backup to keep your keys safe."
+            : "Browser wallet connected.",
       });
     } finally {
       patch({ accountFile: null, fileVersion: view.fileVersion + 1 });
@@ -656,10 +679,10 @@ export function createBillboardController(deps = {}): BillboardController {
   }
 
   async function scanWallets() {
-    showProgress("扫描 Aztec 扩展钱包…");
+    showProgress("Scanning for Aztec extension wallets…");
     patch({
       extensionStatus:
-        "正在查找 Azguard；若钱包弹出网站连接请求，请在 60 秒内批准…",
+        "Looking for Azguard. If a connection request appears in your wallet, approve it within 60 seconds…",
     });
     const a = A();
     const node = a.createAztecNodeClient(deployment.nodeUrl);
@@ -702,14 +725,14 @@ export function createBillboardController(deps = {}): BillboardController {
 
     patch({
       extensionStatus: providers.length
-        ? `检测到 ${providers.map((provider) => provider.name).join("、")}；优先连接 Azguard。`
-        : "Wallet SDK 未收到 Azguard 响应。切换节点后请在钱包中重新批准本网站；再检查扩展的网站访问权限及本地 Aztec 5.0.1 兼容性。",
+        ? `Found ${providers.map((provider) => provider.name).join(", ")}. Azguard is preferred.`
+        : "No Azguard response. After switching nodes, approve this site again in your wallet. Check extension site permissions and compatibility with local Aztec 6.0.0-rc.3.",
     });
     publishSession();
     log(
       providers.length
-        ? `发现 ${providers.length} 个 Aztec 扩展钱包，请选择后连接`
-        : "Wallet SDK 未发现 Aztec 扩展钱包。可检查 Azguard 的网站访问权限和版本，或使用备用的本地钱包。",
+        ? `Found ${providers.length} Aztec extension wallets. Select one to connect.`
+        : "No Aztec extension wallets found. Check Azguard site permissions and version, or use the browser wallet.",
       providers.length ? "success" : "info",
       "log"
     );
@@ -719,10 +742,12 @@ export function createBillboardController(deps = {}): BillboardController {
     const provider = providers[Number(view.provider)];
     if (!provider)
       throw new Error(
-        "Wallet SDK 未发现 Azguard；请检查扩展对本页的访问权限和 Aztec 5.0.1 兼容性"
+        "Azguard was not found. Check extension site permissions and Aztec 6.0.0-rc.3 compatibility."
       );
-    patch({ extensionStatus: `正在请求 ${provider.name} 建立安全连接…` });
-    showProgress(`等待 ${provider.name} 建立安全连接…`);
+    patch({
+      extensionStatus: `Requesting a secure connection to ${provider.name}…`,
+    });
+    showProgress(`Waiting for a secure connection to ${provider.name}…`);
     pendingConnection = await provider.establishSecureChannel("df-billboard");
     patch({
       emoji: Array.from(
@@ -730,8 +755,14 @@ export function createBillboardController(deps = {}): BillboardController {
       ).join(" "),
     });
     patch({ verification: true });
-    patch({ extensionStatus: `请核对 ${provider.name} 中的表情后确认` });
-    log("请比对页面和钱包扩展显示的表情，再点击确认。", "info", "log");
+    patch({
+      extensionStatus: `Check the emojis in ${provider.name} before confirming`,
+    });
+    log(
+      "Compare the emojis on this page and in your wallet before confirming.",
+      "info",
+      "log"
+    );
   }
 
   function requestedCapabilities() {
@@ -778,11 +809,12 @@ export function createBillboardController(deps = {}): BillboardController {
   async function confirmExtensionConnection() {
     const provider = providers[Number(view.provider)];
     const pending = pendingConnection;
-    if (!provider || !pending) throw new Error("没有待确认的钱包连接");
+    if (!provider || !pending)
+      throw new Error("No pending wallet connection to confirm");
     pendingConnection = null;
     patch({ verification: false });
     try {
-      showProgress("等待钱包确认并授权…");
+      showProgress("Waiting for wallet approval…");
       const wallet = await pending.confirm();
       const request = requestedCapabilities();
       const grants = await wallet.requestCapabilities(request);
@@ -818,13 +850,13 @@ export function createBillboardController(deps = {}): BillboardController {
         !transactionCoverage
       ) {
         throw new Error(
-          "钱包未完整授权账号、合约注册、模拟或交易能力，无法完成留言板测试"
+          "The wallet did not grant all required account, contract registration, simulation or transaction capabilities."
         );
       }
       patch({
         grantedAccounts: accountsGranted.map((entry, index) => ({
           value: String(index),
-          label: `${entry.alias || "账号"} · ${entry.item}`,
+          label: `${entry.alias || "Account"} · ${entry.item}`,
         })),
         grantedAccount: "0",
       });
@@ -853,7 +885,9 @@ export function createBillboardController(deps = {}): BillboardController {
     pendingConnection?.cancel();
     pendingConnection = null;
     patch({ verification: false });
-    patch({ extensionStatus: "连接已取消，可以重新连接 Azguard" });
+    patch({
+      extensionStatus: "Connection cancelled. You can reconnect to Azguard.",
+    });
     publishSession();
   }
 
@@ -864,7 +898,10 @@ export function createBillboardController(deps = {}): BillboardController {
         await startExtensionConnection();
       } catch (error) {
         if (providers.length)
-          patch({ extensionStatus: "连接失败，请查看运行记录并重试" });
+          patch({
+            extensionStatus:
+              "Connection failed. Check the activity log and retry.",
+          });
         throw error;
       }
     } else {
@@ -878,7 +915,7 @@ export function createBillboardController(deps = {}): BillboardController {
         state.feePaymentMethod = null;
         contracts = null;
         patch({
-          localStatus: `连接失败：${error.message || String(error)}。可刷新页面后重试。`,
+          localStatus: `Connection failed: ${error.message || String(error)}. Reload the page to retry.`,
         });
         throw error;
       }
@@ -887,17 +924,19 @@ export function createBillboardController(deps = {}): BillboardController {
 
   async function post() {
     const from = state.address;
-    showProgress("检查消息并编码…", 0, 2);
-    const { text, length } = encodeDFMessage(view.message);
+    const message = view.message;
+    showProgress("Checking and encoding the message…", 0, 2);
+    const { text, length } = encodeDFMessage(message);
     if (!state.wallet || !contracts?.board || !state.feePaymentMethod)
-      throw new Error("请先连接 Aztec 钱包");
+      throw new Error("Connect an Aztec wallet first");
     await checkChain();
     await checkSponsorBalance();
-    showProgress("消息已编码，准备发帖交易", 1, 2);
-    showProgress("生成证明并提交匿名消息，等待链上确认…");
+    showProgress("Message encoded. Preparing the transaction.", 1, 2);
+    showProgress(
+      "Generating a proof and submitting the anonymous post. Waiting for confirmation…"
+    );
     if (view.publishToL1 && !view.l1.available)
-      throw new Error("L1 部署尚未就绪");
-    const message = view.message;
+      throw new Error("L1 deployment is not ready");
     const mirror = view.publishToL1;
     const interaction = mirror
       ? contracts.board.methods.post_to_l1(
@@ -915,12 +954,18 @@ export function createBillboardController(deps = {}): BillboardController {
       ),
     });
     if (tx.receipt.executionResult !== "success")
-      throw new Error(`发帖失败: ${tx.receipt.executionResult}`);
+      throw new Error(`Posting failed: ${tx.receipt.executionResult}`);
+    // Confirmation consumes this draft, even if the later feed refresh fails.
+    if (view.message === message) patch({ message: "" });
     if (mirror) l1Queue.add(tx.receipt.txHash.toString(), message);
-    log(`匿名消息已上链：${tx.receipt.txHash}`, "success", "log");
-    showProgress("消息已上链，更新公开列表…");
+    log(
+      `Anonymous post confirmed onchain: ${tx.receipt.txHash}`,
+      "success",
+      "log"
+    );
+    showProgress("Post confirmed. Refreshing the public feed…");
     await refresh(false);
-    showProgress("匿名发帖及列表更新完成", 2, 2);
+    showProgress("Post published and feed updated", 2, 2);
   }
 
   function publishPosts() {
@@ -947,10 +992,11 @@ export function createBillboardController(deps = {}): BillboardController {
     if (!view.aiHints) return;
     aiGeneration++;
     aiNeedsRun = true;
-    disposeAiWorker("AI 分析已暂停");
+    disposeAiWorker("AI analysis paused");
     patch({
       aiProgress: null,
-      aiStatus: "AI 分析已暂停，等待当前链上操作完成。",
+      aiStatus:
+        "AI analysis paused until the current onchain operation finishes.",
     });
   }
 
@@ -974,11 +1020,11 @@ export function createBillboardController(deps = {}): BillboardController {
             ? Math.min(100, Math.max(0, (loaded / total) * 100))
             : undefined;
         patch({
-          aiProgress: { file: String(progress.file || "模型"), percent },
+          aiProgress: { file: String(progress.file || "Model"), percent },
           aiStatus:
             progress.status === "ready"
-              ? "模型已就绪，正在本地分析…"
-              : `加载中英文模型：${progress.file || "初始化运行环境"}${percent === undefined ? "" : ` · ${percent.toFixed(0)}%`}。可随时关闭取消。`,
+              ? "Model ready. Analyzing locally…"
+              : `Loading the English/Chinese model: ${progress.file || "Initializing runtime"}${percent === undefined ? "" : ` · ${percent.toFixed(0)}%`}. Disable AI to cancel.`,
         });
         return;
       }
@@ -989,11 +1035,11 @@ export function createBillboardController(deps = {}): BillboardController {
     };
     worker.onerror = (event) => {
       if (aiWorker === worker)
-        disposeAiWorker(event.message || "AI Worker 运行失败");
+        disposeAiWorker(event.message || "AI worker failed");
     };
     worker.onmessageerror = () => {
       if (aiWorker === worker)
-        disposeAiWorker("AI Worker 返回了无法读取的数据");
+        disposeAiWorker("AI worker returned unreadable data");
     };
     aiWorker = worker;
     return worker;
@@ -1004,7 +1050,9 @@ export function createBillboardController(deps = {}): BillboardController {
       const id = ++aiRequestId;
       const timer = setTimeout(() => {
         if (aiPending.has(id))
-          disposeAiWorker("模型加载或分析超时，请关闭后重新开启 AI 折叠");
+          disposeAiWorker(
+            "Model loading or analysis timed out. Disable and re-enable AI filtering to retry."
+          );
       }, AI_REQUEST_TIMEOUT_MS);
       aiPending.set(id, { resolve, reject, timer });
       try {
@@ -1059,10 +1107,10 @@ export function createBillboardController(deps = {}): BillboardController {
       (post) => typeof post.text === "string" && post.text.trim()
     );
     if (!posts.length) {
-      patch({ aiStatus: "没有可分析的消息。" });
+      patch({ aiStatus: "No posts to analyze." });
       return;
     }
-    patch({ aiStatus: "检查本地 AI 分类缓存…" });
+    patch({ aiStatus: "Checking the local AI classification cache…" });
     const cache = readAiCache();
     const missing = [];
     try {
@@ -1093,14 +1141,14 @@ export function createBillboardController(deps = {}): BillboardController {
         if (generation !== aiGeneration) return;
         const batch = missing.slice(offset, offset + 4);
         patch({
-          aiStatus: `实验性 AI 分析中：${Math.min(offset + batch.length, missing.length)}/${missing.length} 条；首次需下载模型。`,
+          aiStatus: `Experimental AI analysis: ${Math.min(offset + batch.length, missing.length)}/${missing.length} posts. First use requires a model download.`,
         });
         const results = await classifyWithAi(
           batch.map((entry) => entry.post.text)
         );
         if (generation !== aiGeneration) return;
         if (!Array.isArray(results) || results.length !== batch.length)
-          throw new Error("AI 分类结果数量不正确");
+          throw new Error("Unexpected number of AI classification results");
         const checked = results.map((entry) =>
           safetyResult(
             Object.entries(entry.scores || {}).map(([label, score]) => ({
@@ -1122,14 +1170,14 @@ export function createBillboardController(deps = {}): BillboardController {
       }
       patch({
         aiProgress: null,
-        aiStatus: `AI 已分析 ${posts.length} 条（其中 ${missing.length} 条新分析）；命中风险的消息已折叠，未命中不代表安全。`,
+        aiStatus: `AI analyzed ${posts.length} posts (${missing.length} newly analyzed). Flagged posts move to Filtered; unflagged does not mean safe.`,
       });
     } catch (error) {
       if (generation !== aiGeneration) return;
-      disposeAiWorker("AI 分析失败");
+      disposeAiWorker("AI analysis failed");
       patch({
         aiProgress: null,
-        aiStatus: `AI 折叠不可用：${error?.message || String(error)}。未完成分析的消息保持可见；关键词和基础规则仍可使用。`,
+        aiStatus: `AI filtering unavailable: ${error?.message || String(error)}. Unreviewed posts remain visible. Keywords and basic rules still work.`,
       });
       console.error("AI classification failed", error);
     }
@@ -1138,14 +1186,15 @@ export function createBillboardController(deps = {}): BillboardController {
   async function refresh(reportProgress = true) {
     // Cancel analysis of the previous feed before replacing its post objects.
     pauseAiHints();
-    if (!publicNode || !boardArtifact) throw new Error("留言板尚未初始化");
+    if (!publicNode || !boardArtifact)
+      throw new Error("Billboard is not initialized");
     const sdk = A();
     const addr = sdk.AztecAddress.fromStringUnsafe(deployment.board);
     const layout = boardArtifact.storageLayout;
     // Read one consistent public-state snapshot; no wallet or simulation needed.
     const block = await publicNode.getBlockNumber();
     const read = (slot) => publicNode.getPublicStorageAt(block, addr, slot);
-    if (reportProgress) showProgress("读取公开消息数量…");
+    if (reportProgress) showProgress("Loading the public post count…");
     const count = Number((await read(layout.post_count.slot)).toBigInt());
     const posts = [];
     for (let id = 0; id < count; id++) {
@@ -1169,12 +1218,12 @@ export function createBillboardController(deps = {}): BillboardController {
       } catch (error) {
         posts.push({ id, decodeError: true });
         log(
-          `消息 #${id} 无法解码：${error?.message || String(error)}`,
+          `Could not decode post #${id}: ${error?.message || String(error)}`,
           "error",
           "log"
         );
       }
-      if (reportProgress) showProgress("读取公开消息…", id + 1, count);
+      if (reportProgress) showProgress("Loading public posts…", id + 1, count);
     }
     state.posts = classifyRulePosts(posts);
     publishFeed();
@@ -1182,8 +1231,9 @@ export function createBillboardController(deps = {}): BillboardController {
       if (busy) aiNeedsRun = true;
       else void runAiHints();
     }
-    if (reportProgress && count === 0) showProgress("目前没有公开消息", 1, 1);
-    log(`读取到 ${count} 条公开消息`, "info", "log");
+    if (reportProgress && count === 0)
+      showProgress("No public posts yet", 1, 1);
+    log(`Loaded ${count} public posts`, "info", "log");
   }
 
   function setField(name, value) {
@@ -1197,26 +1247,15 @@ export function createBillboardController(deps = {}): BillboardController {
       "provider",
       "message",
       "publishToL1",
-      "mergeDuplicates",
       "rulesEnabled",
       "keywordEnabled",
       "keywordMode",
     ];
-    const readingFields = [
-      "mergeDuplicates",
-      "rulesEnabled",
-      "keywordEnabled",
-      "keywordMode",
-    ];
+    const readingFields = ["rulesEnabled", "keywordEnabled", "keywordMode"];
     if (!editable.includes(name) || (busy && !readingFields.includes(name)))
       return;
     if (
-      [
-        "mergeDuplicates",
-        "rulesEnabled",
-        "keywordEnabled",
-        "publishToL1",
-      ].includes(name) &&
+      ["rulesEnabled", "keywordEnabled", "publishToL1"].includes(name) &&
       typeof value !== "boolean"
     )
       return;
@@ -1242,15 +1281,17 @@ export function createBillboardController(deps = {}): BillboardController {
     patch({
       aiHints: enabled,
       aiConsentOpen: false,
-      ...(enabled ? { aiStatus: "AI 已启用，等待读取公开消息。" } : {}),
+      ...(enabled
+        ? { aiStatus: "AI enabled. Waiting to load public posts." }
+        : {}),
     });
     savePreferences();
     if (enabled) void runAiHints();
     else {
       aiGeneration++;
       aiNeedsRun = false;
-      disposeAiWorker("AI 折叠已关闭");
-      patch({ aiProgress: null, aiStatus: "AI 折叠未启用" });
+      disposeAiWorker("AI filtering disabled");
+      patch({ aiProgress: null, aiStatus: "AI filtering is off" });
     }
   }
   function confirmAiHints() {
@@ -1283,10 +1324,10 @@ export function createBillboardController(deps = {}): BillboardController {
       if (deployment) localStorage.removeItem(aiCacheKey());
       patch({
         aiStatus:
-          "已清除本页模型缓存和本留言板分类缓存；再次开启会重新加载模型。",
+          "Model and board classification caches cleared. Enabling AI again will reload the model.",
       });
     } catch (error) {
-      patch({ aiStatus: `缓存清除未完成：${error.message}` });
+      patch({ aiStatus: `Cache clearing incomplete: ${error.message}` });
     } finally {
       patch({ aiClearing: false });
     }
@@ -1325,7 +1366,7 @@ export function createBillboardController(deps = {}): BillboardController {
     initialize: () =>
       (initializing ||= initialize().catch((error) => {
         initializing = undefined;
-        fail(error, "加载留言板");
+        fail(error, "Load Billboard");
         throw error;
       })),
     log,
@@ -1337,23 +1378,24 @@ export function createBillboardController(deps = {}): BillboardController {
     saveKeywords,
     copyAddress,
     accountBackup,
-    connect: () => action(connect, "连接钱包"),
-    scan: () => action(scanWallets, "扫描扩展钱包"),
-    confirmWallet: () => action(confirmExtensionConnection, "授权并连接钱包"),
+    connect: () => action(connect, "Connect wallet"),
+    scan: () => action(scanWallets, "Scan extension wallets"),
+    confirmWallet: () =>
+      action(confirmExtensionConnection, "Authorize and connect wallet"),
     cancelWallet: cancelExtensionConnection,
     selectGrantedAccount: (value) =>
       action(async () => {
         patch({ grantedAccount: value });
         state.address = state.grantedAccounts[Number(value)].item;
         await finishConnect(state.provider.name);
-      }, "切换钱包账号"),
-    post: () => action(post, "匿名发帖"),
+      }, "Switch wallet account"),
+    post: () => action(post, "Anonymous posting"),
     connectL1: () => l1Queue?.connect(),
     publishL1: (hash) => l1Queue?.publish(hash),
     refreshL1: () => l1Queue?.refresh(),
     proveL1: () => l1Queue?.prove(),
     fundL1: () => l1Queue?.faucet(),
-    refresh: () => action(refresh, "刷新消息"),
+    refresh: () => action(refresh, "Refresh posts"),
     dispose: () => {
       disposed = true;
       clearInterval(l1Timer);
@@ -1361,7 +1403,7 @@ export function createBillboardController(deps = {}): BillboardController {
       aiGeneration++;
       aiNeedsRun = false;
       pendingConnection?.cancel();
-      disposeAiWorker("页面已关闭");
+      disposeAiWorker("Page closed");
       clearTimeout(progressHideTimer);
       clearTimeout(copyTimer);
       listeners.clear();

@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { createReadingReport } from '../apps/src/df-billboard-test/report-data.ts';
 
-// Evidence stays outside the repository. Only the public, synthetic diagnostic
-// report is emitted into ignored apps/dist; no wallet/deployment data is copied.
+// Evidence stays outside the repository. Generate an offline report on demand,
+// independently of the product build; no wallet/deployment data is copied.
 export function buildDFReport(root, dist) {
   const directory = process.env.DF_REPORT_DOCS_DIR || path.resolve(root, '../docs');
   const files = {
@@ -28,4 +29,12 @@ export function buildDFReport(root, dist) {
     console.warn(`DF report unavailable: ${error.message}`);
   }
   fs.writeFileSync(path.join(dist, 'df-test-report.json'), JSON.stringify(report, null, 2) + '\n');
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  const directory = path.join(root, '.local/reading-report');
+  fs.mkdirSync(directory, { recursive: true });
+  buildDFReport(root, directory);
+  console.log(`Report: ${path.join(directory, 'df-test-report.json')}`);
 }

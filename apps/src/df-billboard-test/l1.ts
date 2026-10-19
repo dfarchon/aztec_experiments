@@ -90,7 +90,8 @@ export function createL1Queue(
         )
       );
     } catch {
-      view.error = "无法保存 L1 进度；请保留交易哈希，勿关闭页面。";
+      view.error =
+        "Unable to save L1 progress. Keep the transaction hash and do not close this page.";
     }
     notify();
   };
@@ -127,12 +128,15 @@ export function createL1Queue(
           apply({
             l1Tx: undefined,
             stage: "ready",
-            error: "L1 交易回退；可重试，无需重新发帖。",
+            error:
+              "L1 transaction reverted. Retry without creating a new post.",
           });
           return;
         }
         if (!(await ports.checkPublished(job)))
-          throw new Error("L1 回执成功但未找到匹配正文，请核对合约。");
+          throw new Error(
+            "L1 receipt succeeded but no matching content was found. Check the contract."
+          );
         apply({ stage: "published", error: undefined });
         return;
       }
@@ -191,7 +195,8 @@ export function createL1Queue(
               stage: job.l1Tx ? "confirming" : "waiting-proof",
             }));
       } catch {
-        view.error = "保存的 L1 记录无效，请保留交易哈希以便恢复。";
+        view.error =
+          "Saved L1 records are invalid. Keep transaction hashes for recovery.";
       }
       notify();
       await refresh();
@@ -210,7 +215,8 @@ export function createL1Queue(
       }),
     disconnect() {
       view.address = "";
-      view.error = "MetaMask 账号或网络已变化，请重新连接。";
+      view.error =
+        "MetaMask account or network changed. Reconnect to continue.";
       notify();
     },
     prove: () =>
@@ -220,14 +226,14 @@ export function createL1Queue(
       }),
     faucet: () =>
       walletAction(async () => {
-        if (!view.address) throw new Error("请先连接 MetaMask");
+        if (!view.address) throw new Error("Connect MetaMask first");
         await ports.faucet(view.address);
       }),
     publish: (tx: string) =>
       walletAction(async () => {
         const job = view.jobs.find((entry) => entry.l2Tx === tx);
         if (!job || job.stage !== "ready" || job.l1Tx) return;
-        if (!view.address) throw new Error("请先连接 MetaMask");
+        if (!view.address) throw new Error("Connect MetaMask first");
         generations.set(job.l2Tx, (generations.get(job.l2Tx) || 0) + 1);
         try {
           await ports.validate();
@@ -301,7 +307,7 @@ export async function findMetaMask(): Promise<Injected> {
   });
   if (!provider)
     throw new Error(
-      "此浏览器未发现 MetaMask，请在已安装扩展的浏览器打开本站。"
+      "MetaMask was not found. Open this site in a browser with the extension installed."
     );
   return provider;
 }
@@ -325,7 +331,7 @@ export function createL1Ports(
     config.chainId !== 31337 ||
     !["localhost", "127.0.0.1"].includes(new URL(config.rpcUrl).hostname)
   )
-    throw new Error("L1 测试只允许本地 Anvil 31337");
+    throw new Error("L1 testing requires local Anvil (31337)");
   const rpc = new JsonRpcProvider(config.rpcUrl, undefined, {
     cacheTimeout: -1,
   });
@@ -342,7 +348,9 @@ export function createL1Ports(
       BigInt(await contract.ROLLUP_VERSION()) !==
         BigInt(deployment.rollupVersion)
     )
-      throw new Error("L1 网络或接收合约不匹配，请重新部署；不会提交交易。");
+      throw new Error(
+        "L1 network or receiver contract mismatch. Redeploy before continuing; no transaction will be submitted."
+      );
   };
   const data = (job: L1Job, proof: L1Proof) =>
     iface.encodeFunctionData("publish", [
@@ -359,7 +367,7 @@ export function createL1Ports(
       if (
         (await contract.getPost(job.postId)) !== hexlify(toUtf8Bytes(job.text))
       )
-        throw new Error("L1 正文与本地待发布记录不同。");
+        throw new Error("L1 content does not match the local pending post.");
       return true;
     },
     checkReceipt: async (hash) => {
@@ -422,7 +430,7 @@ export function createL1Ports(
       injected.removeListener?.("chainChanged", changed);
       injected.on?.("accountsChanged", changed);
       injected.on?.("chainChanged", changed);
-      if (!accounts[0]) throw new Error("MetaMask 未授权账号");
+      if (!accounts[0]) throw new Error("No account authorized in MetaMask");
       return accounts[0];
     },
     send: async (job, proof, address) => {
@@ -430,13 +438,13 @@ export function createL1Ports(
         !injected ||
         (await injected.request({ method: "eth_chainId" })) !== "0x7a69"
       )
-        throw new Error("请将 MetaMask 切换到本地 Anvil 网络后重新连接。");
+        throw new Error("Switch MetaMask to local Anvil and reconnect.");
       const provider = new BrowserProvider(injected, "any", {
         cacheTimeout: -1,
       });
       const signer = await provider.getSigner();
       if ((await signer.getAddress()).toLowerCase() !== address.toLowerCase())
-        throw new Error("MetaMask 账号已变化，请重新连接。");
+        throw new Error("MetaMask account changed. Reconnect to continue.");
       const estimate = await rpc.estimateGas({
         to: config.publisher,
         from: address,
@@ -447,7 +455,9 @@ export function createL1Ports(
         (await rpc.getBalance(address)) <
         estimate * (fee.maxFeePerGas ?? fee.gasPrice ?? 0n)
       )
-        throw new Error("本地 ETH 不足，请领取本地测试 ETH。");
+        throw new Error(
+          "Insufficient local ETH. Get local test ETH to continue."
+        );
       const tx = await signer.sendTransaction({
         to: config.publisher,
         data: data(job, proof),

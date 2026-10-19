@@ -5,34 +5,27 @@ import {
   canFoldBasicRules,
   canFoldPromotion,
   classifyRulePosts,
-  groupDuplicatePosts,
   hasContactSignal,
   isPromotion,
   normalizeMessage,
 } from "./moderation.ts";
 
-test("grouping normalization preserves case, unicode forms and word boundaries", () => {
+test("repetition normalization preserves case, unicode forms and word boundaries", () => {
   assert.equal(
     normalizeMessage(" Ｈｅｌｌｏ\u200b  DF "),
     "Ｈｅｌｌｏ\u200b DF"
   );
   assert.equal(normalizeMessage("one\r\ntwo"), "one\ntwo");
+  assert.equal(normalizeMessage(" Hello   DF "), "Hello DF");
 });
 
-test("repeated links are grouped without labeling them as advertisements", () => {
+test("repeated links are not labeled as advertisements", () => {
   const posts = [1, 2, 3].map((id) => ({
     id,
     text: "加入 https://example.com 看看",
   }));
   const classified = classifyRulePosts(posts);
   assert.ok(classified.every((post) => post.adReasons.length === 0));
-  assert.deepEqual(
-    groupDuplicatePosts(classified).map((group) =>
-      group.map((post) => post.id)
-    ),
-    [[1, 2, 3]]
-  );
-  assert.equal(groupDuplicatePosts(classified, false).length, 3);
 });
 
 test("repeated game chatter and unique links stay visible", () => {
@@ -60,27 +53,16 @@ test("malformed and empty messages do not break classification", () => {
   assert.ok(
     classifyRulePosts(posts).every((post) => post.adReasons.length === 0)
   );
-  assert.equal(groupDuplicatePosts(posts).length, 3);
   assert.deepEqual(posts[0], { id: 0, decodeError: true });
 });
 
-test("normalized repetitions are counted without changing the original text", () => {
+test("neutral variants stay visible without changing the original text", () => {
   const posts = [
     { id: 0, text: "加微信一起玩 DF" },
     { id: 1, text: "加微信一起玩 df" },
     { id: 2, text: "加微\u200b信一起玩 ＤＦ" },
   ];
   const classified = classifyRulePosts(posts);
-  assert.deepEqual(
-    groupDuplicatePosts(classified).map((group) =>
-      group.map((post) => post.id)
-    ),
-    [[0], [1], [2]]
-  );
-  assert.deepEqual(
-    classified.map((post) => post.similarTo),
-    [null, 0, 0]
-  );
   assert.ok(classified.every((post) => !post.adReasons.length));
   assert.equal(classified[2].text, posts[2].text);
   assert.equal(posts[2].adReasons, undefined);
@@ -115,21 +97,6 @@ test("promotional wording AND contact are required, including full-width and hom
   );
 });
 
-test("grouping preserves originals and labels and never merges similar but different messages", () => {
-  const posts = [
-    { id: 1, text: "Hello DF", aiLabels: ["insult"] },
-    { id: 2, text: "hello\u200b ＤＦ" },
-    { id: 3, text: "Hello DF!" },
-    { id: 4, text: "Hello DF", decodeError: true },
-  ];
-  assert.deepEqual(
-    groupDuplicatePosts(posts).map((group) => group.map((post) => post.id)),
-    [[1], [2], [3], [4]]
-  );
-  assert.equal(groupDuplicatePosts(posts)[0][0], posts[0]);
-  assert.deepEqual(posts[0].aiLabels, ["insult"]);
-});
-
 test("additional examples separate game purchasing and neutral contacts from sales pitches", () => {
   const examples = [
     ["Where can I buy a ship? Guide: https://example.invalid/ships", false],
@@ -147,7 +114,7 @@ test("additional examples separate game purchasing and neutral contacts from sal
     );
   }
 });
-test("known semantic collisions never merge but can receive a possible-duplicate hint", () => {
+test("similar-looking messages retain their text and stay visible", () => {
   for (const [a, b] of [
     ["Meet now here", "Meet nowhere"],
     ["Please re sign this", "Please resign this"],
@@ -158,14 +125,12 @@ test("known semantic collisions never merge but can receive a possible-duplicate
       { id: 0, text: a },
       { id: 1, text: b },
     ]);
-    assert.equal(groupDuplicatePosts(posts).length, 2);
-    assert.equal(posts[1].similarTo, 0);
+    assert.deepEqual(
+      posts.map((post) => post.text),
+      [a, b]
+    );
+    assert.ok(posts.every((post) => !post.adReasons.length));
   }
-  const posts = [
-    { id: 0, text: "Hello   DF" },
-    { id: 1, text: " Hello DF " },
-  ];
-  assert.equal(groupDuplicatePosts(posts).length, 1);
 });
 
 test("context, policy, weak evidence and strong offers have distinct folding eligibility", () => {
