@@ -1,3 +1,5 @@
+import type { L1View } from "./l1";
+
 export type KeywordMode = "contains" | "word";
 export type RuleCategory =
   | "promotion"
@@ -34,12 +36,14 @@ export interface EditableFields {
   realProofs: boolean;
   provider: string;
   message: string;
+  publishToL1: boolean;
   mergeDuplicates: boolean;
   rulesEnabled: boolean;
   keywordEnabled: boolean;
   keywordMode: KeywordMode;
 }
 export interface BillboardView extends EditableFields {
+  l1: L1View;
   busy: boolean;
   connected: boolean;
   address: string;
@@ -60,6 +64,7 @@ export interface BillboardView extends EditableFields {
     nodeUrl: string;
     board: string;
     sponsoredFpc: string;
+    l1?: { rpcUrl: string; publisher: string };
   } | null;
   progress: Progress | null;
   actionError: { label: string; message: string; guidance: string } | null;
@@ -101,6 +106,11 @@ export interface BillboardController {
   cancelWallet(): void;
   selectGrantedAccount(value: string): Promise<void>;
   post(): Promise<void>;
+  connectL1(): Promise<void>;
+  publishL1(hash: string): Promise<void>;
+  refreshL1(): Promise<void>;
+  proveL1(): Promise<void>;
+  fundL1(): Promise<void>;
   refresh(): Promise<void>;
 }
 export interface ViewProps {

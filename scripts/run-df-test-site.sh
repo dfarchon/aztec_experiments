@@ -40,6 +40,7 @@ node_ready() {
 
 echo 'Building standalone billboard contract and test page...'
 npm run build:df
+npm run build:df:l1
 npm run build:sdk
 npm run build:df:harness
 

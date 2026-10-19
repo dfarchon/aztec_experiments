@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { Feed } from "./Feed";
 import { Hint } from "./Hint";
+import { L1Panel } from "./L1Panel";
 import type {
   BillboardController,
   BillboardView,
@@ -53,9 +54,11 @@ function DebugPanel({ view }: { view: BillboardView }) {
             <div className="debug-pair" key={key}>
               <dt>{label}</dt>
               <dd id={id}>
-                {view.deployment?.[
-                  key as keyof NonNullable<BillboardView["deployment"]>
-                ] || "加载中…"}
+                {String(
+                  view.deployment?.[
+                    key as keyof NonNullable<BillboardView["deployment"]>
+                  ] || "加载中…"
+                )}
               </dd>
             </div>
           ))}
@@ -202,8 +205,25 @@ export function App({ controller }: { controller: BillboardController }) {
                 发布消息
               </button>
             </div>
+            <label className="l1-choice" htmlFor="publishToL1">
+              <input
+                id="publishToL1"
+                type="checkbox"
+                checked={view.publishToL1 || false}
+                disabled={view.busy || !view.l1?.available}
+                onChange={(event) =>
+                  controller.setField("publishToL1", event.target.checked)
+                }
+              />
+              同时发布到 L1
+              <Hint label="跨链费用">
+                先发到 L2，再等待证明。L1 提交由 MetaMask 支付
+                gas；付款地址公开。
+              </Hint>
+            </label>
           </section>
         </div>
+        <L1Panel view={view} controller={controller} />
         <Feed view={view} controller={controller} />
         <DebugPanel view={view} />
       </main>

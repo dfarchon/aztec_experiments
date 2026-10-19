@@ -14,7 +14,7 @@ import { classifyRulePosts } from "./moderation.ts";
 const compiled = await build({
   stdin: {
     contents:
-      "export { App } from './App.tsx'; export { Feed } from './Feed.tsx';",
+      "export { App } from './App.tsx'; export { Feed } from './Feed.tsx'; export { L1Panel } from './L1Panel.tsx';",
     resolveDir: fileURLToPath(new URL(".", import.meta.url)),
   },
   bundle: true,
@@ -30,9 +30,47 @@ new Function("require", "module", "exports", compiled.outputFiles[0].text)(
   module,
   module.exports
 );
-const { App, Feed } = module.exports;
+const { App, Feed, L1Panel } = module.exports;
 const renderToStaticMarkup = (element) =>
   renderMarkup(createElement(StaticRouter, { location: "/" }, element));
+
+test("L1 panel exposes proof and payment states without resending the L2 post", () => {
+  const render = (stage, address = "") =>
+    renderToStaticMarkup(
+      createElement(L1Panel, {
+        view: {
+          l1: {
+            available: true,
+            busy: false,
+            address,
+            error: "",
+            jobs: [
+              {
+                l2Tx: `0x${"a".repeat(64)}`,
+                text: "<script>public text</script>",
+                stage,
+                postId: "0",
+              },
+            ],
+          },
+        },
+        controller: {},
+      })
+    );
+  assert.match(render("waiting-proof"), /等待证明/);
+  assert.doesNotMatch(render("waiting-proof"), /class="publish-l1"/);
+  assert.match(render("ready"), /class="publish-l1" disabled/);
+  assert.doesNotMatch(render("ready", "0x1234"), /class="publish-l1" disabled/);
+  assert.match(render("signing"), /等待 MetaMask 确认/);
+  assert.match(render("confirming"), /L1 确认中/);
+  assert.match(render("published"), /L1 发布成功/);
+  assert.doesNotMatch(render("published"), /class="publish-l1"/);
+  assert.match(
+    render("published"),
+    /&lt;script&gt;public text&lt;\/script&gt;/
+  );
+  assert.match(render("published"), /提交地址公开/);
+});
 
 test("React renders the wallet, composer and disconnected action guards", () => {
   const controller = createBillboardController();

@@ -1,6 +1,6 @@
 use aztec::{
     keys::getters::get_public_keys,
-    protocol::{address::AztecAddress, hash::poseidon2_hash_with_separator, traits::ToField},
+    protocol::{address::{AztecAddress, EthAddress}, hash::poseidon2_hash_with_separator, traits::ToField},
     test::helpers::test_environment::TestEnvironment,
 };
 use df_billboard::DFBillboard;
@@ -177,7 +177,7 @@ unconstrained fn missing_history_cannot_reinitialize_quota() {
 #[test(should_fail_with = "Function _publish can only be called by the same contract")]
 unconstrained fn direct_public_publish_rejected() {
     let (env, board, _, owner) = setup();
-    env.call_public(owner, DFBillboard::at(board)._publish([0; 17], 1));
+    env.call_public(owner, DFBillboard::at(board)._publish([0; 17], 1, EthAddress::zero()));
 }
 
 #[test(should_fail_with = "Message too long")]
@@ -218,4 +218,41 @@ unconstrained fn maximum_length_round_trip() {
 unconstrained fn unpublished_post_cannot_be_read() {
     let (env, board, _, _) = setup();
     let _ = env.view_public(DFBillboard::at(board).get_post(0));
+}
+
+#[test]
+unconstrained fn l1_post_is_also_readable_on_l2() {
+    let (env, board, _, owner) = setup();
+    env.call_private(owner, DFBillboard::at(board).post_to_l1(hello(), 2, EthAddress::from_field(1)));
+    assert(env.view_public(DFBillboard::at(board).get_post_count()) == 1);
+    let (_, length) = env.view_public(DFBillboard::at(board).get_post(0));
+    assert(length == 2);
+}
+
+#[test(should_fail_with = "24-hour post limit reached")]
+unconstrained fn l1_posts_share_quota_with_l2_posts() {
+    let (env, board, _, owner) = setup();
+    for _ in 0..9 {
+        env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
+    }
+    env.call_private(owner, DFBillboard::at(board).post_to_l1(hello(), 2, EthAddress::from_field(1)));
+    env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
+}
+
+#[test(should_fail_with = "L1 publisher cannot be zero")]
+unconstrained fn l1_post_requires_nonzero_recipient() {
+    let (env, board, _, owner) = setup();
+    env.call_private(owner, DFBillboard::at(board).post_to_l1(hello(), 2, EthAddress::zero()));
+}
+
+#[test]
+fn l1_content_hash_matches_solidity_abi_vector() {
+    let mut packed = [0; 17];
+    let mut first: Field = 104 * 256 + 105;
+    for _ in 0..29 {
+        first = first * 256;
+    }
+    packed[0] = first;
+    assert(df_billboard::bridge::content_hash(7, 2, packed) ==
+        0x00c719e54a29354c7a10c57707376dc9a3ddd01a0c3a01afc78bbe653b38e0a2);
 }

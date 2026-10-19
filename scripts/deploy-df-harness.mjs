@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
+import { ContractFactory, JsonRpcProvider, keccak256 } from 'ethers';
 import { createAztecNodeClient } from '@aztec/aztec.js/node';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { EmbeddedWallet } from '@aztec/wallets/embedded';
@@ -59,6 +60,32 @@ if (!boardAddress) {
     await wallet.stop();
   }
 }
+const l1RpcUrl = process.env.DF_L1_RPC_URL ?? 'http://127.0.0.1:5954';
+assert(['127.0.0.1', 'localhost'].includes(new URL(l1RpcUrl).hostname), 'Only local L1 RPCs are allowed');
+const l1Provider = new JsonRpcProvider(l1RpcUrl, undefined, { cacheTimeout: -1 });
+let publisher;
+let runtimeCodeHash;
+try {
+  assert.equal((await l1Provider.getNetwork()).chainId, 31337n);
+  assert.notEqual(await l1Provider.getCode(l1.rollupAddress.toString()), '0x', 'L1 RPC does not host this rollup');
+  if (previous?.board === boardAddress && previous.l1?.rpcUrl === l1RpcUrl) {
+    const code = await l1Provider.getCode(previous.l1.publisher);
+    if (code !== '0x' && keccak256(code) === previous.l1.runtimeCodeHash) {
+      publisher = previous.l1.publisher;
+      runtimeCodeHash = previous.l1.runtimeCodeHash;
+    }
+  }
+  if (!publisher) {
+    const portalArtifact = JSON.parse(fs.readFileSync(new URL('../.local/billboard-l1-out/BillboardPublisher.sol/BillboardPublisher.json', import.meta.url)));
+    const deployed = await new ContractFactory(portalArtifact.abi, portalArtifact.bytecode.object, await l1Provider.getSigner(0))
+      .deploy(l1.rollupAddress.toString(), boardAddress, info.rollupVersion);
+    await deployed.waitForDeployment();
+    publisher = await deployed.getAddress();
+    runtimeCodeHash = keccak256(await l1Provider.getCode(publisher));
+  }
+} finally {
+  l1Provider.destroy();
+}
 const manifest = {
   kind: 'standalone-billboard',
   schemaVersion: 1,
@@ -71,6 +98,7 @@ const manifest = {
   sponsorSalt: '0',
   boardArtifactHash,
   boardClassId: boardClass.id.toString(),
+  l1: { chainId: 31337, rpcUrl: l1RpcUrl, publisher, runtimeCodeHash },
 };
 fs.mkdirSync(new URL('../.local/', import.meta.url), { recursive: true });
 fs.mkdirSync(new URL('../apps/dist/', import.meta.url), { recursive: true });

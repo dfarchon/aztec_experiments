@@ -495,7 +495,7 @@ textarea::placeholder {
   margin: 14px 0 0;
 }
 #feed:empty::before {
-  content: "连接钱包后读取链上公开消息";
+  content: "暂无公开消息";
   display: block;
   text-align: center;
   padding: 28px 0;
@@ -771,4 +771,58 @@ textarea::placeholder {
     left: auto;
     right: 0;
   }
+}
+.l1-panel {
+  margin: 20px 0;
+}
+.l1-toolbar,
+.l1-job-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+.l1-address,
+.l1-hash {
+  overflow-wrap: anywhere;
+}
+.l1-jobs {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+.l1-job {
+  border: 1px solid #444;
+  padding: 16px;
+}
+.l1-job-header {
+  justify-content: space-between;
+}
+.l1-job[data-stage="published"] strong {
+  color: #00d395;
+}
+.l1-job[data-stage="signing"] strong,
+.l1-job[data-stage="confirming"] strong {
+  color: #ffd166;
+}
+.l1-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.l1-error {
+  color: #ff648c;
+  overflow-wrap: anywhere;
+}
+.l1-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.l1-choice input {
+  width: auto;
+  margin: 0;
+}
+.publish-l1 {
+  margin-top: 12px;
 }

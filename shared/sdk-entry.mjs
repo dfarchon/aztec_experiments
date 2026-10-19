@@ -29,6 +29,7 @@ export { computePartialAddress } from '@aztec/stdlib/contract';
 export { computeSecretHash, siloNullifier } from '@aztec/stdlib/hash';
 export { createAztecNodeClient, waitForNode, waitForTx } from '@aztec/aztec.js/node';
 export { getFeeJuiceBalance } from '@aztec/aztec.js/utils';
+export { createAztecNodeDebugClient } from '@aztec/stdlib/interfaces/client';
 import { AztecIndexedDBStore } from '@aztec/kv-store/deprecated/indexeddb';
 import { createLogger } from '@aztec/foundation/log';
 // Preserve the existing browser/CLI storage API without opening old-version stores.

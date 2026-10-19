@@ -7,6 +7,12 @@ import {
 } from "../../../shared/df-billboard.mjs";
 import { AI_CACHE_NAME, AI_MODEL_VERSION, safetyResult } from "./ai-config.ts";
 import { parseKeywords } from "./keywords.ts";
+import {
+  createL1Ports,
+  createL1Queue,
+  emptyL1View,
+  l1MessageLeaf,
+} from "./l1.ts";
 import { classifyRulePosts } from "./moderation.ts";
 import type { BillboardController } from "./types";
 
@@ -55,6 +61,8 @@ export function createBillboardController(deps = {}): BillboardController {
     extensionStatus: "等待连接 Azguard",
     copied: false,
     message: "",
+    publishToL1: false,
+    l1: emptyL1View,
     logs: [],
     posts: [],
     feedLoaded: false,
@@ -102,6 +110,8 @@ export function createBillboardController(deps = {}): BillboardController {
   let contracts;
   let boardArtifact;
   let publicNode;
+  let l1Queue;
+  let l1Timer;
   let providers = [];
   let pendingConnection = null;
   let busy = false;
@@ -412,6 +422,89 @@ export function createBillboardController(deps = {}): BillboardController {
         "留言板部署或合约版本不匹配，请重新运行 npm run deploy:df:harness"
       );
     patch({ canRead: true });
+    if (deployment.l1) {
+      const bridge = {
+        discover: async (hash) => {
+          const a = A();
+          const abiType = boardArtifact.outputs.structs.events.find((event) =>
+            event.path.endsWith("::L1PostQueued")
+          );
+          if (!abiType) throw new Error("留言板缺少 L1 事件，请重新部署。");
+          const found = await a.getPublicEvents(
+            publicNode,
+            {
+              abiType,
+              eventSelector: await a.EventSelector.fromSignature(
+                "L1PostQueued(u32,Field)"
+              ),
+              fieldNames: abiType.fields.map((field) => field.name),
+            },
+            {
+              contractAddress: a.AztecAddress.fromStringUnsafe(
+                deployment.board
+              ),
+              txHash: a.TxHash.fromString(hash),
+            }
+          );
+          if (found.events.length !== 1)
+            throw new Error("未找到本次交易对应的 L1 帖子事件。");
+          const event = found.events[0].event;
+          const content = new a.Fr(BigInt(event.content)).toString();
+          const leaf = l1MessageLeaf(
+            deployment.board,
+            deployment.rollupVersion,
+            deployment.l1.publisher,
+            content
+          );
+          const effect = await publicNode.getTxEffect(
+            a.TxHash.fromString(hash)
+          );
+          const index = effect.data.l2ToL1Msgs.findIndex(
+            (message) => message.toString() === leaf
+          );
+          if (index < 0) throw new Error("跨链消息与目标接收合约不匹配。");
+          return { id: event.id.toString(), leaf, index };
+        },
+        witness: async (hash, leaf, index) => {
+          const witness = await publicNode.getL2ToL1MembershipWitness(
+            A().TxHash.fromString(hash),
+            A().Fr.fromString(leaf),
+            index
+          );
+          return witness
+            ? [
+                Number(witness.epochNumber),
+                Number(witness.numCheckpointsInEpoch),
+                BigInt(witness.leafIndex),
+                witness.siblingPath
+                  .toBufferArray()
+                  .map(
+                    (buffer) =>
+                      `0x${Array.from(buffer, (byte) => byte.toString(16).padStart(2, "0")).join("")}`
+                  ),
+              ]
+            : null;
+        },
+        prove: async () => {
+          await checkChain();
+          await A().createAztecNodeDebugClient(deployment.nodeUrl).prove();
+        },
+      };
+      try {
+        l1Queue = createL1Queue(
+          createL1Ports(deployment, bridge, () => l1Queue?.disconnect()),
+          localStorage,
+          `billboard:l1:${deployment.rollupAddress}:${deployment.board}:${deployment.l1.publisher}`,
+          (l1) => patch({ l1 })
+        );
+        await l1Queue.initialize();
+        l1Timer = setInterval(() => void l1Queue.refresh(), 4000);
+      } catch (error) {
+        l1Queue?.dispose();
+        l1Queue = null;
+        patch({ l1: { ...emptyL1View, error: error.message } });
+      }
+    }
     await refresh(false);
     publishSession();
   }
@@ -802,7 +895,18 @@ export function createBillboardController(deps = {}): BillboardController {
     await checkSponsorBalance();
     showProgress("消息已编码，准备发帖交易", 1, 2);
     showProgress("生成证明并提交匿名消息，等待链上确认…");
-    const tx = await contracts.board.methods.post(text, length).send({
+    if (view.publishToL1 && !view.l1.available)
+      throw new Error("L1 部署尚未就绪");
+    const message = view.message;
+    const mirror = view.publishToL1;
+    const interaction = mirror
+      ? contracts.board.methods.post_to_l1(
+          text,
+          length,
+          A().EthAddress.fromString(deployment.l1.publisher)
+        )
+      : contracts.board.methods.post(text, length);
+    const tx = await interaction.send({
       from,
       fee: await getBillboardFeeOptions(
         state.aztecNode,
@@ -812,6 +916,7 @@ export function createBillboardController(deps = {}): BillboardController {
     });
     if (tx.receipt.executionResult !== "success")
       throw new Error(`发帖失败: ${tx.receipt.executionResult}`);
+    if (mirror) l1Queue.add(tx.receipt.txHash.toString(), message);
     log(`匿名消息已上链：${tx.receipt.txHash}`, "success", "log");
     showProgress("消息已上链，更新公开列表…");
     await refresh(false);
@@ -1091,6 +1196,7 @@ export function createBillboardController(deps = {}): BillboardController {
       "realProofs",
       "provider",
       "message",
+      "publishToL1",
       "mergeDuplicates",
       "rulesEnabled",
       "keywordEnabled",
@@ -1105,7 +1211,12 @@ export function createBillboardController(deps = {}): BillboardController {
     if (!editable.includes(name) || (busy && !readingFields.includes(name)))
       return;
     if (
-      ["mergeDuplicates", "rulesEnabled", "keywordEnabled"].includes(name) &&
+      [
+        "mergeDuplicates",
+        "rulesEnabled",
+        "keywordEnabled",
+        "publishToL1",
+      ].includes(name) &&
       typeof value !== "boolean"
     )
       return;
@@ -1237,9 +1348,16 @@ export function createBillboardController(deps = {}): BillboardController {
         await finishConnect(state.provider.name);
       }, "切换钱包账号"),
     post: () => action(post, "匿名发帖"),
+    connectL1: () => l1Queue?.connect(),
+    publishL1: (hash) => l1Queue?.publish(hash),
+    refreshL1: () => l1Queue?.refresh(),
+    proveL1: () => l1Queue?.prove(),
+    fundL1: () => l1Queue?.faucet(),
     refresh: () => action(refresh, "刷新消息"),
     dispose: () => {
       disposed = true;
+      clearInterval(l1Timer);
+      l1Queue?.dispose();
       aiGeneration++;
       aiNeedsRun = false;
       pendingConnection?.cancel();
