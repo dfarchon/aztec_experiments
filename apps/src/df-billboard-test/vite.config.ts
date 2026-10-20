@@ -14,6 +14,16 @@ const headers = {
   "Cross-Origin-Opener-Policy": "same-origin",
   "Cross-Origin-Embedder-Policy": "credentialless",
 };
+const isolationHeaders: Connect.NextHandleFunction = (
+  _request,
+  response,
+  next
+) => {
+  // Custom runtime responses bypass Vite's later header middleware.
+  for (const [name, value] of Object.entries(headers))
+    response.setHeader(name, value);
+  next();
+};
 const aliases: Record<string, string> = {
   "/df-billboard-test.html": "/",
   "/df-billboard-report.html": "/reports",
@@ -31,9 +41,11 @@ function localRuntimeAssets(): Plugin {
   return {
     name: "df-local-runtime-assets",
     configurePreviewServer(server) {
+      server.middlewares.use(isolationHeaders);
       server.middlewares.use(redirect);
     },
     configureServer(server) {
+      server.middlewares.use(isolationHeaders);
       server.middlewares.use(redirect);
       server.middlewares.use((request, response, next) => {
         const pathname = new URL(request.url || "/", "http://localhost")
