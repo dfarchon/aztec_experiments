@@ -102,6 +102,34 @@ code {
   font-family: inherit;
   overflow-wrap: anywhere;
 }
+.l1-post-lab {
+  max-width: 1080px;
+  padding: 32px;
+  overflow-wrap: anywhere;
+}
+.l1-post-lab > p,
+.l1-post-lab header {
+  margin-bottom: 20px;
+}
+.l1-post-lab > section {
+  padding: 20px;
+  margin-bottom: 20px;
+  border: 1px solid var(--line);
+}
+.l1-post-lab textarea {
+  display: block;
+  width: 100%;
+  min-height: 100px;
+  padding: 10px;
+  margin: 12px 0;
+}
+.l1-post-lab [role="status"],
+.l1-post-lab article {
+  margin-top: 12px;
+}
+.l1-post-lab [role="alert"] {
+  color: var(--danger);
+}
 .site-header {
   border-bottom: 1px solid var(--line);
   position: relative;

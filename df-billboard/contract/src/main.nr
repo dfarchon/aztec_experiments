@@ -4,7 +4,7 @@ use aztec::macros::aztec;
 
 #[aztec]
 pub contract DFBillboard {
-    use crate::bridge::content_hash;
+    use crate::bridge::{content_hash, request_commitment};
     use aztec::{
         keys::getters::get_public_keys,
         macros::{
@@ -15,12 +15,13 @@ pub contract DFBillboard {
         },
         messages::delivery::MessageDelivery,
         note::note_getter_options::NoteGetterOptions,
+        history::storage::public_storage_historical_read,
         protocol::{
             address::EthAddress,
             hash::poseidon2_hash_with_separator,
             traits::{Deserialize, Packable, Serialize, ToField},
         },
-        state_vars::{Map, Owned, PrivateSet, PublicMutable},
+        state_vars::{Map, Owned, PrivateSet, PublicMutable, StateVariable},
     };
     global FIRST_POST_DOMAIN: u32 = 1145455153;
     global POST_LIMIT: u32 = 10;
@@ -33,6 +34,11 @@ pub contract DFBillboard {
     struct L1PostQueued {
         id: u32,
         content: Field,
+    }
+
+    #[event]
+    struct PostPublished {
+        id: u32,
     }
 
     #[derive(Deserialize, Eq, Serialize, Packable)]
@@ -50,12 +56,51 @@ pub contract DFBillboard {
         post_count: PublicMutable<u32, Context>,
         post_lengths: Map<u32, PublicMutable<u32, Context>, Context>,
         post_data: Map<u32, PublicMutable<Field, Context>, Context>,
+        l1_inbox: PublicMutable<EthAddress, Context>,
     }
 
     #[external("public")]
     #[initializer]
     fn constructor() {
         self.storage.post_count.write(0);
+        self.storage.l1_inbox.write(EthAddress::zero());
+    }
+
+    // Separate initializer preserves the existing L2-only deployment API.
+    // No setter: a deployed board's trusted L1 sender cannot be changed.
+    #[external("public")]
+    #[initializer]
+    fn constructor_with_inbox(inbox: EthAddress) {
+        assert(inbox.to_field() != 0, "L1 inbox cannot be zero");
+        self.storage.post_count.write(0);
+        self.storage.l1_inbox.write(inbox);
+    }
+
+    #[external("private")]
+    fn post_from_l1(
+        text: [u8; MAX_BYTES],
+        length: u32,
+        salt: Field,
+        secret: Field,
+        message_leaf_index: Field,
+    ) {
+        let header = self.context.get_anchor_block_header();
+        let inbox_field = public_storage_historical_read(
+            header, self.storage.l1_inbox.get_storage_slot(), self.context.this_address(),
+        );
+        assert(inbox_field != 0, "L1 entry disabled");
+        let inbox = EthAddress::from_field(inbox_field);
+        let content = request_commitment(text, length, salt, self.msg_sender().to_field());
+        self.context.consume_l1_to_l2_message(content, [secret], inbox, message_leaf_index);
+        // Message consumption and publication are atomic. Failed validation
+        // rolls back the consumption, allowing the original request to retry.
+        self.internal.post_inner(text, length, EthAddress::zero());
+    }
+
+    #[external("public")]
+    #[view]
+    fn get_l1_inbox() -> pub EthAddress {
+        self.storage.l1_inbox.read()
     }
 
     #[external("private")]
@@ -158,6 +203,7 @@ pub contract DFBillboard {
         }
         self.storage.post_lengths.at(id).write(length);
         self.storage.post_count.write(id + 1);
+        self.emit(PostPublished { id });
         if portal.to_field() != 0 {
             let content = content_hash(id, length, text);
             self.context.message_portal(portal, content);

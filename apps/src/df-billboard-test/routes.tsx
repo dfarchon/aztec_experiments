@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from "react";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
+const L1PostLabPage = lazy(() => import("./L1PostLabPage"));
 const BoardRoute = lazy(() => import("./BoardRoute"));
 const ReportPage = lazy(() =>
   import("./ReportPage").then((module) => ({ default: module.ReportPage }))
@@ -24,6 +25,11 @@ export function SiteRoutes() {
     >
       <Routes>
         <Route path="/" element={<BoardRoute />} />
+        <Route path="/l1-post-lab" element={<L1PostLabPage />} />
+        <Route
+          path="/fee-lab"
+          element={<Navigate to="/l1-post-lab" replace />}
+        />
         <Route path="/reports" element={<ReportPage />} />
         <Route
           path="/df-billboard-test.html"

@@ -24,6 +24,39 @@ fn hello() -> [u8; 512] {
 }
 
 #[test]
+fn request_commitment_matches_typescript_vector() {
+    let expected = 0x00d54d44ffea3f9915c55df999bf41127de33c1f49d9c7fef71a17aee13aa70f;
+    assert(df_billboard::bridge::request_commitment(hello(), 2, 7, 9) == expected);
+    assert(df_billboard::bridge::request_commitment(hello(), 2, 8, 9) != expected);
+    assert(df_billboard::bridge::request_commitment(hello(), 2, 7, 10) != expected);
+}
+
+#[test(should_fail_with = "L1 entry disabled")]
+unconstrained fn default_board_rejects_l1_requests() {
+    let (env, board, _, owner) = setup();
+    env.call_private(owner, DFBillboard::at(board).post_from_l1(hello(), 2, 7, 9, 16));
+}
+
+#[test]
+unconstrained fn l1_board_pins_sender_at_initialization() {
+    let mut env = TestEnvironment::new();
+    let owner = env.create_light_account();
+    let entry = EthAddress::from_field(123);
+    let board = env.deploy("@df_billboard/DFBillboard").with_public_initializer(
+        owner, DFBillboard::interface().constructor_with_inbox(entry),
+    );
+    assert(env.view_public(DFBillboard::at(board).get_l1_inbox()).to_field() == 123);
+    env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
+    assert(env.view_public(DFBillboard::at(board).get_post_count()) == 1);
+}
+
+#[test(should_fail)]
+unconstrained fn cannot_reconfigure_l1_sender() {
+    let (env, board, deployer, _) = setup();
+    env.call_public(deployer, DFBillboard::at(board).constructor_with_inbox(EthAddress::from_field(123)));
+}
+
+#[test]
 unconstrained fn new_account_posts_without_registration_or_deposit() {
     let (env, board, _, owner) = setup();
     env.call_private(owner, DFBillboard::at(board).post(hello(), 2));

@@ -1,5 +1,6 @@
 // Prepare chain/WASM assets. React UI compilation and routing belong to Vite.
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
@@ -11,7 +12,17 @@ const source = path.join(root, 'apps/src/df-billboard-test');
 fs.mkdirSync(dist, { recursive: true });
 const boardArtifact = path.join(root, 'df-billboard/target/df_billboard-DFBillboard.json');
 if (!fs.existsSync(boardArtifact)) throw new Error(`Missing ${boardArtifact}. Run npm run build:df first.`);
-fs.copyFileSync(boardArtifact, path.join(dist, 'df-board-artifact.json'));
+// Keep a running deployment's matching artifact while an isolated experiment
+// compiles a newer class. Its deployment publishes its own artifact/manifest.
+const publishedArtifact = path.join(dist, 'df-board-artifact.json');
+const manifestFile = path.join(dist, 'df-local.json');
+const digest = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const expected = fs.existsSync(manifestFile) ? JSON.parse(fs.readFileSync(manifestFile)).boardArtifactHash : null;
+if (!expected || digest(boardArtifact) === expected) {
+  fs.copyFileSync(boardArtifact, publishedArtifact);
+} else if (!fs.existsSync(publishedArtifact) || digest(publishedArtifact) !== expected) {
+  throw new Error('Compiled board differs from the local deployment; redeploy the harness before preparing its assets.');
+}
 fs.copyFileSync(fileURLToPath(import.meta.resolve('@aztec/noir-contracts.js/artifacts/sponsored_fpc_contract-SponsoredFPC')),
   path.join(dist, 'df-sponsor-artifact.json'));
 await build({
