@@ -8,7 +8,7 @@ import 'fake-indexeddb/auto';
 globalThis.self = globalThis;
 vm.runInThisContext(fs.readFileSync(new URL('../shared/aztec_bundle.js', import.meta.url), 'utf8'));
 const a = globalThis.__aztec;
-assert.equal(a.SDK_VERSION, '5.0.1');
+assert.equal(a.SDK_VERSION, '6.0.0-rc.3');
 // Noir initialization must work without a document URL or any runtime fetch.
 // In the old build, wallet sync failed later when the simulator fetched WASM.
 const originalFetch = globalThis.fetch;
@@ -88,20 +88,24 @@ browser.window.__aztec = { ...a, BaseWallet: class {
   async completeFeeOptions() { return fees; }
   async simulateViaEntrypoint() { return { gasUsed: { totalGas: gas, teardownGas: gas } }; }
   async createTxExecutionRequestFromPayloadAndFee() { return {}; }
-  scopesFrom() { return []; }
-  senderForTagsFrom() { return undefined; }
+  scopesFrom(...args) { return a.BaseWallet.prototype.scopesFrom.call(this, ...args); }
+  senderForTagsFrom(...args) { return a.BaseWallet.prototype.senderForTagsFrom.call(this, ...args); }
 } };
 const preparedWallet = browser.createAztecWallet({
-  proveTx: async () => ({ toTx: async () => ({ getTxHash: () => fakeHash }) }),
+  proveTx: async (_request, options) => {
+    assert.equal(options.scopes.length, 1);
+    assert(options.scopes[0].equals(a.AztecAddress.ZERO));
+    return { toTx: async () => ({ getTxHash: () => fakeHash }) };
+  },
 }, {}, {
   sendTx: async () => { order.push('send'); },
   getTxReceipt: async () => { throw new Error('NO_WAIT must not poll'); },
 }, 'test');
 preparedWallet.onTxPrepared = hash => { assert.equal(hash, fakeHash.toString()); order.push('saved'); };
-const immediate = await preparedWallet.sendTx({}, { from: {}, wait: a.NO_WAIT });
+const immediate = await preparedWallet.sendTx({}, { from: a.AztecAddress.ZERO, wait: a.NO_WAIT });
 assert.equal(immediate.txHash.toString(), fakeHash.toString());
 assert.deepEqual(order, ['saved', 'send']);
 preparedWallet.onTxPrepared = () => { throw new Error('Storage unavailable'); };
-await assert.rejects(() => preparedWallet.sendTx({}, { from: {}, wait: a.NO_WAIT }), /Storage unavailable/);
+await assert.rejects(() => preparedWallet.sendTx({}, { from: a.AztecAddress.ZERO, wait: a.NO_WAIT }), /Storage unavailable/);
 assert.deepEqual(order, ['saved', 'send']);
 console.log('PASS embedded Noir WASM (no URL/fetch), SDK exports, artifact/class derivation, store persistence, network isolation and Buffer-free message helpers');

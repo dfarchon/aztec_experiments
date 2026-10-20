@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { GasFees } from "@aztec/stdlib/gas";
+import { GasFees } from "@aztec-labs/stdlib/gas";
 
 import {
   AI_CACHE_NAME,
@@ -117,7 +117,7 @@ function fixture(t) {
   const info = {
     l1ChainId: 31337,
     rollupVersion: 1,
-    nodeVersion: "5.0.1",
+    nodeVersion: "6.0.0-rc.3",
     realProofs: false,
   };
   const node = {

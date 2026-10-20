@@ -101,7 +101,7 @@ export async function validateRequestConfig(
     node.getL1ContractAddresses(),
   ]);
   if (
-    info.nodeVersion !== "5.0.1" ||
+    info.nodeVersion !== "6.0.0-rc.3" ||
     info.realProofs !== false ||
     info.l1ChainId !== 31337 ||
     String(info.rollupVersion) !== config.rollupVersion ||

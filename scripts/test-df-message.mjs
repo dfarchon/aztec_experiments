@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { GasFees } from '@aztec/stdlib/gas';
+import { GasFees } from '@aztec-labs/stdlib/gas';
 import { encodeDFMessage, decodeDFMessage, getBillboardFeeOptions } from '../shared/df-billboard.mjs';
 
 function pack(text) {

@@ -6,10 +6,19 @@ import fs from 'node:fs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const expected = fs.readFileSync(`${root}/.aztec-version`, 'utf8').trim();
 const manifest = JSON.parse(fs.readFileSync(`${root}/package.json`, 'utf8'));
-for (const [name, version] of Object.entries(manifest.dependencies)) {
-  if (!name.startsWith('@aztec/')) continue;
+const protocolDependencies = {
+  ...JSON.parse(fs.readFileSync(`${root}/node_modules/@aztec-labs/aztec.js/package.json`, 'utf8')).dependencies,
+  ...JSON.parse(fs.readFileSync(`${root}/node_modules/@aztec-labs/pxe/package.json`, 'utf8')).dependencies,
+};
+for (const [name, version] of Object.entries({ ...manifest.dependencies, ...manifest.devDependencies })) {
+  if (!name.startsWith('@aztec-labs/') && !name.startsWith('@aztec-foundation/')) continue;
   const installed = JSON.parse(fs.readFileSync(`${root}/node_modules/${name}/package.json`, 'utf8')).version;
-  if (version !== expected || installed !== expected) throw new Error(`${name}: expected ${expected}, declared ${version}, installed ${installed}`);
+  if ((name.startsWith('@aztec-labs/') && version !== expected) || installed !== version) {
+    throw new Error(`${name}: declared ${version}, installed ${installed}, SDK ${expected}`);
+  }
+  if (name.startsWith('@aztec-foundation/') && protocolDependencies[name] !== version) {
+    throw new Error(`${name}: ${version} does not match the SDK/PXE dependency ${protocolDependencies[name]}`);
+  }
 }
 const common = {
   absWorkingDir: root,
@@ -31,5 +40,5 @@ for (const [source, output] of [
   ['bb.js/dest/browser/barretenberg_wasm/barretenberg_wasm_main/factory/browser/main.worker.js', 'main.worker.js'],
   ['bb.js/dest/browser/barretenberg_wasm/barretenberg_wasm_thread/factory/browser/thread.worker.js', 'thread.worker.js'],
 ]) {
-  await build({ ...common, entryPoints: [`node_modules/@aztec/${source}`], outfile: `shared/${output}` });
+  await build({ ...common, entryPoints: [`node_modules/@aztec-foundation/${source}`], outfile: `shared/${output}` });
 }

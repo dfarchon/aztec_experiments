@@ -34,7 +34,7 @@ function findLine(needle, startFrom = 0) {
 
 // 1. Extract comlink code: from the comlink comment to the helpers/browser comment
 const comlinkStart = findLine('// node_modules/comlink/dist/esm/comlink.mjs');
-const comlinkEnd = findLine('// node_modules/@aztec/bb.js/dest/browser/barretenberg_wasm/helpers/browser/index.js', comlinkStart);
+const comlinkEnd = findLine('// node_modules/@aztec-foundation/bb.js/dest/browser/barretenberg_wasm/helpers/browser/index.js', comlinkStart);
 const comlinkCode = lines.slice(comlinkStart, comlinkEnd).join('\n');
 
 // 2. Extract randomBytes (use brace-depth tracking, not first '};')

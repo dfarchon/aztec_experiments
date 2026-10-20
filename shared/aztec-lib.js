@@ -378,7 +378,7 @@ function createAztecWallet(pxe, aztecNode, rawNode, statusId, opts = {}) {
       });
       const txRequest = await this.createTxExecutionRequestFromPayloadAndFee(executionPayload, opts.from, feeOpts2);
       const provenTx = await this.pxe.proveTx(txRequest, {
-        scopes: this.scopesFrom(opts.from, opts.additionalScopes),
+        scopes: this.scopesFrom(opts.from, opts.additionalScopes ?? [], opts.sendMessagesAs),
         senderForTags: this.senderForTagsFrom(opts.from, opts.sendMessagesAs),
       });
       const tx = await provenTx.toTx();
@@ -655,7 +655,7 @@ async function preflightL1ToL2Message(aztecNode, recipientAddress, claimAmount, 
   const chainId = BigInt(nodeInfo.l1ChainId);
   const version = BigInt(nodeInfo.rollupVersion);
 
-  // Constants (from @aztec/constants and Inbox.sol)
+  // Constants (from @aztec-labs/constants and Inbox.sol)
   const FEE_JUICE = 3n;                   // ProtocolContractAddress.FeeJuice
   const SECRET_HASH_DOMAIN = 4199652938n; // DomainSeparator.SECRET_HASH
   // keccak256("claim(bytes32,uint256)")[0:4]

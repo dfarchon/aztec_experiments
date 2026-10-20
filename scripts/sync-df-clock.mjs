@@ -4,15 +4,15 @@
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
-import { createAztecNodeClient } from '@aztec/aztec.js/node';
-import { createAztecNodeDebugClient } from '@aztec/stdlib/interfaces/client';
+import { createAztecNodeClient } from '@aztec-labs/aztec.js/node';
+import { createAztecNodeDebugClient } from '@aztec-labs/stdlib/interfaces/client';
 
 export async function syncLocalClock(node, debug, deployment, now = Math.floor(Date.now() / 1000)) {
   const url = new URL(deployment.nodeUrl);
   if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) throw new Error('Clock sync requires a loopback node');
   const info = await node.getNodeInfo();
   const l1 = await node.getL1ContractAddresses();
-  if (Number(info.l1ChainId) !== 31337 || info.nodeVersion !== '5.0.1' || info.realProofs !== false ||
+  if (Number(info.l1ChainId) !== 31337 || info.nodeVersion !== '6.0.0-rc.3' || info.realProofs !== false ||
       l1.rollupAddress.toString() !== deployment.rollupAddress) throw new Error('Clock sync refused: local deployment mismatch');
   const block = await node.getBlock('latest');
   if (!block) throw new Error('Local L2 block unavailable');

@@ -6,7 +6,11 @@ import { syncLocalClock } from "../../../scripts/sync-df-clock.mjs";
 function fixture() {
   let timestamp = 1000;
   const calls = [];
-  const info = { l1ChainId: 31337, nodeVersion: "5.0.1", realProofs: false };
+  const info = {
+    l1ChainId: 31337,
+    nodeVersion: "6.0.0-rc.3",
+    realProofs: false,
+  };
   const deployment = {
     nodeUrl: "http://127.0.0.1:5180",
     rollupAddress: "rollup",

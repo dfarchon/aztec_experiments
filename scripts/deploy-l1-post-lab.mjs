@@ -2,18 +2,18 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { ContractFactory, JsonRpcProvider, keccak256 } from 'ethers';
-import { EmbeddedWallet } from '@aztec/wallets/embedded';
-import { createAztecNodeClient } from '@aztec/aztec.js/node';
-import { createAztecNodeDebugClient } from '@aztec/stdlib/interfaces/client';
-import { Contract, getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
-import { loadContractArtifact } from '@aztec/aztec.js/abi';
-import { Fr } from '@aztec/aztec.js/fields';
-import { EthAddress } from '@aztec/aztec.js/addresses';
-import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
-import { SponsoredFPCContract } from '@aztec/noir-contracts.js/SponsoredFPC';
-import { getInitialTestAccountsData } from '@aztec/accounts/testing';
-import { GasFees } from '@aztec/stdlib/gas';
-import { getFeeJuiceBalance } from '@aztec/aztec.js/utils';
+import { EmbeddedWallet } from '@aztec-labs/wallets/embedded';
+import { createAztecNodeClient } from '@aztec-labs/aztec.js/node';
+import { createAztecNodeDebugClient } from '@aztec-labs/stdlib/interfaces/client';
+import { Contract, getContractInstanceFromInstantiationParams } from '@aztec-labs/aztec.js/contracts';
+import { loadContractArtifact } from '@aztec-labs/aztec.js/abi';
+import { Fr } from '@aztec-labs/aztec.js/fields';
+import { EthAddress } from '@aztec-labs/aztec.js/addresses';
+import { SponsoredFeePaymentMethod } from '@aztec-labs/aztec.js/fee';
+import { SponsoredFPCContract } from '@aztec-labs/noir-contracts.js/SponsoredFPC';
+import { getInitialTestAccountsData } from '@aztec-labs/accounts/testing';
+import { GasFees } from '@aztec-labs/stdlib/gas';
+import { getFeeJuiceBalance } from '@aztec-labs/aztec.js/utils';
 import { getBillboardFeeOptions } from '../shared/df-billboard.mjs';
 import { syncLocalClock } from './sync-df-clock.mjs';
 
@@ -25,7 +25,7 @@ for (const value of [base.nodeUrl, base.l1.rpcUrl]) {
 }
 const node = createAztecNodeClient(base.nodeUrl);
 const info = await node.getNodeInfo();
-assert.equal(info.nodeVersion, '5.0.1');
+assert.equal(info.nodeVersion, '6.0.0-rc.3');
 assert.equal(info.l1ChainId, 31337);
 assert.equal(info.realProofs, false);
 const addresses = await node.getL1ContractAddresses();

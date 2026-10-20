@@ -515,7 +515,7 @@ export function createBillboardController(deps = {}): BillboardController {
     const l1 = await node.getL1ContractAddresses();
     if (
       Number(info.l1ChainId) !== 31337 ||
-      info.nodeVersion !== "5.0.1" ||
+      info.nodeVersion !== "6.0.0-rc.3" ||
       info.realProofs !== false ||
       l1.rollupAddress.toString() !== deployment.rollupAddress
     ) {

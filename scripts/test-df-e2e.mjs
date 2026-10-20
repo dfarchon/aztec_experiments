@@ -4,18 +4,18 @@
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
-import { createAztecNodeClient } from '@aztec/aztec.js/node';
-import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { EmbeddedWallet } from '@aztec/wallets/embedded';
-import { Contract, getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
-import { loadContractArtifact } from '@aztec/aztec.js/abi';
-import { Fr, Fq } from '@aztec/aztec.js/fields';
-import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
-import { getFeeJuiceBalance } from '@aztec/aztec.js/utils';
-import { SponsoredFPCContract } from '@aztec/noir-contracts.js/SponsoredFPC';
-import { Tx } from '@aztec/aztec.js/tx';
-import { GasFees } from '@aztec/stdlib/gas';
-import { EthAddress } from '@aztec/foundation/eth-address';
+import { createAztecNodeClient } from '@aztec-labs/aztec.js/node';
+import { AztecAddress } from '@aztec-labs/aztec.js/addresses';
+import { EmbeddedWallet } from '@aztec-labs/wallets/embedded';
+import { Contract, getContractInstanceFromInstantiationParams } from '@aztec-labs/aztec.js/contracts';
+import { loadContractArtifact } from '@aztec-labs/aztec.js/abi';
+import { Fr, Fq } from '@aztec-labs/aztec.js/fields';
+import { SponsoredFeePaymentMethod } from '@aztec-labs/aztec.js/fee';
+import { getFeeJuiceBalance } from '@aztec-labs/aztec.js/utils';
+import { SponsoredFPCContract } from '@aztec-labs/noir-contracts.js/SponsoredFPC';
+import { Tx } from '@aztec-labs/aztec.js/tx';
+import { GasFees } from '@aztec-labs/stdlib/gas';
+import { EthAddress } from '@aztec-labs/foundation/eth-address';
 import { encodeDFMessage, decodeDFMessage, getBillboardFeeOptions } from '../shared/df-billboard.mjs';
 
 const deployment = JSON.parse(fs.readFileSync(new URL('../.local/billboard-harness.json', import.meta.url)));
@@ -25,7 +25,7 @@ assert(!process.argv.includes('--df-core'), 'DF eligibility was removed; use the
 const node = createAztecNodeClient(deployment.nodeUrl);
 const info = await node.getNodeInfo();
 assert.equal(info.l1ChainId, 31337, 'Refusing non-local chain');
-assert.equal(info.nodeVersion, '5.0.1');
+assert.equal(info.nodeVersion, '6.0.0-rc.3');
 assert.equal(info.realProofs, false, 'Expected synthetic-proof local network');
 assert.equal((await node.getL1ContractAddresses()).rollupAddress.toString(), deployment.rollupAddress);
 const wallet = await EmbeddedWallet.create(node, { ephemeral: true, pxeConfig: { proverEnabled: false } });
@@ -55,7 +55,7 @@ node.sendTx = async tx => {
 };
 try {
   if (realProofs) {
-    const { BBCircuitVerifier } = await import('@aztec/bb-prover/verifier');
+    const { BBCircuitVerifier } = await import('@aztec-labs/bb-prover/verifier');
     verifier = await BBCircuitVerifier.new({
       bbWorkingDirectory: fileURLToPath(new URL('../.local/billboard-verifier', import.meta.url)),
       numConcurrentIVCVerifiers: 1,

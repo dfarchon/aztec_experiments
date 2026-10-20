@@ -33,7 +33,7 @@ trap 'exit 143' TERM
 
 node_ready() {
   DF_NODE_URL="$NODE_URL" node --input-type=module -e '
-    import { createAztecNodeClient } from "@aztec/aztec.js/node";
+    import { createAztecNodeClient } from "@aztec-labs/aztec.js/node";
     await createAztecNodeClient(process.env.DF_NODE_URL).getNodeInfo();
   ' >/dev/null 2>&1
 }

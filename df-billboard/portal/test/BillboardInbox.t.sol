@@ -2,7 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {BillboardInbox} from "../src/BillboardInbox.sol";
-import {Inbox} from "@aztec/core/messagebridge/Inbox.sol";
+import {Inbox, MIN_BUCKET_RING_SIZE} from "@aztec/core/messagebridge/Inbox.sol";
 import {IInbox} from "@aztec/core/interfaces/messagebridge/IInbox.sol";
 import {IERC20} from "@oz/token/ERC20/IERC20.sol";
 
@@ -13,7 +13,7 @@ contract BillboardInboxTest {
     BillboardInbox private entry;
 
     function setUp() public {
-        inbox = new Inbox(address(this), IERC20(address(1)), 7, 4, 1);
+        inbox = new Inbox(address(this), IERC20(address(1)), 7, MIN_BUCKET_RING_SIZE);
         entry = new BillboardInbox(address(this), 7);
     }
 
@@ -22,7 +22,7 @@ contract BillboardInboxTest {
     function testRequestEnqueuesWithoutReceivingETH() public {
         uint256 before = inbox.getTotalMessagesInserted();
         (bytes32 key, uint256 index) = entry.requestPost(bytes32(uint256(123)), bytes32(uint256(456)), bytes32(uint256(789)));
-        require(key != bytes32(0) && index == 16, "Missing message");
+        require(key != bytes32(0) && index == 0, "Missing message");
         require(inbox.getTotalMessagesInserted() == before + 1, "Not enqueued");
         require(address(entry).balance == 0, "Unexpected ETH");
         require(entry.ROLLUP_VERSION() == 7 && address(entry.INBOX()) == address(inbox), "Wrong routing");

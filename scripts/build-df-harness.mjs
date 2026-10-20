@@ -23,7 +23,7 @@ if (!expected || digest(boardArtifact) === expected) {
 } else if (!fs.existsSync(publishedArtifact) || digest(publishedArtifact) !== expected) {
   throw new Error('Compiled board differs from the local deployment; redeploy the harness before preparing its assets.');
 }
-fs.copyFileSync(fileURLToPath(import.meta.resolve('@aztec/noir-contracts.js/artifacts/sponsored_fpc_contract-SponsoredFPC')),
+fs.copyFileSync(fileURLToPath(import.meta.resolve('@aztec-labs/noir-contracts.js/artifacts/sponsored_fpc_contract-SponsoredFPC')),
   path.join(dist, 'df-sponsor-artifact.json'));
 await build({
   entryPoints: [path.join(source, 'toxicity.worker.ts')],

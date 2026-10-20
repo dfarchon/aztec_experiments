@@ -2,7 +2,11 @@
 set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXPECTED_VERSION="$(tr -d '\n' < "$PROJECT_ROOT/.aztec-version")"
-TOOLCHAIN_DIR="${AZTEC_TOOLCHAIN_DIR:-${AZTEC_INSTALL_DIR:-$HOME/.aztec}/versions/$EXPECTED_VERSION}"
+DEFAULT_TOOLCHAIN_DIR="${AZTEC_INSTALL_DIR:-$HOME/.aztec}/versions/$EXPECTED_VERSION"
+if [ -x "$PROJECT_ROOT/.local/toolchains/$EXPECTED_VERSION/bin/aztec" ]; then
+  DEFAULT_TOOLCHAIN_DIR="$PROJECT_ROOT/.local/toolchains/$EXPECTED_VERSION"
+fi
+TOOLCHAIN_DIR="${AZTEC_TOOLCHAIN_DIR:-$DEFAULT_TOOLCHAIN_DIR}"
 if [ ! -x "$TOOLCHAIN_DIR/bin/aztec" ]; then
   echo "Install Aztec $EXPECTED_VERSION with aztec-up, or set AZTEC_TOOLCHAIN_DIR." >&2
   exit 1

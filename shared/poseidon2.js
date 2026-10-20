@@ -151,7 +151,7 @@ function poseidon2HashFields(inputs) {
   duplex();
   return state[0];
 }
-// DomainSeparator.SECRET_HASH (from @aztec/constants)
+// DomainSeparator.SECRET_HASH (from @aztec-labs/constants)
 const SECRET_HASH_DOMAIN = 4199652938n;
 // computeSecretHash(secret) = poseidon2HashWithSeparator([secret], SECRET_HASH) = poseidon2HashFields([SECRET_HASH, secret])
 function computeSecretHash(secret) {

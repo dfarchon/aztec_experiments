@@ -2,22 +2,23 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { Contract as EvmContract, JsonRpcProvider } from 'ethers';
-import { EmbeddedWallet } from '@aztec/wallets/embedded';
-import { createAztecNodeClient } from '@aztec/aztec.js/node';
-import { createAztecNodeDebugClient } from '@aztec/stdlib/interfaces/client';
-import { AztecAddress } from '@aztec/aztec.js/addresses';
-import { Contract, NO_WAIT, getContractClassFromArtifact, getContractInstanceFromInstantiationParams } from '@aztec/aztec.js/contracts';
-import { EventSelector, loadContractArtifact } from '@aztec/aztec.js/abi';
-import { getPublicEvents } from '@aztec/aztec.js/events';
-import { Fr, Fq } from '@aztec/aztec.js/fields';
-import { GasFees } from '@aztec/stdlib/gas';
-import { TxHash } from '@aztec/aztec.js/tx';
-import { NO_FROM } from '@aztec/aztec.js/account';
-import { SponsoredFeePaymentMethod } from '@aztec/aztec.js/fee';
-import { SponsoredFPCContract } from '@aztec/noir-contracts.js/SponsoredFPC';
-import { computeSecretHash, siloNullifier } from '@aztec/stdlib/hash';
-import { computeFeeJuiceMessageNullifier } from '@aztec/stdlib/messaging';
-import { getFeeJuiceBalance } from '@aztec/aztec.js/utils';
+import { InboxAbi } from '@aztec-foundation/l1-artifacts';
+import { EmbeddedWallet } from '@aztec-labs/wallets/embedded';
+import { createAztecNodeClient } from '@aztec-labs/aztec.js/node';
+import { createAztecNodeDebugClient } from '@aztec-labs/stdlib/interfaces/client';
+import { AztecAddress } from '@aztec-labs/aztec.js/addresses';
+import { Contract, NO_WAIT, getContractClassFromArtifact, getContractInstanceFromInstantiationParams } from '@aztec-labs/aztec.js/contracts';
+import { EventSelector, loadContractArtifact } from '@aztec-labs/aztec.js/abi';
+import { getPublicEvents } from '@aztec-labs/aztec.js/events';
+import { Fr, Fq } from '@aztec-labs/aztec.js/fields';
+import { GasFees } from '@aztec-labs/stdlib/gas';
+import { TxHash } from '@aztec-labs/aztec.js/tx';
+import { NO_FROM } from '@aztec-labs/aztec.js/account';
+import { SponsoredFeePaymentMethod } from '@aztec-labs/aztec.js/fee';
+import { SponsoredFPCContract } from '@aztec-labs/noir-contracts.js/SponsoredFPC';
+import { computeSecretHash, siloNullifier } from '@aztec-labs/stdlib/hash';
+import { computeFeeJuiceMessageNullifier } from '@aztec-labs/stdlib/messaging';
+import { getFeeJuiceBalance } from '@aztec-labs/aztec.js/utils';
 import { createRequestSession, readRequestReceipt, requestABI, requestCommitment, validateRequestConfig, verifyRequestEntry } from '../apps/src/df-billboard-test/l1-request-core.ts';
 import { syncLocalClock } from './sync-df-clock.mjs';
 
@@ -75,13 +76,11 @@ try {
   // An attacker can send a valid protocol message directly, but it must not be
   // accepted as if it came from the board's pinned entry contract.
   const forged = await session.create('Wrong L1 sender');
-  const inbox = new EvmContract(config.l1.inbox,
-    ['function sendL2Message((bytes32 actor,uint256 version),bytes32,bytes32) returns(bytes32,uint256)',
-      'event MessageSent(uint256 indexed checkpointNumber,uint256 index,bytes32 indexed hash,bytes16 rollingHash)'], payer);
+  const inbox = new EvmContract(config.l1.inbox, InboxAbi, payer);
   const forgedReceipt = await (await inbox.sendL2Message([config.board, config.rollupVersion], forged.commitment, forged.secretHash)).wait();
   const forgedEvent = forgedReceipt.logs.map(log => { try { return inbox.interface.parseLog(log); } catch { return null; } })
     .find(event => event?.name === 'MessageSent');
-  forged.messageKey = forgedEvent.args.hash; forged.leafIndex = forgedEvent.args.index.toString();
+  forged.messageKey = forgedEvent.args.hash; forged.leafIndex = forgedEvent.args.message.index.toString();
   await wait(forged);
   await assert.rejects(() => session.simulate(forged));
   console.log('PASS messages from another L1 sender rejected');
