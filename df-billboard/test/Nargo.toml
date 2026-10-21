@@ -1,0 +1,9 @@
+[package]
+name = "df_billboard_test"
+type = "lib"
+authors = [""]
+compiler_version = ">=1.0.0"
+
+[dependencies]
+aztec = { git = "https://github.com/aztec-labs-eng/aztec-nr", tag = "v6.0.0-rc.3", directory = "aztec" }
+df_billboard = { path = "../contract" }

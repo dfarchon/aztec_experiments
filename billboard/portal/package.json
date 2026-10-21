@@ -11,6 +11,6 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@aztec/l1-artifacts": "^5.0.0"
+    "@aztec-foundation/l1-artifacts": "6.0.0-rc.6"
   }
 }
