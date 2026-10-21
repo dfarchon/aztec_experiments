@@ -3,11 +3,7 @@ let ready: Promise<void> | undefined;
 
 export function loadAztecRuntime(): Promise<void> {
   return (ready ??= (async () => {
-    for (const src of [
-      "/aztec_bundle.js",
-      "/df-helpers.js",
-      "/df-aztec-lib.js",
-    ]) {
+    for (const src of ["/aztec_bundle.js", "/df-wallet-runtime.js"]) {
       if (loaded.has(src)) continue;
       await new Promise<void>((resolve, reject) => {
         const script = document.createElement("script");

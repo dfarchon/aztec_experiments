@@ -19,6 +19,7 @@ test("commitment matches Noir vector and binds body, salt and owner", () => {
   assert.notEqual(requestCommitment("hi", "0x07", "0x0a"), expected);
   assert.throws(() => requestCommitment("", "0x07", "0x09"));
   assert.throws(() => requestCommitment("中".repeat(171), "0x07", "0x09"));
+  assert.throws(() => requestCommitment("\ud800", "0x07", "0x09"), /Unicode/);
 });
 
 test("recovery authenticates zero value, target, calldata and matching receipt event", async () => {

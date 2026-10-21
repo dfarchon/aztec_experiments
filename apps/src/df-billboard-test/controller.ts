@@ -1,15 +1,25 @@
 // @ts-nocheck -- SDK wallet objects retain the legacy adapter's dynamic types.
 // Its public surface remains typed; internal SDK state can be tightened separately.
 import {
-  decodeDFMessage,
   encodeDFMessage,
   getBillboardFeeOptions,
 } from "../../../shared/df-billboard.mjs";
-import { AI_CACHE_NAME, AI_MODEL_VERSION, safetyResult } from "./ai-config.ts";
+import {
+  accountSetupOptions,
+  createAccountKeys,
+  hasAccountKeys,
+  readStored,
+  writeStored,
+} from "./accounts.ts";
+import { AI_MODEL_VERSION } from "./ai-config.ts";
+import { createFeedReader } from "./feed-reader.ts";
 import { parseKeywords } from "./keywords.ts";
 import { createMetaMaskPosting, emptyRequestView } from "./metamask-posting.ts";
 import { classifyRulePosts } from "./moderation.ts";
+import { environment, validateChain, validateRpc } from "./network.ts";
+import { createReadingController } from "./reading.ts";
 import type { BillboardController } from "./types";
+import { withWalletLock } from "./wallet-lock.ts";
 
 // The controller owns wallet/chain operations, never page DOM. React subscribes
 // to immutable public snapshots; secret keys and SDK objects stay private here.
@@ -39,7 +49,6 @@ export function createBillboardController(deps = {}): BillboardController {
     accountLabel: "",
     accountFile: null,
     fileVersion: 0,
-    realProofs: false,
     providers: [],
     provider: "0",
     pendingConnection: false,
@@ -57,6 +66,9 @@ export function createBillboardController(deps = {}): BillboardController {
     logs: [],
     posts: [],
     feedLoaded: false,
+    totalPosts: 0,
+    hasOlderPosts: false,
+    feedRevision: 0,
     aiHints: false,
     aiStatus: "AI filtering is off",
     rulesEnabled: false,
@@ -99,17 +111,30 @@ export function createBillboardController(deps = {}): BillboardController {
   let contracts;
   let boardArtifact;
   let publicNode;
+  let feedCursor;
+  const readPostPage = createFeedReader();
   let requestPosting;
   let providers = [];
   let pendingConnection = null;
   let busy = false;
   let progressHideTimer;
-  let aiWorker;
-  let aiRequestId = 0;
-  let aiGeneration = 0;
-  let aiNeedsRun = false;
-  const aiPending = new Map();
-  const AI_REQUEST_TIMEOUT_MS = 600_000;
+  const reading = createReadingController({
+    getView: () => view,
+    getPosts: () => state.posts,
+    getDeployment: () => deployment,
+    isBusy: () => busy,
+    patch,
+    savePreferences,
+    publishPosts,
+  });
+  const {
+    pauseAiHints,
+    runAiHints,
+    setAiHints,
+    confirmAiHints,
+    clearAiCache,
+    saveKeywords,
+  } = reading;
   const preferencesKey = "df-signal:reading-preferences:v5";
   function savePreferences() {
     try {
@@ -142,9 +167,11 @@ export function createBillboardController(deps = {}): BillboardController {
       },
     });
   }
-  function finishProgress(label, succeeded) {
+  function finishProgress(label, succeeded, completionLabel) {
     showProgress(
-      `${label}${succeeded ? " completed" : " failed"}`,
+      succeeded && completionLabel
+        ? completionLabel
+        : `${label}${succeeded ? " completed" : " failed"}`,
       succeeded ? 1 : 0,
       1
     );
@@ -166,16 +193,14 @@ export function createBillboardController(deps = {}): BillboardController {
   }
   function savedLocalAccounts() {
     try {
-      const value = JSON.parse(
-        localStorage.getItem(localAccountsKey()) || "[]"
-      );
+      const value = readStored(localStorage, localAccountsKey());
       return Array.isArray(value)
         ? value.filter(
             (account) =>
               account &&
-              ["secretKey", "salt", "signingKey", "address"].every(
-                (key) => typeof account[key] === "string" && account[key]
-              )
+              hasAccountKeys(account) &&
+              typeof account.address === "string" &&
+              account.address
           )
         : [];
     } catch {
@@ -202,16 +227,14 @@ export function createBillboardController(deps = {}): BillboardController {
     );
     if (index < 0) saved.push(account);
     else saved[index] = account;
-    localStorage.setItem(localAccountsKey(), JSON.stringify(saved));
+    writeStored(localStorage, localAccountsKey(), saved);
     localStorage.setItem(activeLocalAccountKey(), account.address);
     publishLocalAccounts(account.address);
   }
 
   async function createLocalAccount() {
     const a = A();
-    const secretKey = a.Fr.random().toString();
-    const salt = a.Fr.random().toString();
-    const signingKey = a.Fq.random().toString();
+    const { secretKey, salt, signingKey } = createAccountKeys(a);
     const derived = await deriveAccountAddress(
       secretKey,
       BigInt(salt),
@@ -249,21 +272,20 @@ export function createBillboardController(deps = {}): BillboardController {
     if (view.actionError?.label === label) patch({ actionError: null });
     if (label === "Anonymous posting") pauseAiHints();
     let succeeded = false;
+    let completionLabel;
     showProgress(`${label}…`);
     publishSession();
     try {
-      await fn();
+      const result = await fn();
+      if (typeof result === "string") completionLabel = result;
       succeeded = true;
     } catch (error) {
       fail(error, label);
     } finally {
       busy = false;
       publishSession();
-      finishProgress(label, succeeded);
-      if (aiNeedsRun && view.aiHints) {
-        aiNeedsRun = false;
-        void runAiHints();
-      }
+      finishProgress(label, succeeded, completionLabel);
+      reading.resume();
     }
   }
   function publishSession() {
@@ -281,13 +303,6 @@ export function createBillboardController(deps = {}): BillboardController {
     });
   }
 
-  function ensureLocal(url) {
-    const parsed = new URL(url);
-    if (!["127.0.0.1", "localhost"].includes(parsed.hostname))
-      throw new Error("Only local Aztec nodes are supported");
-    if (!["127.0.0.1", "localhost"].includes(location.hostname))
-      throw new Error("Open this test page from localhost");
-  }
   async function readArtifact(name) {
     const response = await fetch(`/df-${name}-artifact.json`);
     if (!response.ok)
@@ -321,29 +336,16 @@ export function createBillboardController(deps = {}): BillboardController {
     return a.Contract.at(addr, artifact, state.wallet);
   }
   async function initialize() {
-    ensureLocal(location.href);
     try {
-      const current = localStorage.getItem(preferencesKey);
-      const previous = localStorage.getItem("df-signal:reading-preferences:v4");
       const preferences = JSON.parse(
-        current ||
-          previous ||
-          localStorage.getItem("df-signal:reading-preferences:v3") ||
-          localStorage.getItem("df-signal:reading-preferences:v2") ||
-          "{}"
+        localStorage.getItem(preferencesKey) || "{}"
       );
       patch({
-        // The old promotion switch never silently opts users into broader rules.
-        rulesEnabled: Boolean(current && preferences.rulesEnabled === true),
+        rulesEnabled: preferences.rulesEnabled === true,
         keywordEnabled: preferences.keywordEnabled === true,
         keywordMode: preferences.keywordMode === "word" ? "word" : "contains",
-        aiConsentGiven: Boolean(
-          (current || previous) &&
-          preferences.aiConsentVersion === AI_MODEL_VERSION
-        ),
-        // Earlier consent only authorized hints, not automatic folding.
+        aiConsentGiven: preferences.aiConsentVersion === AI_MODEL_VERSION,
         aiHints: Boolean(
-          (current || previous) &&
           preferences.aiHints === true &&
           preferences.aiConsentVersion === AI_MODEL_VERSION
         ),
@@ -373,7 +375,14 @@ export function createBillboardController(deps = {}): BillboardController {
         "No local deployment found. Run npm run deploy:df:harness first."
       );
     deployment = await response.json();
-    ensureLocal(deployment.nodeUrl);
+    const env = environment(deployment.environment);
+    validateRpc(deployment.nodeUrl, env);
+    if (env === "local") validateRpc(location.origin, env);
+    else if (
+      location.protocol !== "https:" &&
+      !["localhost", "127.0.0.1"].includes(location.hostname)
+    )
+      throw new Error("Public deployments require a secure browser origin");
     if (
       deployment.kind !== "standalone-billboard" ||
       deployment.schemaVersion !== 1
@@ -406,7 +415,10 @@ export function createBillboardController(deps = {}): BillboardController {
     patch({ canRead: true });
     if (deployment.l1Request) {
       const config = {
-        kind: "local-sponsored-l1-post",
+        kind:
+          env === "local"
+            ? "local-sponsored-l1-post"
+            : "testnet-sponsored-l1-post",
         nodeUrl: deployment.nodeUrl,
         rollupAddress: deployment.rollupAddress,
         rollupVersion: String(deployment.rollupVersion),
@@ -434,16 +446,9 @@ export function createBillboardController(deps = {}): BillboardController {
     const node = state.aztecNode || publicNode;
     const info = await node.getNodeInfo();
     const l1 = await node.getL1ContractAddresses();
-    if (
-      Number(info.l1ChainId) !== 31337 ||
-      info.nodeVersion !== "6.0.0-rc.3" ||
-      info.realProofs !== false ||
-      l1.rollupAddress.toString() !== deployment.rollupAddress
-    ) {
-      throw new Error(
-        "Deployment does not match the local chain. Redeploy the test contracts."
-      );
-    }
+    const env = environment(deployment.environment);
+    validateRpc(deployment.nodeUrl, env);
+    validateChain(env, deployment, info, l1.rollupAddress.toString());
     return info;
   }
 
@@ -459,7 +464,7 @@ export function createBillboardController(deps = {}): BillboardController {
   }
 
   async function finishConnect(label) {
-    showProgress("Checking the local chain and loading Billboard…", 0, 2);
+    showProgress("Checking the network and loading Billboard…", 0, 2);
     await checkChain();
     contracts = {};
     contracts.board = await attachContract("board", deployment.board);
@@ -512,6 +517,7 @@ export function createBillboardController(deps = {}): BillboardController {
 
   async function connectLocal() {
     const a = A();
+    const chain = await checkChain();
     const mode = view.walletMode;
     showProgress("Preparing the browser Aztec account…");
     const account =
@@ -526,14 +532,16 @@ export function createBillboardController(deps = {}): BillboardController {
             : undefined;
     if (!account)
       throw new Error("Choose a saved account, or create/import one");
-    const signingKey = /^0x/i.test(account.signingKey)
-      ? `0x${account.signingKey.slice(2)}`
-      : `0x${account.signingKey}`;
-    const signingField = a.Fq.fromString(signingKey);
+    const setupOptions = accountSetupOptions(
+      a,
+      account,
+      `pxe_df_harness_${deployment.rollupAddress}_${account.address}_`,
+      chain.realProofs
+    );
     const derived = await deriveAccountAddress(
       account.secretKey,
       BigInt(account.salt),
-      signingField
+      setupOptions.signingKey
     );
     if (
       derived.address.toString().toLowerCase() !== account.address.toLowerCase()
@@ -547,12 +555,7 @@ export function createBillboardController(deps = {}): BillboardController {
     if (mode === "create" || mode === "import") rememberLocalAccount(account);
     try {
       const connected = await ensureAztecSetup(state, "log", {
-        secretKey: account.secretKey,
-        salt: account.salt,
-        dataDirPrefix: `pxe_df_harness_${deployment.rollupAddress}_${account.address}_`,
-        signingKey: signingField,
-        proverEnabled: view.realProofs,
-        blockMonitor: false,
+        ...setupOptions,
         onProgress: (step, total, message) => {
           showProgress(`Wallet initialization · ${message}`, step, total);
         },
@@ -563,7 +566,10 @@ export function createBillboardController(deps = {}): BillboardController {
       ) {
         throw new Error("Browser account address does not match the backup");
       }
-      rememberLocalAccount(account);
+      if (mode === "local") {
+        localStorage.setItem(activeLocalAccountKey(), account.address);
+        publishLocalAccounts(account.address);
+      }
       state.localAccount = account;
       await finishConnect(account.label || "Aztec browser account");
     } finally {
@@ -853,7 +859,23 @@ export function createBillboardController(deps = {}): BillboardController {
     // Clear only the confirmed draft, including after resuming a saved request.
     if (view.message === message) patch({ message: "" });
     showProgress("Post confirmed. Refreshing the public feed…");
-    await refresh(false);
+    try {
+      await refresh(false);
+      if (view.actionError?.label === "Refresh posts")
+        patch({ actionError: null });
+      return "Post published";
+    } catch (error) {
+      patch({
+        actionError: {
+          label: "Refresh posts",
+          message: error?.message || String(error),
+          guidance:
+            "Your post is confirmed onchain. Refresh the feed to see it; do not submit it again.",
+        },
+      });
+      log("Post confirmed, but the feed could not be refreshed.", "warn");
+      return "Post published · Feed refresh unavailable";
+    }
   }
 
   async function post() {
@@ -864,10 +886,7 @@ export function createBillboardController(deps = {}): BillboardController {
     if (view.walletMode === "metamask") {
       if (!requestPosting)
         throw new Error("MetaMask posting is not configured");
-      await checkChain();
-      await checkSponsorBalance();
-      await finishRequest(await requestPosting.post(message));
-      return;
+      return finishRequest(await requestPosting.post(message));
     }
     if (!state.wallet || !contracts?.board || !state.feePaymentMethod)
       throw new Error("Connect an Aztec wallet first");
@@ -877,294 +896,68 @@ export function createBillboardController(deps = {}): BillboardController {
     showProgress(
       "Generating a proof and submitting the anonymous post. Waiting for confirmation…"
     );
-    const tx = await contracts.board.methods.post(text, length).send({
-      from,
-      fee: await getBillboardFeeOptions(
-        state.aztecNode,
-        state.feePaymentMethod,
-        A().GasFees
-      ),
-    });
+    const tx = await withWalletLock(
+      `${deployment.rollupAddress}:${from.toString().toLowerCase()}`,
+      async () =>
+        contracts.board.methods.post(text, length).send({
+          from,
+          fee: await getBillboardFeeOptions(
+            state.aztecNode,
+            state.feePaymentMethod,
+            A().GasFees
+          ),
+        })
+    );
     if (tx.receipt.executionResult !== "success")
       throw new Error(`Posting failed: ${tx.receipt.executionResult}`);
-    // Confirmation consumes this draft, even if the later feed refresh fails.
-    if (view.message === message) patch({ message: "" });
     log(
       `Anonymous post confirmed onchain: ${tx.receipt.txHash}`,
       "success",
       "log"
     );
-    showProgress("Post confirmed. Refreshing the public feed…");
-    await refresh(false);
-    showProgress("Post published and feed updated", 2, 2);
+    return finishRequest(message);
   }
 
-  function publishPosts() {
-    patch({ posts: state.posts.map((post) => ({ ...post })) });
-  }
-  function publishFeed() {
+  function publishPosts(changes = {}) {
     patch({
+      ...changes,
       posts: state.posts.map((post) => ({ ...post })),
-      feedLoaded: true,
     });
   }
 
-  function disposeAiWorker(reason) {
-    if (aiWorker) aiWorker.terminate();
-    aiWorker = null;
-    for (const pending of aiPending.values()) {
-      clearTimeout(pending.timer);
-      pending.reject(new Error(reason));
-    }
-    aiPending.clear();
-  }
-
-  function pauseAiHints() {
-    if (!view.aiHints) return;
-    aiGeneration++;
-    aiNeedsRun = true;
-    disposeAiWorker("AI analysis paused");
-    patch({
-      aiProgress: null,
-      aiStatus:
-        "AI analysis paused until the current onchain operation finishes.",
-    });
-  }
-
-  function getAiWorker() {
-    if (aiWorker) return aiWorker;
-    // Replaced by the harness build, so an old cached runtime cannot survive an upgrade.
-    const worker = new Worker(
-      "/df-toxicity.worker.js?v=" + __DF_TOXICITY_WORKER_HASH__,
-      { type: "module" }
-    );
-    worker.onmessage = (event) => {
-      if (aiWorker !== worker) return;
-      const { id, results, progress, error } = event.data || {};
-      const pending = aiPending.get(id);
-      if (!pending) return;
-      if (progress) {
-        const total = Number(progress.total),
-          loaded = Number(progress.loaded);
-        const percent =
-          total > 0 && Number.isFinite(loaded)
-            ? Math.min(100, Math.max(0, (loaded / total) * 100))
-            : undefined;
-        patch({
-          aiProgress: { file: String(progress.file || "Model"), percent },
-          aiStatus:
-            progress.status === "ready"
-              ? "Model ready. Analyzing locally…"
-              : `Loading the English/Chinese model: ${progress.file || "Initializing runtime"}${percent === undefined ? "" : ` · ${percent.toFixed(0)}%`}. Disable AI to cancel.`,
-        });
-        return;
-      }
-      aiPending.delete(id);
-      clearTimeout(pending.timer);
-      if (error) pending.reject(new Error(error));
-      else pending.resolve(results);
-    };
-    worker.onerror = (event) => {
-      if (aiWorker === worker)
-        disposeAiWorker(event.message || "AI worker failed");
-    };
-    worker.onmessageerror = () => {
-      if (aiWorker === worker)
-        disposeAiWorker("AI worker returned unreadable data");
-    };
-    aiWorker = worker;
-    return worker;
-  }
-
-  function classifyWithAi(texts) {
-    return new Promise((resolve, reject) => {
-      const id = ++aiRequestId;
-      const timer = setTimeout(() => {
-        if (aiPending.has(id))
-          disposeAiWorker(
-            "Model loading or analysis timed out. Disable and re-enable AI filtering to retry."
-          );
-      }, AI_REQUEST_TIMEOUT_MS);
-      aiPending.set(id, { resolve, reject, timer });
-      try {
-        getAiWorker().postMessage({ id, texts });
-      } catch (error) {
-        clearTimeout(timer);
-        aiPending.delete(id);
-        reject(error);
-      }
-    });
-  }
-
-  function aiCacheKey() {
-    return `df-signal:ai:${deployment.rollupAddress}:${deployment.board}:${AI_MODEL_VERSION}`;
-  }
-
-  function readAiCache() {
-    try {
-      const value = JSON.parse(localStorage.getItem(aiCacheKey()) || "{}");
-      return value && typeof value === "object" && !Array.isArray(value)
-        ? value
-        : {};
-    } catch {
-      return {};
-    }
-  }
-
-  function saveAiCache(cache) {
-    try {
-      const ids = Object.keys(cache);
-      for (const id of ids.slice(0, Math.max(0, ids.length - 500)))
-        delete cache[id];
-      localStorage.setItem(aiCacheKey(), JSON.stringify(cache));
-    } catch {
-      /* Storage can be unavailable; in-memory results still work. */
-    }
-  }
-
-  async function contentHash(text) {
-    const bytes = new TextEncoder().encode(text);
-    const digest = await crypto.subtle.digest("SHA-256", bytes);
-    return [...new Uint8Array(digest)]
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
-  }
-
-  async function runAiHints() {
-    if (disposed || !view.aiHints || !deployment || busy) return;
-    aiNeedsRun = false;
-    const generation = ++aiGeneration;
-    const posts = state.posts.filter(
-      (post) => typeof post.text === "string" && post.text.trim()
-    );
-    if (!posts.length) {
-      patch({ aiStatus: "No posts to analyze." });
-      return;
-    }
-    patch({ aiStatus: "Checking the local AI classification cache…" });
-    const cache = readAiCache();
-    const missing = [];
-    try {
-      for (const post of posts) {
-        const hash = await contentHash(post.text);
-        if (generation !== aiGeneration) return;
-        const cached = cache[post.id];
-        let validCache = false;
-        if (cached?.hash === hash && cached.scores) {
-          try {
-            const checked = safetyResult(
-              Object.entries(cached.scores).map(([label, score]) => ({
-                label,
-                score,
-              }))
-            );
-            post.aiLabels = checked.labels;
-            post.aiAnalyzed = true;
-            validCache = true;
-          } catch {
-            /* Corrupt result cache is reclassified, never treated as safe. */
-          }
-        }
-        if (!validCache) missing.push({ post, hash });
-      }
-      publishPosts();
-      for (let offset = 0; offset < missing.length; offset += 4) {
-        if (generation !== aiGeneration) return;
-        const batch = missing.slice(offset, offset + 4);
-        patch({
-          aiStatus: `Experimental AI analysis: ${Math.min(offset + batch.length, missing.length)}/${missing.length} posts. First use requires a model download.`,
-        });
-        const results = await classifyWithAi(
-          batch.map((entry) => entry.post.text)
-        );
-        if (generation !== aiGeneration) return;
-        if (!Array.isArray(results) || results.length !== batch.length)
-          throw new Error("Unexpected number of AI classification results");
-        const checked = results.map((entry) =>
-          safetyResult(
-            Object.entries(entry.scores || {}).map(([label, score]) => ({
-              label,
-              score,
-            }))
-          )
-        );
-        batch.forEach((entry, index) => {
-          entry.post.aiLabels = checked[index].labels;
-          entry.post.aiAnalyzed = true;
-          cache[entry.post.id] = {
-            hash: entry.hash,
-            scores: checked[index].scores,
-          };
-        });
-        saveAiCache(cache);
-        publishPosts();
-      }
-      patch({
-        aiProgress: null,
-        aiStatus: `AI analyzed ${posts.length} posts (${missing.length} newly analyzed). Flagged posts move to Filtered; unflagged does not mean safe.`,
-      });
-    } catch (error) {
-      if (generation !== aiGeneration) return;
-      disposeAiWorker("AI analysis failed");
-      patch({
-        aiProgress: null,
-        aiStatus: `AI filtering unavailable: ${error?.message || String(error)}. Unreviewed posts remain visible. Keywords and basic rules still work.`,
-      });
-      console.error("AI classification failed", error);
-    }
-  }
-
-  async function refresh(reportProgress = true) {
-    // Cancel analysis of the previous feed before replacing its post objects.
+  async function readFeed(older, reportProgress = true) {
     pauseAiHints();
     if (!publicNode || !boardArtifact)
       throw new Error("Billboard is not initialized");
-    const sdk = A();
-    const addr = sdk.AztecAddress.fromStringUnsafe(deployment.board);
-    const layout = boardArtifact.storageLayout;
-    // Read one consistent public-state snapshot; no wallet or simulation needed.
-    const block = await publicNode.getBlockNumber();
-    const read = (slot) => publicNode.getPublicStorageAt(block, addr, slot);
-    if (reportProgress) showProgress("Loading the public post count…");
-    const count = Number((await read(layout.post_count.slot)).toBigInt());
-    const posts = [];
-    for (let id = 0; id < count; id++) {
-      const lengthSlot = await sdk.deriveStorageSlotInMap(
-        layout.post_lengths.slot,
-        new sdk.Fr(BigInt(id))
-      );
-      const length = Number((await read(lengthSlot)).toBigInt());
-      const fields = await Promise.all(
-        Array.from({ length: 17 }, async (_, index) =>
-          read(
-            await sdk.deriveStorageSlotInMap(
-              layout.post_data.slot,
-              new sdk.Fr(BigInt(id * 17 + index))
-            )
-          )
-        )
-      );
-      try {
-        posts.push({ id, text: decodeDFMessage(fields, length) });
-      } catch (error) {
-        posts.push({ id, decodeError: true });
-        log(
-          `Could not decode post #${id}: ${error?.message || String(error)}`,
-          "error",
-          "log"
-        );
-      }
-      if (reportProgress) showProgress("Loading public posts…", id + 1, count);
-    }
-    state.posts = classifyRulePosts(posts);
-    publishFeed();
-    if (view.aiHints) {
-      if (busy) aiNeedsRun = true;
-      else void runAiHints();
-    }
-    if (reportProgress && count === 0)
-      showProgress("No public posts yet", 1, 1);
-    log(`Loaded ${count} public posts`, "info", "log");
+    if (older && (!feedCursor || feedCursor.before === 0)) return;
+    if (reportProgress)
+      showProgress(older ? "Loading older posts…" : "Loading recent posts…");
+    const result = await readPostPage(
+      A(),
+      publicNode,
+      deployment.board,
+      boardArtifact.storageLayout,
+      older ? feedCursor : undefined
+    );
+    feedCursor = result.cursor;
+    state.posts = classifyRulePosts(
+      older ? [...result.posts, ...state.posts] : result.posts
+    );
+    publishPosts({
+      feedLoaded: true,
+      totalPosts: feedCursor.total,
+      hasOlderPosts: feedCursor.before > 0,
+      feedRevision: view.feedRevision + (older ? 0 : 1),
+    });
+    if (view.aiHints) void runAiHints();
+    log(
+      `Loaded ${state.posts.length} of ${feedCursor.total} public posts`,
+      "info",
+      "log"
+    );
+  }
+  async function refresh(reportProgress = true) {
+    await readFeed(false, reportProgress);
   }
 
   function setField(name, value) {
@@ -1173,7 +966,6 @@ export function createBillboardController(deps = {}): BillboardController {
       "savedAccount",
       "accountLabel",
       "accountFile",
-      "realProofs",
       "provider",
       "message",
       "rulesEnabled",
@@ -1202,68 +994,6 @@ export function createBillboardController(deps = {}): BillboardController {
     patch({ [name]: value });
     if (readingFields.includes(name)) savePreferences();
     if (name === "walletMode" || name === "provider") publishSession();
-  }
-  function setAiHints(enabled) {
-    if (typeof enabled !== "boolean" || (enabled && (busy || view.aiClearing)))
-      return;
-    if (enabled && view.aiHints && aiPending.size) return;
-    if (enabled && !view.aiConsentGiven) {
-      patch({ aiConsentOpen: true });
-      return;
-    }
-    patch({
-      aiHints: enabled,
-      aiConsentOpen: false,
-      ...(enabled
-        ? { aiStatus: "AI enabled. Waiting to load public posts." }
-        : {}),
-    });
-    savePreferences();
-    if (enabled) void runAiHints();
-    else {
-      aiGeneration++;
-      aiNeedsRun = false;
-      disposeAiWorker("AI filtering disabled");
-      patch({ aiProgress: null, aiStatus: "AI filtering is off" });
-    }
-  }
-  function confirmAiHints() {
-    if (busy || view.aiClearing) return;
-    patch({ aiConsentGiven: true });
-    setAiHints(true);
-  }
-  function saveKeywords(text) {
-    try {
-      patch({ keywords: parseKeywords(text), keywordError: "" });
-      savePreferences();
-      return true;
-    } catch (error) {
-      patch({ keywordError: error.message });
-      return false;
-    }
-  }
-  async function clearAiCache() {
-    if (view.aiClearing) return;
-    setAiHints(false);
-    patch({ aiClearing: true, aiConsentGiven: false });
-    savePreferences();
-    for (const post of state.posts) {
-      delete post.aiLabels;
-      delete post.aiAnalyzed;
-    }
-    publishPosts();
-    try {
-      if (typeof caches !== "undefined") await caches.delete(AI_CACHE_NAME);
-      if (deployment) localStorage.removeItem(aiCacheKey());
-      patch({
-        aiStatus:
-          "Model and board classification caches cleared. Enabling AI again will reload the model.",
-      });
-    } catch (error) {
-      patch({ aiStatus: `Cache clearing incomplete: ${error.message}` });
-    } finally {
-      patch({ aiClearing: false });
-    }
   }
   async function copyAddress() {
     if (!view.address) return;
@@ -1317,7 +1047,7 @@ export function createBillboardController(deps = {}): BillboardController {
       action(async () => {
         if (!view.request.payer || !requestPosting)
           throw new Error("Reconnect MetaMask first");
-        await finishRequest(await requestPosting.resume(hash));
+        return finishRequest(await requestPosting.resume(hash));
       }, "Anonymous posting"),
     scan: () => action(scanWallets, "Scan extension wallets"),
     confirmWallet: () =>
@@ -1331,13 +1061,12 @@ export function createBillboardController(deps = {}): BillboardController {
       }, "Switch wallet account"),
     post: () => action(post, "Anonymous posting"),
     refresh: () => action(refresh, "Refresh posts"),
+    loadOlder: () => action(() => readFeed(true), "Load older posts"),
     dispose: () => {
       disposed = true;
       requestPosting?.dispose();
-      aiGeneration++;
-      aiNeedsRun = false;
+      reading.dispose();
       pendingConnection?.cancel();
-      disposeAiWorker("Page closed");
       clearTimeout(progressHideTimer);
       clearTimeout(copyTimer);
       listeners.clear();

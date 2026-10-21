@@ -36,7 +36,6 @@ export interface EditableFields {
   savedAccount: string;
   accountLabel: string;
   accountFile: File | null;
-  realProofs: boolean;
   provider: string;
   message: string;
   rulesEnabled: boolean;
@@ -73,6 +72,9 @@ export interface BillboardView extends EditableFields {
   logs: { id: number; message: string; type: string; time: string }[];
   posts: PostData[];
   feedLoaded: boolean;
+  totalPosts: number;
+  hasOlderPosts: boolean;
+  feedRevision: number;
   aiHints: boolean;
   aiStatus: string;
   keywords: string[];
@@ -108,6 +110,7 @@ export interface BillboardController {
   selectGrantedAccount(value: string): Promise<void>;
   post(): Promise<void>;
   refresh(): Promise<void>;
+  loadOlder(): Promise<void>;
 }
 export interface ViewProps {
   view: BillboardView;

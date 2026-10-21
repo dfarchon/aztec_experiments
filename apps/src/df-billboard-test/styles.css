@@ -1161,23 +1161,6 @@ textarea::placeholder {
   margin-top: 32px;
   color: var(--muted);
 }
-.advanced-settings {
-  margin-top: 16px;
-  border-top: 1px solid var(--line);
-  padding-top: 20px;
-  color: var(--muted);
-  font-size: 13px;
-}
-.local-tools {
-  margin: 16px 0;
-  padding: 12px;
-  border: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 12px;
-}
-.local-tools[open] summary {
-  margin-bottom: 12px;
-}
 @media (max-width: 760px) {
   .product-layout {
     width: calc(100% - 24px);

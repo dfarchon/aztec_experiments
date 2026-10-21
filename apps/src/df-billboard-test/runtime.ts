@@ -4,17 +4,10 @@ import { loadAztecRuntime } from "./runtime-assets";
 // Kept outside route components: navigation must not discard an active wallet,
 // an in-flight transaction, or the user's message draft.
 export const controller = createBillboardController();
-let ready: Promise<void> | undefined;
-export function initializeRuntime(): Promise<void> {
-  return (ready ??= (async () => {
-    // Share script loading with the isolated L1 posting route.
-    await loadAztecRuntime();
-    window.log = controller.log;
-    await controller.initialize();
-  })().catch((error) => {
-    ready = undefined;
-    throw error;
-  }));
+export async function initializeRuntime(): Promise<void> {
+  await loadAztecRuntime();
+  window.log = controller.log;
+  await controller.initialize();
 }
 window.addEventListener("pagehide", (event) => {
   if (!event.persisted) controller.dispose();

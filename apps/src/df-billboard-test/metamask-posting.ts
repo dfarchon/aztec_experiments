@@ -1,6 +1,14 @@
 import { BrowserProvider, Contract, JsonRpcProvider } from "ethers";
 
-import { findMetaMask, switchLocalEthereumChain } from "./l1.ts";
+import {
+  type AccountKeys,
+  accountSetupOptions,
+  createAccountKeys,
+  hasAccountKeys,
+  readStored,
+  writeStored,
+} from "./accounts.ts";
+import { findMetaMask, switchEthereumChain } from "./l1.ts";
 import {
   createRequestSession,
   type PostRequest,
@@ -8,10 +16,32 @@ import {
   recoverRequest,
   requestABI,
   type RequestConfig,
+  requestEnvironment,
   type RequestSDK,
   validateRequestConfig,
   verifyRequestEntry,
 } from "./l1-request-core.ts";
+import { networkPolicy, waitForInbox } from "./network.ts";
+import { withWalletLock } from "./wallet-lock.ts";
+
+// Keep the orchestration testable without replacing the posting module itself.
+const services = {
+  findMetaMask,
+  switchEthereumChain,
+  validateRequestConfig,
+  verifyRequestEntry,
+  createRequestSession,
+  readRequestReceipt,
+  recoverRequest,
+  rpc: (url: string) =>
+    new JsonRpcProvider(url, undefined, { cacheTimeout: -1 }),
+  browser: (provider: Awaited<ReturnType<typeof findMetaMask>>) =>
+    new BrowserProvider(provider, "any", { cacheTimeout: -1 }),
+  entry: (
+    address: string,
+    signer: Awaited<ReturnType<BrowserProvider["getSigner"]>>
+  ) => new Contract(address, requestABI, signer),
+};
 
 type Session = Awaited<ReturnType<typeof createRequestSession>>;
 type Local = {
@@ -46,15 +76,65 @@ export function createMetaMaskPosting(
   config: RequestConfig,
   a: RequestSDK,
   emit: (view: RequestView) => void,
-  progress: (label: string) => void
+  progress: (label: string) => void,
+  overrides: Partial<typeof services> = {}
 ) {
+  const api = { ...services, ...overrides };
   let saved: Saved | undefined;
   let session: Session | undefined;
   let injected: Awaited<ReturnType<typeof findMetaMask>> | undefined;
   let payer = "";
   let disposed = false;
+  let operating = false;
   const local: Local = {};
   const key = `l1-post-lab/6.0.0-rc.3/${config.rollupAddress}/${config.board}`;
+  function syncSaved() {
+    const latest = readStored<Saved>(localStorage, key);
+    if (latest && (!hasAccountKeys(latest) || !Array.isArray(latest.jobs)))
+      throw new Error(
+        "Invalid saved posting account. Preserve browser data for recovery."
+      );
+    if (
+      saved &&
+      (!latest ||
+        ["secretKey", "salt", "signingKey"].some(
+          (field) =>
+            saved![field as keyof AccountKeys] !==
+            latest[field as keyof AccountKeys]
+        ))
+    )
+      throw new Error(
+        "The saved account changed in another tab. Reload before continuing."
+      );
+    saved = latest ?? undefined;
+  }
+  async function exclusive<T>(operation: () => Promise<T>): Promise<T> {
+    return withWalletLock(key, async () => {
+      if (disposed)
+        throw new Error("Posting session closed. Reload to continue.");
+      operating = true;
+      try {
+        syncSaved();
+        notify();
+        return await operation();
+      } finally {
+        operating = false;
+        notify();
+      }
+    });
+  }
+  const onStorage = (event: StorageEvent) => {
+    if (disposed || operating || (event.key !== key && event.key !== null))
+      return;
+    try {
+      syncSaved();
+      notify();
+    } catch {
+      changed();
+      progress("Saved wallet data changed. Reload before continuing.");
+    }
+  };
+  window.addEventListener("storage", onStorage);
   const notify = () => {
     if (disposed) return;
     emit({
@@ -75,7 +155,7 @@ export function createMetaMaskPosting(
   };
   const persist = () => {
     if (!saved) throw new Error("Recovery data is not ready");
-    localStorage.setItem(key, JSON.stringify(saved));
+    writeStored(localStorage, key, saved);
     notify();
   };
   const changed = () => {
@@ -83,8 +163,7 @@ export function createMetaMaskPosting(
     notify();
   };
   const pending = () => saved?.jobs.find((job) => job.postId === undefined);
-  const rpc = () =>
-    new JsonRpcProvider(config.l1.rpcUrl, undefined, { cacheTimeout: -1 });
+  const rpc = () => api.rpc(config.l1.rpcUrl);
   const chainId = `0x${config.l1.chainId.toString(16)}`;
   const assertPayer = async () => {
     if (!payer || !injected) throw new Error("Reconnect MetaMask to continue");
@@ -100,26 +179,27 @@ export function createMetaMaskPosting(
   };
   async function resume(job: PostRequest) {
     if (!session) throw new Error("Connect MetaMask first");
-    await validateRequestConfig(a, config);
+    await api.validateRequestConfig(a, config);
     const provider = rpc();
     try {
-      await verifyRequestEntry(config, provider);
+      await api.verifyRequestEntry(config, provider);
       progress("Waiting for L1 request confirmation…");
-      if (!(await readRequestReceipt(config, job, provider))) {
+      if (!(await api.readRequestReceipt(config, job, provider))) {
         await provider.waitForTransaction(job.l1Tx!, 1, 45_000);
-        if (!(await readRequestReceipt(config, job, provider)))
+        if (!(await api.readRequestReceipt(config, job, provider)))
           throw new Error(
             "L1 is not confirmed yet. Resume later without paying again."
           );
       }
       persist();
-      // Only permitted after validateRequestConfig confirms a local synthetic chain.
-      const debug = a.createAztecNodeDebugClient(config.nodeUrl);
-      for (let i = 0; i < 20 && !(await session.ready(job)); i++) {
-        progress(`Waiting for the request to reach Aztec · ${i + 1}/20`);
-        await debug.warpL2TimeAtLeastBy(12);
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
+      await waitForInbox(
+        requestEnvironment(config),
+        () => session!.ready(job),
+        () =>
+          a.createAztecNodeDebugClient(config.nodeUrl).warpL2TimeAtLeastBy(12),
+        progress,
+        () => disposed
+      );
       progress("Publishing on Aztec · L2 fees sponsored…");
       await session.publish(job, persist);
       return job.text;
@@ -127,10 +207,10 @@ export function createMetaMaskPosting(
       provider.destroy();
     }
   }
-  return {
+  const operations = {
     async connect() {
       if (!injected) {
-        injected = await findMetaMask();
+        injected = await api.findMetaMask();
         injected.on?.("accountsChanged", changed);
         injected.on?.("chainChanged", changed);
       }
@@ -140,35 +220,30 @@ export function createMetaMaskPosting(
         method: "eth_requestAccounts",
       })) as string[];
       if (!accounts[0]) throw new Error("Wallet access was not authorized");
-      await switchLocalEthereumChain(injected, chainId, config.l1.rpcUrl);
-      const node = await validateRequestConfig(a, config);
+      await api.switchEthereumChain(
+        injected,
+        chainId,
+        config.l1.rpcUrl,
+        requestEnvironment(config)
+      );
+      const node = await api.validateRequestConfig(a, config);
       const provider = rpc();
       try {
-        await verifyRequestEntry(config, provider);
+        await api.verifyRequestEntry(config, provider);
       } finally {
         provider.destroy();
       }
       if (!session) {
-        const existing = localStorage.getItem(key);
-        saved = existing
-          ? (JSON.parse(existing) as Saved)
-          : {
-              secretKey: a.Fr.random().toString(),
-              salt: a.Fr.random().toString(),
-              signingKey: a.Fq.random().toString(),
-              jobs: [],
-            };
-        if (
-          !saved ||
-          !Array.isArray(saved.jobs) ||
-          ![saved.secretKey, saved.salt, saved.signingKey].every(
-            (value) => typeof value === "string" && value
-          )
-        )
-          throw new Error(
-            "Invalid saved MetaMask posting account. Preserve browser data for recovery."
-          );
-        persist();
+        // exclusive() already loaded and validated the latest durable state.
+        if (!saved) {
+          saved = { ...createAccountKeys(a), jobs: [] };
+          try {
+            persist();
+          } catch (error) {
+            saved = undefined;
+            throw error;
+          }
+        }
         const globals = window as unknown as {
           RPC_CONFIG: { nodeUrl: string };
           ensureAztecSetup(
@@ -181,12 +256,12 @@ export function createMetaMaskPosting(
         progress("Preparing your browser Aztec account…");
         if (
           !(await globals.ensureAztecSetup(local, "log", {
-            secretKey: saved.secretKey,
-            salt: saved.salt,
-            signingKey: a.Fq.fromString(saved.signingKey),
-            proverEnabled: false,
-            blockMonitor: false,
-            dataDirPrefix: `pxe_l1_post_${config.board}_${saved.salt}_`,
+            ...accountSetupOptions(
+              a,
+              saved,
+              `pxe_l1_post_${config.board}_${saved.salt}_`,
+              networkPolicy(requestEnvironment(config)).realProofs
+            ),
             onProgress: (_step: number, _total: number, message: string) =>
               progress(message),
           })) ||
@@ -203,7 +278,7 @@ export function createMetaMaskPosting(
             }
           )
         );
-        session = await createRequestSession(
+        session = await api.createRequestSession(
           a,
           node,
           local.wallet,
@@ -224,7 +299,6 @@ export function createMetaMaskPosting(
           "MetaMask account or network changed during connection. Reconnect."
         );
       payer = current[0];
-      notify();
     },
     async post(text: string) {
       if (!session || !saved || !injected)
@@ -234,10 +308,10 @@ export function createMetaMaskPosting(
           "Resume the existing request before paying for another post"
         );
       await assertPayer();
-      await validateRequestConfig(a, config);
+      await api.validateRequestConfig(a, config);
       const provider = rpc();
       try {
-        await verifyRequestEntry(config, provider);
+        await api.verifyRequestEntry(config, provider);
         // Reject a depleted sponsor before asking for a paid L1 transaction.
         if (
           (await a.getFeeJuiceBalance(
@@ -248,14 +322,12 @@ export function createMetaMaskPosting(
           throw new Error(
             "Sponsored FPC has insufficient balance. No L1 payment was requested."
           );
-        const browser = new BrowserProvider(injected, "any", {
-          cacheTimeout: -1,
-        });
+        const browser = api.browser(injected);
         const signer = await browser.getSigner();
         if ((await signer.getAddress()).toLowerCase() !== payer.toLowerCase())
           throw new Error("Wallet account changed. Reconnect MetaMask.");
         const job = await session.create(text);
-        const entry = new Contract(config.l1.entry, requestABI, signer);
+        const entry = api.entry(config.l1.entry, signer);
         await entry.requestPost.estimateGas(
           config.board,
           job.commitment,
@@ -295,8 +367,8 @@ export function createMetaMaskPosting(
     async resume(hash?: string) {
       const job = pending();
       if (!job || !session) throw new Error("No connected pending request");
-      await validateRequestConfig(a, config);
       if (hash) {
+        await api.validateRequestConfig(a, config);
         if (job.l2Attempted && !job.l2Tx) {
           if (!/^0x[0-9a-fA-F]{64}$/.test(hash))
             throw new Error("Invalid L2 transaction hash");
@@ -309,8 +381,11 @@ export function createMetaMaskPosting(
         }
         const provider = rpc();
         try {
-          await verifyRequestEntry(config, provider);
-          Object.assign(job, await recoverRequest(config, job, provider, hash));
+          await api.verifyRequestEntry(config, provider);
+          Object.assign(
+            job,
+            await api.recoverRequest(config, job, provider, hash)
+          );
           persist();
         } finally {
           provider.destroy();
@@ -327,9 +402,16 @@ export function createMetaMaskPosting(
     },
     dispose() {
       disposed = true;
+      window.removeEventListener("storage", onStorage);
       injected?.removeListener?.("accountsChanged", changed);
       injected?.removeListener?.("chainChanged", changed);
       void local.pxe?.stop().catch(() => {});
     },
+  };
+  return {
+    ...operations,
+    connect: () => exclusive(() => operations.connect()),
+    post: (text: string) => exclusive(() => operations.post(text)),
+    resume: (hash?: string) => exclusive(() => operations.resume(hash)),
   };
 }

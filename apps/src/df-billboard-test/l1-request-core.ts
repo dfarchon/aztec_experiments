@@ -12,13 +12,19 @@ import {
   encodeDFMessage,
   getBillboardFeeOptions,
 } from "../../../shared/df-billboard.mjs";
+import {
+  environment,
+  networkPolicy,
+  validateChain,
+  validateRpc,
+} from "./network.ts";
 
 export type RequestSDK = typeof import("../../../shared/sdk-entry.mjs");
 type Wallet = Parameters<RequestSDK["Contract"]["at"]>[2];
 type Owner = Parameters<RequestSDK["getFeeJuiceBalance"]>[0];
 type Node = ReturnType<RequestSDK["createAztecNodeClient"]>;
 export interface RequestConfig {
-  kind: "local-sponsored-l1-post";
+  kind: "local-sponsored-l1-post" | "testnet-sponsored-l1-post";
   nodeUrl: string;
   rollupAddress: string;
   rollupVersion: string;
@@ -81,35 +87,32 @@ export function requestCommitment(text: string, salt: string, owner: string) {
   );
 }
 
+export function requestEnvironment(config: RequestConfig) {
+  if (config.kind === "local-sponsored-l1-post") return environment("local");
+  if (config.kind === "testnet-sponsored-l1-post")
+    return environment("testnet");
+  throw new Error("Unexpected request environment");
+}
+
 export async function validateRequestConfig(
   a: RequestSDK,
   config: RequestConfig
 ) {
-  for (const url of [config.nodeUrl, config.l1.rpcUrl]) {
-    const parsed = new URL(url);
-    if (
-      parsed.protocol !== "http:" ||
-      !["localhost", "127.0.0.1"].includes(parsed.hostname)
-    )
-      throw new Error("This prototype only supports local RPCs");
-  }
-  if (config.kind !== "local-sponsored-l1-post" || config.l1.chainId !== 31337)
+  const env = requestEnvironment(config);
+  for (const url of [config.nodeUrl, config.l1.rpcUrl]) validateRpc(url, env);
+  if (config.l1.chainId !== networkPolicy(env).chainId)
     throw new Error("Unexpected request network");
   const node = a.createAztecNodeClient(config.nodeUrl);
   const [info, addresses] = await Promise.all([
     node.getNodeInfo(),
     node.getL1ContractAddresses(),
   ]);
+  validateChain(env, config, info, addresses.rollupAddress.toString());
   if (
-    info.nodeVersion !== "6.0.0-rc.3" ||
-    info.realProofs !== false ||
-    info.l1ChainId !== 31337 ||
-    String(info.rollupVersion) !== config.rollupVersion ||
-    addresses.rollupAddress.toString() !== config.rollupAddress ||
     addresses.inboxAddress.toString().toLowerCase() !==
-      config.l1.inbox.toLowerCase()
+    config.l1.inbox.toLowerCase()
   )
-    throw new Error("Chain changed; refusing stale request deployment");
+    throw new Error("L1 inbox mismatch");
   return node;
 }
 
@@ -264,15 +267,15 @@ export async function createRequestSession(
     board,
     node,
     async create(text: string): Promise<PostRequest> {
-      encodeDFMessage(text);
       const salt = a.Fr.random().toString();
       const secret = a.Fr.random();
+      const commitment = requestCommitment(text, salt, owner.toString());
       return {
         text,
         salt,
         secret: secret.toString(),
         secretHash: (await a.computeSecretHash(secret)).toString(),
-        commitment: requestCommitment(text, salt, owner.toString()),
+        commitment,
       };
     },
     async ready(job: PostRequest) {

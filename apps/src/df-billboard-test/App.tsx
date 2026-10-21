@@ -108,7 +108,13 @@ function DebugPanel({ view }: { view: BillboardView }) {
   );
 }
 
-export function App({ controller }: { controller: BillboardController }) {
+export function App({
+  controller,
+  development = false,
+}: {
+  controller: BillboardController;
+  development?: boolean;
+}) {
   const mainRef = useRef<HTMLDivElement>(null);
   const [params, setParams] = useSearchParams();
   const selected = params.get("view");
@@ -215,10 +221,7 @@ export function App({ controller }: { controller: BillboardController }) {
                 Filters only change your view. Originals remain available.
               </p>
               <ReadingSettings view={view} controller={controller} />
-              <details className="advanced-settings">
-                <summary>Advanced</summary>
-                <DebugPanel view={view} />
-              </details>
+              {development && <DebugPanel view={view} />}
             </section>
             <section
               hidden={section !== "activity"}

@@ -1,5 +1,7 @@
 import type { Eip1193Provider } from "ethers";
 
+import { type Environment, networkPolicy, validateRpc } from "./network.ts";
+
 type Injected = Eip1193Provider & {
   isMetaMask?: boolean;
   isRabby?: boolean;
@@ -36,11 +38,16 @@ export async function findMetaMask(): Promise<Injected> {
   return provider;
 }
 
-export async function switchLocalEthereumChain(
+export async function switchEthereumChain(
   provider: Awaited<ReturnType<typeof findMetaMask>>,
   chainId: string,
-  rpcUrl: string
+  rpcUrl: string,
+  env: Environment = "local"
 ) {
+  validateRpc(rpcUrl, env);
+  const policy = networkPolicy(env);
+  if (BigInt(chainId) !== BigInt(policy.chainId))
+    throw new Error("Unexpected wallet chain");
   if ((await provider.request({ method: "eth_chainId" })) === chainId) return;
   const switchChain = () =>
     provider.request({
@@ -56,9 +63,13 @@ export async function switchLocalEthereumChain(
       params: [
         {
           chainId,
-          chainName: "Billboard Local Anvil",
+          chainName: policy.chainName,
           rpcUrls: [rpcUrl],
-          nativeCurrency: { name: "Local ETH", symbol: "ETH", decimals: 18 },
+          nativeCurrency: {
+            name: policy.currency,
+            symbol: "ETH",
+            decimals: 18,
+          },
         },
       ],
     });

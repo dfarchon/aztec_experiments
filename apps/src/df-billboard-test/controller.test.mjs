@@ -64,6 +64,7 @@ function fixture(t, overrides = {}) {
     location: new URL("http://127.0.0.1:5001/"),
     localStorage: storage(),
     sessionStorage: storage(),
+    navigator: { locks: { request: async (_name, _options, run) => run({}) } },
   })) {
     const descriptor = Object.getOwnPropertyDescriptor(globalThis, key);
     Object.defineProperty(globalThis, key, {
@@ -206,7 +207,10 @@ function fixture(t, overrides = {}) {
     sdk: () => sdk,
     deriveAccountAddress: async () => ({ address }),
     ensureAztecSetup: async (state, _, options) => {
+      if (overrides.ensureAztecSetup)
+        return overrides.ensureAztecSetup(state, _, options);
       assert.equal(options.blockMonitor, false);
+      assert.equal(options.proverEnabled, info.realProofs);
       options.onProgress(1, 8, "测试钱包");
       Object.assign(state, {
         address,
@@ -392,7 +396,66 @@ test("initialization is idempotent, subscribable and does not publish test keys"
   controller.setAiHints(false);
 });
 
-test("legacy reading preferences migrate without enabling broader basic rules", async (t) => {
+test("browser connection saves credentials once and reuses the signing-key conversion", async (t) => {
+  for (const mode of ["local", "create", "import"]) {
+    await t.test(mode, async (t) => {
+      const { controller, sdk } = fixture(t);
+      const key = "df-signal:accounts:rollup";
+      const account = JSON.parse(localStorage.getItem(key))[0];
+      sdk.Fr.random = () => new sdk.Fr(123);
+      sdk.Fq.random = () => ({ toString: () => "456" });
+      await controller.initialize();
+      const writes = t.mock.method(localStorage, "setItem");
+      const conversions = t.mock.method(sdk.Fq, "fromString");
+      controller.setField("walletMode", mode);
+      if (mode === "import")
+        controller.setField("accountFile", {
+          size: 256,
+          text: async () => JSON.stringify(account),
+        });
+      await controller.connect();
+      assert.equal(controller.getSnapshot().connected, true);
+      assert.equal(
+        writes.mock.calls.filter(({ arguments: args }) => args[0] === key)
+          .length,
+        mode === "local" ? 0 : 1
+      );
+      assert.equal(conversions.mock.callCount(), mode === "create" ? 2 : 1);
+      assert.equal(localStorage.getItem("df-signal:active:rollup"), address);
+    });
+  }
+});
+
+test("imported credentials remain saved when PXE initialization fails", async (t) => {
+  const key = "df-signal:accounts:rollup";
+  const { controller } = fixture(t, {
+    ensureAztecSetup: async () => {
+      assert.equal(JSON.parse(localStorage.getItem(key))[0].secretKey, "0x789");
+      throw Error("PXE unavailable");
+    },
+  });
+  const account = {
+    ...JSON.parse(localStorage.getItem(key))[0],
+    secretKey: "0x789",
+  };
+  await controller.initialize();
+  const writes = t.mock.method(localStorage, "setItem");
+  controller.setField("walletMode", "import");
+  controller.setField("accountFile", {
+    size: 256,
+    text: async () => JSON.stringify(account),
+  });
+  await controller.connect();
+  assert.equal(controller.getSnapshot().connected, false);
+  assert.match(controller.getSnapshot().actionError.message, /PXE unavailable/);
+  assert.equal(
+    writes.mock.calls.filter(({ arguments: args }) => args[0] === key).length,
+    1
+  );
+  assert.equal(JSON.parse(localStorage.getItem(key))[0].secretKey, "0x789");
+});
+
+test("retired preference fields cannot be enabled through the setter", async (t) => {
   const { controller } = fixture(t);
   const key = "df-signal:reading-preferences:v2";
   localStorage.setItem(
@@ -418,33 +481,47 @@ test("legacy reading preferences migrate without enabling broader basic rules", 
   assert.equal(saved.aiConsentVersion, null);
 });
 
-test("old hint-only preferences do not silently enable promotion or AI folding", async (t) => {
+test("legacy preferences are ignored without deleting stored accounts or requests", async (t) => {
   const { controller } = fixture(t);
+  for (const version of [2, 3, 4]) {
+    localStorage.setItem(
+      `df-signal:reading-preferences:v${version}`,
+      JSON.stringify({
+        rulesEnabled: true,
+        aiHints: true,
+        aiConsentVersion: AI_MODEL_VERSION,
+        keywordEnabled: true,
+        keywords: ["old"],
+      })
+    );
+  }
+  const requestKey = "l1-post-lab/6.0.0-rc.3/rollup/board";
   localStorage.setItem(
-    "df-signal:reading-preferences:v3",
-    JSON.stringify({
-      adEnabled: true,
-      adMode: "hint",
-      aiHints: true,
-      aiConsentVersion: AI_MODEL_VERSION,
-      keywordEnabled: true,
-      keywords: ["代练"],
-    })
+    requestKey,
+    JSON.stringify({ jobs: [{ l1Tx: "pending-tx" }] })
   );
+  const keys = [
+    "df-signal:accounts:rollup",
+    requestKey,
+    ...[2, 3, 4].map((version) => `df-signal:reading-preferences:v${version}`),
+  ];
+  const before = keys.map((key) => [key, localStorage.getItem(key)]);
   await controller.initialize();
   const view = controller.getSnapshot();
   assert.equal(view.rulesEnabled, false);
   assert.equal(view.aiHints, false);
   assert.equal(view.aiConsentGiven, false);
-  assert.equal(view.keywordEnabled, true);
-  assert.deepEqual(view.keywords, ["代练"]);
+  assert.equal(view.keywordEnabled, false);
+  assert.deepEqual(view.keywords, []);
+  for (const [key, value] of before)
+    assert.equal(localStorage.getItem(key), value);
   controller.setAiHints(true);
   assert.equal(controller.getSnapshot().aiConsentOpen, true);
 });
 
 test("malformed preferences and unavailable preference storage do not block reading controls", async (t) => {
   const { controller } = fixture(t);
-  localStorage.setItem("df-signal:reading-preferences:v2", "broken");
+  localStorage.setItem("df-signal:reading-preferences:v5", "broken");
   await controller.initialize();
   assert.equal(controller.getSnapshot().rulesEnabled, false);
   t.mock.method(localStorage, "setItem", () => {
@@ -571,6 +648,13 @@ test("confirmed posts clear the draft even when refreshing the feed fails", asyn
     controller.getSnapshot().actionError.message,
     /Feed unavailable/
   );
+  assert.equal(controller.getSnapshot().actionError.label, "Refresh posts");
+  assert.match(
+    controller.getSnapshot().actionError.guidance,
+    /confirmed onchain/
+  );
+  assert.equal(controller.getSnapshot().progress.failed, false);
+  assert.match(controller.getSnapshot().progress.label, /Post published/);
   await controller.post();
   assert.equal(calls.filter(([name]) => name === "post").length, 1);
 });
@@ -586,8 +670,96 @@ test("wrong chain prevents connection and never enables posting", async (t) => {
   assert.equal(controller.getSnapshot().canPost, false);
   assert.match(
     controller.getSnapshot().actionError.message,
-    /Deployment does not match the local chain/
+    /Deployment does not match the selected chain/
   );
+});
+
+test("confirmed MetaMask recovery stays successful when the feed fails, and refresh alone clears the warning", async (t) => {
+  let resumes = 0;
+  const { controller, deployment, node } = fixture(t, {
+    createMetaMaskPosting: (_config, _sdk, emit) => ({
+      connect: async () => emit({ available: true, payer: "payer", jobs: [] }),
+      resume: async () => {
+        resumes++;
+        return "confirmed request";
+      },
+      dispose() {},
+    }),
+  });
+  deployment.rollupVersion = "1";
+  deployment.l1Request = { entry: "entry", rpcUrl: "http://127.0.0.1:5954" };
+  await controller.initialize();
+  controller.setField("walletMode", "metamask");
+  await controller.connect();
+  controller.setField("message", "confirmed request");
+  const read = node.getPublicStorageAt;
+  node.getPublicStorageAt = async () => {
+    throw Error("offline");
+  };
+  await controller.resumeRequest();
+  assert.equal(controller.getSnapshot().message, "");
+  assert.equal(controller.getSnapshot().progress.failed, false);
+  assert.equal(controller.getSnapshot().actionError.label, "Refresh posts");
+  node.getPublicStorageAt = read;
+  await controller.refresh();
+  assert.equal(controller.getSnapshot().actionError, null);
+  assert.equal(resumes, 1);
+});
+
+test("direct posting respects the cross-tab lock without submitting or clearing the draft", async (t) => {
+  const { controller, calls } = fixture(t);
+  await controller.initialize();
+  controller.setField("walletMode", "local");
+  await controller.connect();
+  controller.setField("message", "keep me");
+  t.mock.method(navigator.locks, "request", async (_key, _opts, run) =>
+    run(null)
+  );
+  await controller.post();
+  assert.equal(calls.filter(([name]) => name === "post").length, 0);
+  assert.equal(controller.getSnapshot().message, "keep me");
+  assert.match(controller.getSnapshot().actionError.message, /another tab/);
+});
+
+test("controller pagination preserves loaded posts on failure and refresh resets the snapshot", async (t) => {
+  const { controller, posts, node } = fixture(t);
+  const unsubscribe = controller.subscribe(() => {
+    const view = controller.getSnapshot();
+    if (view.feedLoaded)
+      assert.equal(
+        Number(view.posts.at(-1).id),
+        view.totalPosts - 1,
+        "posts and snapshot metadata publish together"
+      );
+  });
+  t.after(unsubscribe);
+  posts.push(...Array.from({ length: 22 }, (_, i) => pack(`page post ${i}`)));
+  await controller.initialize();
+  assert.equal(controller.getSnapshot().totalPosts, 25);
+  assert.equal(controller.getSnapshot().posts.length, 10);
+  assert.equal(controller.getSnapshot().posts[0].id, 15);
+  const revision = controller.getSnapshot().feedRevision;
+  await controller.loadOlder();
+  assert.equal(controller.getSnapshot().posts.length, 20);
+  assert.equal(controller.getSnapshot().feedRevision, revision);
+  const read = node.getPublicStorageAt;
+  node.getPublicStorageAt = async () => {
+    throw Error("offline");
+  };
+  await controller.loadOlder();
+  assert.equal(controller.getSnapshot().posts.length, 20);
+  assert.equal(controller.getSnapshot().hasOlderPosts, true);
+  node.getPublicStorageAt = read;
+  await controller.loadOlder();
+  assert.equal(controller.getSnapshot().posts.length, 25);
+  assert.equal(controller.getSnapshot().hasOlderPosts, false);
+  posts.push(pack("new post"));
+  node.getBlockNumber = async () => 43;
+  await controller.refresh();
+  assert.equal(controller.getSnapshot().posts.length, 10);
+  assert.equal(controller.getSnapshot().totalPosts, 26);
+  assert.equal(controller.getSnapshot().posts.at(-1).text, "new post");
+  assert.equal(controller.getSnapshot().feedRevision, revision + 1);
 });
 
 test("legacy deployment fails visibly and initialization can be retried after replacement", async (t) => {
@@ -761,14 +933,14 @@ test("keyword settings validate input, persist and remain independent of rules a
   assert.equal(saved.aiHints, false);
 });
 
-test("new folding settings restore AI only with explicit consent for this model revision", async (t) => {
+test("current settings restore AI only with explicit consent for this model revision", async (t) => {
   const { controller } = fixture(t);
   localStorage.setItem(
-    "df-signal:reading-preferences:v4",
+    "df-signal:reading-preferences:v5",
     JSON.stringify({
       keywords: ["代练"],
       keywordEnabled: true,
-      adEnabled: false,
+      rulesEnabled: false,
       aiHints: true,
       aiConsentVersion: AI_MODEL_VERSION,
     })
@@ -785,12 +957,12 @@ test("new folding settings restore AI only with explicit consent for this model 
   );
 });
 
-test("v4 promotion opt-in does not become basic-rules opt-in; v5 choice persists", async (t) => {
+test("current keyword and basic-rule choices persist", async (t) => {
   const { controller } = fixture(t);
   localStorage.setItem(
-    "df-signal:reading-preferences:v4",
+    "df-signal:reading-preferences:v5",
     JSON.stringify({
-      adEnabled: true,
+      rulesEnabled: false,
       keywordEnabled: true,
       keywords: ["某词"],
     })
@@ -810,7 +982,7 @@ test("v4 promotion opt-in does not become basic-rules opt-in; v5 choice persists
 test("new model revision invalidates old consent", async (t) => {
   const { controller } = fixture(t);
   localStorage.setItem(
-    "df-signal:reading-preferences:v4",
+    "df-signal:reading-preferences:v5",
     JSON.stringify({ aiHints: true, aiConsentVersion: "old-model" })
   );
   await controller.initialize();

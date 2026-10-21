@@ -47,7 +47,7 @@ const rpcConfig = (() => {
 const sharedFiles = {
   STYLES: loadShared('styles.css'),
   HELPERS: loadShared('helpers.js'),
-  AZTEC_LIB: loadShared('aztec-lib.js'),
+  AZTEC_LIB: loadShared('wallet-runtime.js') + '\n' + loadShared('aztec-lib.js'),
   POSEIDON2: loadShared('poseidon2.js'),
   ETHERS: loadShared('ethers.min.js'),
   WALLET_BUTTONS: loadShared('wallet-buttons.js'),

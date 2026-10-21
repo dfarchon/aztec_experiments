@@ -40,5 +40,5 @@ export default function BoardRoute() {
         <a href="/billboard-readme.md">README</a>
       </main>
     );
-  return <App controller={controller} />;
+  return <App controller={controller} development={import.meta.env.DEV} />;
 }

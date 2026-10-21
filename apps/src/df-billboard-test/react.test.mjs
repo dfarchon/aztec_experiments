@@ -34,6 +34,28 @@ const { App, Feed, pageNumbers, ReadingSettings, Select } = module.exports;
 const renderToStaticMarkup = (element) =>
   renderMarkup(createElement(StaticRouter, { location: "/" }, element));
 
+test("older posts remain reachable when every loaded post is filtered", () => {
+  const controller = createBillboardController();
+  const view = {
+    ...controller.getSnapshot(),
+    posts: [{ id: 24, text: "hidden" }],
+    keywordEnabled: true,
+    keywords: ["hidden"],
+    feedLoaded: true,
+    totalPosts: 25,
+    hasOlderPosts: true,
+    busy: true,
+  };
+  const render = () =>
+    renderToStaticMarkup(createElement(Feed, { view, controller }));
+  assert.match(render(), /No visible posts/);
+  assert.match(render(), /1 \/ 25 loaded/);
+  assert.match(render(), /<button disabled="">Load older posts/);
+  view.hasOlderPosts = false;
+  assert.doesNotMatch(render(), /Load older posts/);
+  controller.dispose();
+});
+
 test("shared select labels its list and preserves disabled and selected options", () => {
   const render = (disabled = false) =>
     renderToStaticMarkup(
@@ -266,7 +288,60 @@ test("account actions live in the wallet without Ethereum copy controls", () => 
     html.indexOf('class="activity-page"')
   );
   assert.doesNotMatch(settings, /id="mergeDuplicates"/);
-  assert.match(settings, /Connection details &amp; activity log/);
+  assert.doesNotMatch(settings, /Connection details &amp; activity log/);
+  base.dispose();
+});
+
+test("developer connection details are opt-in and proof mode is not a user control", () => {
+  const controller = createBillboardController();
+  const production = renderToStaticMarkup(createElement(App, { controller }));
+  const development = renderToStaticMarkup(
+    createElement(App, { controller, development: true })
+  );
+  assert.doesNotMatch(
+    production,
+    /Connection details &amp; activity log|id="log"/
+  );
+  assert.match(development, /Connection details &amp; activity log/);
+  for (const html of [production, development])
+    assert.doesNotMatch(
+      html,
+      /id="realProofs"|Generate real client proofs|Advanced options/
+    );
+  controller.dispose();
+});
+
+test("wallet selector has three methods and nests browser account actions", () => {
+  const base = createBillboardController();
+  for (const mode of ["metamask", "extension", "local", "create", "import"]) {
+    const view = { ...base.getSnapshot(), walletMode: mode };
+    const html = renderToStaticMarkup(
+      createElement(App, {
+        controller: { ...base, getSnapshot: () => view },
+      })
+    );
+    const options = [
+      ...html.matchAll(
+        /<div id="walletMode-options-\d+"[^>]*><span>(.*?)<\/span>/g
+      ),
+    ];
+    assert.equal(options.length, 3);
+    const methods = options.map((option) => option[1]).join(" ");
+    for (const name of ["MetaMask", "Azguard", "Browser wallet"])
+      assert.ok(methods.includes(name));
+    assert.doesNotMatch(
+      methods,
+      /Create account|Import backup|Use saved account/
+    );
+    if (["metamask", "extension"].includes(mode)) {
+      assert.match(html, /id="localOptions" hidden/);
+    } else {
+      assert.doesNotMatch(html, /id="localOptions" hidden/);
+      assert.match(html, /id="browserAccountAction"/);
+      assert.match(html, /Create account/);
+      assert.match(html, /Import backup/);
+    }
+  }
   base.dispose();
 });
 
@@ -422,7 +497,7 @@ test("basic rules fold solicitation independently of keywords and AI", () => {
     );
   assert.doesNotMatch(render(true), /data-post-id="0"/);
   assert.match(render(true), /data-post-id="1"/);
-  assert.match(render(true), /2 posts · 1 filtered/);
+  assert.match(render(true), /2 loaded posts · 1 filtered/);
   assert.match(render(false), /data-post-id="0"/);
 });
 
@@ -496,7 +571,7 @@ test("keyword folding is independent, literal, reversible, and escapes user word
   assert.doesNotMatch(html, /命中你的屏蔽词|关键词命中详情/);
   assert.doesNotMatch(html, /<script>/);
   assert.doesNotMatch(html, /请不要相信代练/);
-  assert.match(html, /3 posts · 2 filtered/);
+  assert.match(html, /3 loaded posts · 2 filtered/);
   const disabled = renderToStaticMarkup(
     createElement(Feed, {
       view: { ...view, keywordEnabled: false },
@@ -554,7 +629,7 @@ test("Feed applies all eight filter combinations and counts overlapping hits onc
         const count = hidden.filter(Boolean).length;
         assert.equal((html.match(/data-post-id=/g) || []).length, 5 - count);
         if (count)
-          assert.match(html, new RegExp(`5 posts · ${count} filtered`));
+          assert.match(html, new RegExp(`5 loaded posts · ${count} filtered`));
       }
 });
 

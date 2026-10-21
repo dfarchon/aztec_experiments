@@ -17,7 +17,12 @@ React 18 + TypeScript + Vite + React Router。视觉沿用 DFArchon 的黑色、
 | `/?view=settings` 阅读偏好 | 用户关键词、基础规则、本地 AI 三个独立开关 |
 | `/?view=activity` 发布记录 | 本浏览器保存的 MetaMask 发帖请求及提交进度 |
 | 右上角钱包 | MetaMask、Azguard 或浏览器 Aztec 账号；共用同一个留言板与发言框，可用 Switch wallet 切换 |
-| 连接详情 | RPC、留言板、Sponsored FPC 地址及运行记录 |
+| 连接详情（仅开发模式） | RPC、留言板、Sponsored FPC 地址及运行记录；生产构建不显示 |
+
+钱包菜单只列 MetaMask、Azguard、Browser wallet。选择 Browser wallet 后，再选择使用已有账号、创建账号或导入备份。
+证明模式由客户端验证过的部署清单决定，不提供用户切换开关：本地使用 synthetic，公共测试网必须使用真实证明。公共测试网配置路径已加入校验，尚未完成公共部署与端到端验证。
+运行日志在 Vite 开发模式显示，生产构建和 preview 不显示；操作进度与失败提示始终保留。
+阅读偏好只读取当前 v5 格式，不再迁移 v2–v4；旧偏好、钱包密钥及待处理交易数据不会被删除。
 
 旧 `/reports`、`/df-billboard-report.html` 跳转到主页；`/df-billboard-test.html`
 也保留兼容跳转。旧 `/l1-post-lab`、`/fee-lab` 现在也跳回主页。
@@ -26,7 +31,12 @@ React 18 + TypeScript + Vite + React Router。视觉沿用 DFArchon 的黑色、
 广场只搜索当前已读取的留言；开启过滤时，折叠内容默认不参与文本搜索，
 选择「查看已折叠内容」后才参与。留言没有作者昵称或可靠的发布时间字段，
 界面只显示匿名身份和链上帖子 ID，不伪造头像身份、活跃用户或发布时间。
-列表分批展示是客户端分页；当前链上读取仍为全量快照，规模化索引尚未实现。
+首屏从链上读取最新 10 条；Load older posts 每次再读 10 条，沿用同一区块快照。
+刷新会获取新快照并回到最新 10 条；搜索、排序、过滤与重复识别只针对已加载内容。
+历史页读取失败可重试，不推进读取游标；尚未引入索引服务。
+存储读取最多并发 8 个请求，失败时等待已发出的请求结束再允许重试。
+页面在内存中缓存最多 100 条已解码帖子，缓存按节点、留言板和区块快照隔离；
+同一快照刷新可复用正文，新区块重新读取。页脚区分已加载数量与快照总量。
 
 ## 合约与发帖流程
 
@@ -68,6 +78,11 @@ Resume / Recover，交易记录在 Activity 查看。切换钱包不会删除账
 Aztec 钱包仍可直接调用 `post`，L1 付款不是所有入口的强制门槛。
 消息验证和发帖原子执行，失败不消耗授权；已提交交易保存哈希并支持核对恢复，
 不自动重复支付 L1 gas。未知交易结果需先核对，不能盲目重发。
+交易确认与列表刷新分开处理：刷新失败只提示重新读取，不把已确认帖子标成发布失败。
+同源标签页使用 Web Locks 防止同一钱包并发发布；MetaMask 的账号创建、发布和恢复
+共用锁，每次操作先读取最新恢复记录，并通过 storage 事件同步其他页的记录。
+不支持 Web Locks 的环境禁用这些写操作，不退回不可靠的本地计时锁。
+此保护不覆盖不同浏览器、不同站点或其他客户端；它不替代合约防重放。
 
 `deploy:df:harness` 部署 L1 Inbox 和带 Inbox 初始化参数的 Aztec 留言板。旧 L2-only 留言板不能修改初始化配置，仍可用 Aztec 钱包；
 MetaMask 入口会禁用。重新部署会创建新留言板而非删除旧链上数据，
@@ -156,6 +171,14 @@ npm run dev:df:site
 可通过 `AZTEC_TESTNET_URL` 指定 HTTPS 节点；版本不匹配时停止。余额非零不代表已获得代付许可。
 版本升级不会迁移旧链数据，必须重新编译并为新网络部署。
 
+页面读取 `/df-local.json` 部署清单，缺省 `environment` 为 `local`（兼容已有本地部署）。
+公共测试网须显式指定 `environment: "testnet"`、HTTPS 的 Aztec/L1 RPC、
+匹配的 `rollupAddress` 与 `rollupVersion`、留言板和 Sponsored FPC 地址及合约产物。
+MetaMask 还需匹配的 Sepolia Inbox 请求合约配置，包括链 ID `11155111`、Inbox 地址和运行时代码哈希。
+页面校验当前 SDK 版本、链 ID、rollup 与证明模式；不自动升级版本或切换部署。
+公共网络等待 Inbox 时仅查询状态，不调用本地时间推进接口；超时保留请求，使用 Resume 继续，不重新付款。
+这些校验不代替部署验证、代付授权检查或正式安全审计。
+
 若要与旧本地链并行运行，可分别设置启动时的 `ANVIL_PORT`、`L2_PORT`、`ADMIN_PORT`，
 以及部署时的 `DF_NODE_URL`、`DF_L1_RPC_URL`。部署会更新本地清单和页面运行产物，
 切换前应备份；不会停止旧节点。
@@ -178,6 +201,12 @@ npm run build:df:harness
 - Solidity：Inbox 零金额请求、留言板与承诺字段校验及消息入队。
 - React/controller：未连接状态、错误保留、正文转义、三个过滤器、折叠恢复及 L1 状态。
 - 消息与过滤：UTF-8 边界、关键词、基础规则和报告数据完整性。
+
+客户端模块：`accounts.ts` 共用密钥生成、存储及 PXE 配置；两种入口继续保留独立账号与原存储键。
+`reading.ts` 管理过滤、AI Worker 和缓存，`network.ts` 隔离网络校验与等待策略，
+`feed-reader.ts` 负责快照分页，`controller.ts` 协调页面操作。
+产品只加载 `shared/wallet-runtime.js` 的钱包/PXE 功能；旧实验页面额外加载
+`shared/aztec-lib.js`，存款、旧审核与 Portal 辅助代码不再作为留言板运行时加载。
 
 已有本地端到端测试命令（要求节点和对应部署就绪）：
 

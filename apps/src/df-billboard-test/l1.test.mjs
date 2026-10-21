@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { switchLocalEthereumChain } from "./l1.ts";
+import { switchEthereumChain } from "./l1.ts";
 
 test("MetaMask requests add an unknown local chain but never bypass rejection", async () => {
   const calls = [];
@@ -15,7 +15,7 @@ test("MetaMask requests add an unknown local chain but never bypass rejection", 
       if (request.method === "wallet_addEthereumChain") added = true;
     },
   };
-  await switchLocalEthereumChain(provider, "0x7a69", "http://127.0.0.1:5954");
+  await switchEthereumChain(provider, "0x7a69", "http://127.0.0.1:5954");
   assert.deepEqual(
     calls.map(({ method }) => method),
     [
@@ -29,7 +29,7 @@ test("MetaMask requests add an unknown local chain but never bypass rejection", 
   const rejected = [];
   await assert.rejects(
     () =>
-      switchLocalEthereumChain(
+      switchEthereumChain(
         {
           async request({ method }) {
             rejected.push(method);

@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
+import { POST_PAGE_SIZE as PAGE_SIZE } from "./feed-reader";
 import { Icon } from "./Icon";
 import { keywordMatches } from "./keywords.ts";
 import { canFoldBasicRules } from "./moderation.ts";
 import { Select } from "./Select";
 import type { PostData, ViewProps } from "./types";
-
-const PAGE_SIZE = 10;
 
 function isFiltered(post: PostData, rulesEnabled: boolean, aiEnabled: boolean) {
   return Boolean(
@@ -29,8 +28,6 @@ export function Feed({ view, controller }: ViewProps) {
   const [query, setQuery] = useState("");
   const [order, setOrder] = useState("newest");
   const [page, setPage] = useState(1);
-  // Freeze the available IDs while browsing older pages, not the live feed itself.
-  const [ceiling, setCeiling] = useState<number | null>(null);
   const root = useRef<HTMLElement>(null);
   const posts = view.posts.map((post) => ({
     ...post,
@@ -45,7 +42,6 @@ export function Feed({ view, controller }: ViewProps) {
   const matching = posts
     .filter(
       (post) =>
-        (ceiling === null || Number(post.id) <= ceiling) &&
         isFiltered(post, view.rulesEnabled, view.aiHints) === filteredView &&
         `${post.id} ${post.text || ""}`
           .toLocaleLowerCase()
@@ -63,15 +59,9 @@ export function Feed({ view, controller }: ViewProps) {
 
   function resetPage() {
     setPage(1);
-    setCeiling(null);
   }
   function navigate(next: number) {
     setPage(next);
-    setCeiling(
-      next === 1
-        ? null
-        : (ceiling ?? Math.max(...posts.map((post) => Number(post.id))))
-    );
     root.current?.querySelector(".feed-scroll")?.scrollTo({ top: 0 });
   }
   useEffect(() => {
@@ -83,6 +73,7 @@ export function Feed({ view, controller }: ViewProps) {
     view.keywordMode,
     view.rulesEnabled,
     view.aiHints,
+    view.feedRevision,
   ]);
 
   return (
@@ -185,7 +176,7 @@ export function Feed({ view, controller }: ViewProps) {
           aria-live="polite"
         >
           {view.feedLoaded
-            ? `${posts.length} posts · ${filteredCount} filtered · Page ${current} of ${totalPages}`
+            ? `${posts.length} loaded posts · ${filteredCount} filtered · Page ${current} of ${totalPages}`
             : "Waiting to load public posts"}
         </div>
         {view.feedLoaded && matching.length === 0 && (
@@ -237,12 +228,21 @@ export function Feed({ view, controller }: ViewProps) {
           ))}
         </ol>
       </div>
-      {view.feedLoaded && matching.length > 0 && (
+      {view.feedLoaded && (matching.length > 0 || view.hasOlderPosts) && (
         <div className="feed-footer">
           <span className="page-range">
-            {offset + 1}–{Math.min(offset + PAGE_SIZE, matching.length)} /{" "}
-            {matching.length}
+            {posts.length} / {view.totalPosts} loaded
+            {matching.length > 0 &&
+              ` · ${offset + 1}–${Math.min(offset + PAGE_SIZE, matching.length)} shown`}
           </span>
+          {view.hasOlderPosts && current === totalPages && (
+            <button
+              disabled={view.busy}
+              onClick={() => void controller.loadOlder()}
+            >
+              Load older posts
+            </button>
+          )}
           <nav className="feed-pagination" aria-label="Post pagination">
             <button
               disabled={current === 1}

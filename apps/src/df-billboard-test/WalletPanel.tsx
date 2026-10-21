@@ -23,6 +23,7 @@ export function WalletPanel({ view, controller }: ViewProps) {
   const wasOpen = useRef(false);
   const locked = view.busy || view.connected || view.pendingConnection;
   const mode = view.walletMode;
+  const browserWallet = !["extension", "metamask"].includes(mode);
   const connectLabel =
     mode === "metamask"
       ? "Connect MetaMask"
@@ -105,10 +106,17 @@ export function WalletPanel({ view, controller }: ViewProps) {
           <label htmlFor="walletMode">Connection method</label>
           <Select
             id="walletMode"
-            value={mode}
+            value={browserWallet ? "browser" : mode}
             disabled={locked}
             onChange={(value) =>
-              controller.setField("walletMode", value as WalletMode)
+              controller.setField(
+                "walletMode",
+                value === "browser"
+                  ? view.savedAccounts.length
+                    ? "local"
+                    : "create"
+                  : (value as WalletMode)
+              )
             }
             options={[
               {
@@ -117,9 +125,7 @@ export function WalletPanel({ view, controller }: ViewProps) {
                 disabled: !view.request.available,
               },
               { value: "extension", label: "Azguard · L2 fees sponsored" },
-              { value: "local", label: "Browser wallet · Saved account" },
-              { value: "create", label: "Browser wallet · Create account" },
-              { value: "import", label: "Browser wallet · Import backup" },
+              { value: "browser", label: "Browser wallet" },
             ]}
           />
           <div hidden={mode !== "metamask"} className="small">
@@ -132,14 +138,31 @@ export function WalletPanel({ view, controller }: ViewProps) {
               MetaMask requires a board deployed with an L1 entry.
             </p>
           )}
-          <div
-            id="localOptions"
-            hidden={mode === "extension" || mode === "metamask"}
-          >
+          <div id="localOptions" hidden={!browserWallet}>
+            <label htmlFor="browserAccountAction">Browser account</label>
+            <Select
+              id="browserAccountAction"
+              hidden={!browserWallet}
+              value={mode}
+              disabled={locked}
+              onChange={(value) =>
+                controller.setField("walletMode", value as WalletMode)
+              }
+              options={[
+                {
+                  value: "local",
+                  label: "Use saved account",
+                  disabled: !view.savedAccounts.length,
+                },
+                { value: "create", label: "Create account" },
+                { value: "import", label: "Import backup" },
+              ]}
+            />
             <div id="savedOptions" hidden={mode !== "local"}>
               <label htmlFor="savedAccount">Saved accounts</label>
               <Select
                 id="savedAccount"
+                hidden={mode !== "local"}
                 value={view.savedAccount}
                 disabled={locked}
                 onChange={(value) => controller.setField("savedAccount", value)}
@@ -198,21 +221,6 @@ export function WalletPanel({ view, controller }: ViewProps) {
                 account to post; no DF game account is required.
               </p>
             </div>
-            <details className="local-tools">
-              <summary>Advanced options</summary>
-              <label className="check-label">
-                <input
-                  id="realProofs"
-                  type="checkbox"
-                  checked={view.realProofs}
-                  disabled={locked}
-                  onChange={(event) =>
-                    controller.setField("realProofs", event.target.checked)
-                  }
-                />
-                Generate real client proofs in the browser (slower)
-              </label>
-            </details>
           </div>
           <div id="extensionOptions" hidden={mode !== "extension"}>
             <p className="small">

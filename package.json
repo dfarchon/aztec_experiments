@@ -23,7 +23,7 @@
     "test:df:message": "node --test scripts/test-df-message.mjs",
     "test:df:moderation": "node --test apps/src/df-billboard-test/moderation.test.mjs apps/src/df-billboard-test/keywords.test.mjs",
     "report:df:reading": "node scripts/build-df-report.mjs",
-    "test:df:ui": "node --test apps/src/df-billboard-test/controller.test.mjs apps/src/df-billboard-test/react.test.mjs apps/src/df-billboard-test/report.test.mjs apps/src/df-billboard-test/clock.test.mjs apps/src/df-billboard-test/l1.test.mjs apps/src/df-billboard-test/runtime-headers.test.mjs",
+    "test:df:ui": "node --test apps/src/df-billboard-test/architecture.test.mjs apps/src/df-billboard-test/controller.test.mjs apps/src/df-billboard-test/metamask-posting.test.mjs apps/src/df-billboard-test/react.test.mjs apps/src/df-billboard-test/report.test.mjs apps/src/df-billboard-test/clock.test.mjs apps/src/df-billboard-test/l1.test.mjs apps/src/df-billboard-test/runtime-headers.test.mjs",
     "test:df:e2e": "bash scripts/with-toolchain.sh node scripts/test-df-e2e.mjs",
     "build:df:l1": "bash scripts/with-toolchain.sh bash -c 'cd df-billboard/portal && aztec-forge build'",
     "test:df:l1": "bash scripts/with-toolchain.sh bash -c 'cd df-billboard/portal && aztec-forge test'",

@@ -37,14 +37,24 @@ await isolated.delete();
 // Execute both shared fee-juice helpers in a browser-like realm without Buffer.
 // Compare with Node SHA-256 plus the SDK secret hash, including zero padding.
 const browser = vm.createContext({ window: { __aztec: a }, crypto: globalThis.crypto, log: () => {} });
-vm.runInContext(fs.readFileSync(new URL('../shared/aztec-lib.js', import.meta.url), 'utf8'), browser);
+const walletRuntime = fs.readFileSync(new URL('../shared/wallet-runtime.js', import.meta.url), 'utf8');
+// The product runtime must load without the legacy UI/bridge helpers.
+const productRealm = vm.createContext({ window: { __aztec: a }, log: () => {} });
+vm.runInContext(walletRuntime, productRealm);
+for (const name of ['deriveAccountAddress', 'createAztecWallet', 'ensureAztecSetup']) {
+  assert.equal(typeof productRealm[name], 'function');
+}
+for (const name of ['showAddress', 'setupWalletFileInput', 'computeL1ToL2MsgHash']) {
+  assert.equal(typeof productRealm[name], 'undefined');
+}
+vm.runInContext(walletRuntime + '\n' + fs.readFileSync(new URL('../shared/aztec-lib.js', import.meta.url), 'utf8'), browser);
 assert.equal(vm.runInContext('typeof Buffer', browser), 'undefined');
 // React opts out of the legacy indicator before any DOM or polling starts.
 const monitorRealm = vm.createContext({
   window: { __aztec: { createAztecNodeClient: () => ({ getNodeInfo: async () => ({ l1ChainId: 31337 }) }) } },
   log: () => {},
 });
-vm.runInContext(fs.readFileSync(new URL('../shared/aztec-lib.js', import.meta.url), 'utf8'), monitorRealm);
+vm.runInContext(walletRuntime + '\n' + fs.readFileSync(new URL('../shared/aztec-lib.js', import.meta.url), 'utf8'), monitorRealm);
 monitorRealm.getNodeUrl = () => 'http://127.0.0.1:5180';
 monitorRealm.wrapWithRetry = node => node;
 monitorRealm.deriveAccountAddress = async () => ({ address: 'test' });

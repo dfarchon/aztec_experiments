@@ -42,8 +42,11 @@ for (const name of ['aztec_bundle.js', 'main.worker.js', 'thread.worker.js']) {
   if (!fs.existsSync(sourceFile)) throw new Error(`Missing ${sourceFile}. Run npm run build:sdk.`);
   fs.copyFileSync(sourceFile, path.join(dist, name));
 }
-fs.copyFileSync(path.join(root, 'shared/helpers.js'), path.join(dist, 'df-helpers.js'));
-fs.copyFileSync(path.join(root, 'shared/aztec-lib.js'), path.join(dist, 'df-aztec-lib.js'));
+fs.copyFileSync(path.join(root, 'shared/wallet-runtime.js'), path.join(dist, 'df-wallet-runtime.js'));
+// Retire only obsolete generated product assets; historical apps are self-contained.
+for (const name of ['df-helpers.js', 'df-aztec-lib.js']) {
+  fs.rmSync(path.join(dist, name), { force: true });
+}
 // Compatibility for static hosts as well as Vite's redirect middleware.
 for (const [file, route] of [['df-billboard-test.html', '/'], ['df-billboard-report.html', '/']]) {
   fs.writeFileSync(path.join(dist, file), `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${route}"><title>Dark Forest Billboard</title></head><body><a href="${route}">Continue to Billboard</a></body></html>`);
