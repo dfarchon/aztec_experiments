@@ -2,7 +2,6 @@ import { lazy, Suspense, useEffect } from "react";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 const BoardRoute = lazy(() => import("./BoardRoute"));
-const L1PostLabPage = lazy(() => import("./L1PostLabPage"));
 
 export function SiteRoutes() {
   const location = useLocation();
@@ -21,11 +20,8 @@ export function SiteRoutes() {
       <Routes>
         <Route path="/" element={<BoardRoute />} />
         <Route path="/reports" element={<Navigate to="/" replace />} />
-        <Route
-          path="/fee-lab"
-          element={<Navigate to="/l1-post-lab" replace />}
-        />
-        <Route path="/l1-post-lab" element={<L1PostLabPage />} />
+        <Route path="/fee-lab" element={<Navigate to="/" replace />} />
+        <Route path="/l1-post-lab" element={<Navigate to="/" replace />} />
         <Route
           path="/df-billboard-test.html"
           element={<Navigate to="/" replace />}

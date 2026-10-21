@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon";
 import { keywordMatches } from "./keywords.ts";
 import { canFoldBasicRules } from "./moderation.ts";
+import { Select } from "./Select";
 import type { PostData, ViewProps } from "./types";
 
 const PAGE_SIZE = 10;
@@ -157,17 +158,18 @@ export function Feed({ view, controller }: ViewProps) {
               }}
             />
           </label>
-          <select
+          <Select
             aria-label="Sort posts"
             value={order}
-            onChange={(event) => {
-              setOrder(event.target.value);
+            onChange={(value) => {
+              setOrder(value);
               resetPage();
             }}
-          >
-            <option value="newest">Newest first</option>
-            <option value="oldest">Oldest first</option>
-          </select>
+            options={[
+              { value: "newest", label: "Newest first" },
+              { value: "oldest", label: "Oldest first" },
+            ]}
+          />
         </div>
       </div>
       <div

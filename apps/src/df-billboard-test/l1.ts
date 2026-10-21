@@ -396,35 +396,7 @@ export function createL1Ports(
         method: "eth_requestAccounts",
       })) as string[];
       const chainId = "0x7a69";
-      if ((await injected.request({ method: "eth_chainId" })) !== chainId) {
-        try {
-          await injected.request({
-            method: "wallet_switchEthereumChain",
-            params: [{ chainId }],
-          });
-        } catch (error) {
-          if ((error as { code?: number }).code !== 4902) throw error;
-          await injected.request({
-            method: "wallet_addEthereumChain",
-            params: [
-              {
-                chainId,
-                chainName: "Billboard Local Anvil",
-                rpcUrls: [config.rpcUrl],
-                nativeCurrency: {
-                  name: "Local ETH",
-                  symbol: "ETH",
-                  decimals: 18,
-                },
-              },
-            ],
-          });
-          await injected.request({
-            method: "wallet_switchEthereumChain",
-            params: [{ chainId }],
-          });
-        }
-      }
+      await switchLocalEthereumChain(injected, chainId, config.rpcUrl);
       await validate();
       injected.removeListener?.("accountsChanged", changed);
       injected.removeListener?.("chainChanged", changed);
@@ -479,6 +451,36 @@ export function createL1Ports(
       rpc.destroy();
     },
   };
+}
+
+export async function switchLocalEthereumChain(
+  provider: Awaited<ReturnType<typeof findMetaMask>>,
+  chainId: string,
+  rpcUrl: string
+) {
+  if ((await provider.request({ method: "eth_chainId" })) === chainId) return;
+  const switchChain = () =>
+    provider.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId }],
+    });
+  try {
+    await switchChain();
+  } catch (error) {
+    if ((error as { code?: number }).code !== 4902) throw error;
+    await provider.request({
+      method: "wallet_addEthereumChain",
+      params: [
+        {
+          chainId,
+          chainName: "Billboard Local Anvil",
+          rpcUrls: [rpcUrl],
+          nativeCurrency: { name: "Local ETH", symbol: "ETH", decimals: 18 },
+        },
+      ],
+    });
+    await switchChain();
+  }
 }
 
 export function l1MessageLeaf(

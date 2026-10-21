@@ -33,7 +33,7 @@ function pack(text) {
     bytes.length,
   ];
 }
-function fixture(t) {
+function fixture(t, overrides = {}) {
   const deployment = {
     kind: "standalone-billboard",
     schemaVersion: 1,
@@ -77,15 +77,11 @@ function fixture(t) {
         : delete globalThis[key]
     );
   }
+  localStorage.setItem("df-signal:accounts:rollup", JSON.stringify([account]));
   t.mock.method(globalThis, "fetch", async (url) => {
     calls.push(["fetch", url]);
     if (url === "/df-local.json")
       return { ok: true, json: async () => deployment };
-    if (url === "/df-local-accounts.json")
-      return {
-        ok: true,
-        json: async () => [account, { ...account, label: "Account 2" }],
-      };
     const name = /^\/df-(\w+)-artifact.json$/.exec(url)?.[1];
     return {
       ok: Boolean(name),
@@ -206,6 +202,7 @@ function fixture(t) {
     },
   };
   const controller = createBillboardController({
+    ...overrides,
     sdk: () => sdk,
     deriveAccountAddress: async () => ({ address }),
     ensureAztecSetup: async (state, _, options) => {
@@ -234,6 +231,7 @@ function fixture(t) {
     node,
     info,
     deployment,
+    posts,
     setSponsorBalance: (value) => {
       sponsorBalance = value;
     },
@@ -242,6 +240,126 @@ function fixture(t) {
     },
   };
 }
+
+test("MetaMask and Aztec use one board, one feed and the same composer", async (t) => {
+  let emitRequest;
+  let config;
+  const request = { available: true, payer: "", jobs: [] };
+  const { controller, deployment, posts, calls } = fixture(t, {
+    createMetaMaskPosting: (value, _sdk, emit) => {
+      config = value;
+      emitRequest = () =>
+        emit({ ...request, jobs: request.jobs.map((job) => ({ ...job })) });
+      return {
+        connect: async () => {
+          request.payer = "0xpayer";
+          emitRequest();
+        },
+        post: async (text) => {
+          calls.push(["metamaskPost", config.board, text]);
+          posts.push(pack(text));
+          return text;
+        },
+        disconnect: () => {
+          request.payer = "";
+          emitRequest();
+        },
+        dispose() {},
+      };
+    },
+  });
+  deployment.rollupVersion = "1";
+  deployment.l1Request = { entry: "entry", rpcUrl: "http://127.0.0.1:5954" };
+  await controller.initialize();
+  assert.equal(config.board, deployment.board);
+  assert.equal(config.l1, deployment.l1Request);
+  assert.equal(
+    calls.some((call) => call[1] === "/df-l1-post-lab.json"),
+    false
+  );
+  controller.setField("walletMode", "metamask");
+  await controller.connect();
+  assert.equal(controller.getSnapshot().address, "0xpayer");
+  controller.setField("message", "one shared board");
+  controller.setField("publishToL1", true);
+  assert.equal(controller.getSnapshot().publishToL1, false);
+  await controller.post();
+  assert.equal(controller.getSnapshot().message, "");
+  assert.ok(
+    controller
+      .getSnapshot()
+      .posts.some((post) => post.text === "one shared board")
+  );
+  // An extension account/network change must immediately disable new payments.
+  request.payer = "";
+  emitRequest();
+  assert.equal(controller.getSnapshot().connected, false);
+  assert.equal(controller.getSnapshot().canPost, false);
+  await controller.disconnect();
+  controller.setField("walletMode", "local");
+  await controller.connect();
+  assert.equal(controller.getSnapshot().address, address);
+  assert.equal(controller.getSnapshot().canPost, true);
+});
+
+test("pending MetaMask posts survive wallet switching and resume without another payment", async (t) => {
+  const job = { commitment: "request", text: "pending text", l1Tx: "0xpaid" };
+  const request = { available: true, payer: "", jobs: [job] };
+  let payments = 0;
+  const { controller, deployment, posts } = fixture(t, {
+    createMetaMaskPosting: (_config, _sdk, emit) => {
+      const publish = () =>
+        emit({ ...request, jobs: request.jobs.map((job) => ({ ...job })) });
+      return {
+        connect: async () => {
+          request.payer = "0xpayer";
+          publish();
+        },
+        post: async () => {
+          payments++;
+        },
+        resume: async () => {
+          job.postId = "3";
+          posts.push(pack(job.text));
+          publish();
+          return job.text;
+        },
+        disconnect: () => {
+          request.payer = "";
+          publish();
+        },
+        dispose() {},
+      };
+    },
+  });
+  deployment.l1Request = {};
+  await controller.initialize();
+  controller.setField("walletMode", "metamask");
+  await controller.connect();
+  assert.equal(controller.getSnapshot().canPost, false);
+  await controller.disconnect();
+  await controller.connect();
+  controller.setField("message", job.text);
+  await controller.resumeRequest();
+  assert.equal(payments, 0);
+  assert.equal(controller.getSnapshot().message, "");
+  assert.equal(controller.getSnapshot().canPost, true);
+  assert.equal(controller.getSnapshot().request.jobs[0].postId, "3");
+});
+
+test("old boards never fall back to the isolated MetaMask deployment", async (t) => {
+  const { controller, calls } = fixture(t);
+  await controller.initialize();
+  assert.equal(controller.getSnapshot().request.available, false);
+  controller.setField("walletMode", "metamask");
+  await controller.connect();
+  assert.equal(controller.getSnapshot().connected, false);
+  assert.match(controller.getSnapshot().actionError.message, /no L1 entry/);
+  assert.equal(
+    calls.some((call) => call[1] === "/df-l1-post-lab.json"),
+    false
+  );
+});
 
 test("initialization is idempotent, subscribable and does not publish test keys", async (t) => {
   const { controller, calls } = fixture(t);
@@ -252,7 +370,13 @@ test("initialization is idempotent, subscribable and does not publish test keys"
   await Promise.all([controller.initialize(), controller.initialize()]);
   assert.equal(calls.filter((call) => call[1] === "/df-local.json").length, 1);
   assert.ok(updates > 0);
-  assert.equal(controller.getSnapshot().account, "1");
+  assert.equal(controller.getSnapshot().savedAccount, address);
+  assert.equal(
+    calls.some((call) => call[1] === "/df-local-accounts.json"),
+    false
+  );
+  controller.setField("walletMode", "test");
+  assert.equal(controller.getSnapshot().walletMode, "local");
   assert.equal(
     JSON.stringify(controller.getSnapshot()).includes("secretKey"),
     false
@@ -348,14 +472,14 @@ test("public feed loads without a wallet and uses one block snapshot", async (t)
 test("wallet connects directly to sponsored posting without DF state or a deposit", async (t) => {
   const { controller, calls } = fixture(t);
   await controller.initialize();
-  controller.setField("walletMode", "test");
+  controller.setField("walletMode", "local");
   await controller.connect();
   assert.equal(controller.getSnapshot().connected, true);
   assert.equal(controller.getSnapshot().canPost, true);
   assert.equal(controller.getSnapshot().address, address);
   assert.equal("join" in controller, false);
   controller.setField("walletMode", "extension");
-  assert.equal(controller.getSnapshot().walletMode, "test");
+  assert.equal(controller.getSnapshot().walletMode, "local");
   controller.setField("message", "你好，独立留言板");
   await controller.post();
   const sent = calls.find(([name]) => name === "post");
@@ -379,7 +503,7 @@ test("wallet connects directly to sponsored posting without DF state or a deposi
 test("empty sponsor blocks sends without falling back to user fees; refill allows retry", async (t) => {
   const { controller, calls, setSponsorBalance } = fixture(t);
   await controller.initialize();
-  controller.setField("walletMode", "test");
+  controller.setField("walletMode", "local");
   await controller.connect();
   setSponsorBalance(0n);
   controller.setField("message", "wait for sponsor");
@@ -400,7 +524,7 @@ test("an unfunded sponsor prevents a partial connection but does not block publi
   const { controller, setSponsorBalance } = fixture(t);
   setSponsorBalance(0n);
   await controller.initialize();
-  controller.setField("walletMode", "test");
+  controller.setField("walletMode", "local");
   await controller.connect();
   assert.equal(controller.getSnapshot().connected, false);
   assert.equal(controller.getSnapshot().canPost, false);
@@ -414,7 +538,7 @@ test("an unfunded sponsor prevents a partial connection but does not block publi
 test("post failures persist across feed refresh and allow retry", async (t) => {
   const { controller, calls, failNextPost } = fixture(t);
   await controller.initialize();
-  controller.setField("walletMode", "test");
+  controller.setField("walletMode", "local");
   await controller.connect();
   controller.setField("message", "retry");
   failNextPost(new Error("24-hour post limit reached"));
@@ -434,7 +558,7 @@ test("post failures persist across feed refresh and allow retry", async (t) => {
 test("confirmed posts clear the draft even when refreshing the feed fails", async (t) => {
   const { controller, calls, node } = fixture(t);
   await controller.initialize();
-  controller.setField("walletMode", "test");
+  controller.setField("walletMode", "local");
   await controller.connect();
   controller.setField("message", "already published");
   t.mock.method(node, "getPublicStorageAt", async () => {
@@ -455,7 +579,7 @@ test("wrong chain prevents connection and never enables posting", async (t) => {
   const { controller, info } = fixture(t);
   await controller.initialize();
   info.nodeVersion = "wrong";
-  controller.setField("walletMode", "test");
+  controller.setField("walletMode", "local");
   await controller.connect();
   assert.equal(controller.getSnapshot().busy, false);
   assert.equal(controller.getSnapshot().connected, false);
@@ -479,7 +603,7 @@ test("legacy deployment fails visibly and initialization can be retried after re
 test("changed network is checked again before submitting", async (t) => {
   const { controller, calls, info } = fixture(t);
   await controller.initialize();
-  controller.setField("walletMode", "test");
+  controller.setField("walletMode", "local");
   await controller.connect();
   controller.setField("message", "do not submit");
   info.realProofs = true;
@@ -602,7 +726,7 @@ test("AI publishes labels to subscribers, reuses cache and stops when disabled",
     assert.fail(controller.getSnapshot().aiStatus);
   };
   await controller.initialize();
-  controller.setField("walletMode", "test");
+  controller.setField("walletMode", "local");
   await controller.connect();
   controller.confirmAiHints();
   await analyzed();
@@ -759,7 +883,7 @@ test("model failures preserve posts, rules and keywords; late cancelled results 
     );
   }
   await controller.initialize();
-  controller.setField("walletMode", "test");
+  controller.setField("walletMode", "local");
   await controller.connect();
   controller.saveKeywords("forest");
   controller.setField("keywordEnabled", true);

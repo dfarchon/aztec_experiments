@@ -14,7 +14,7 @@ import { classifyRulePosts } from "./moderation.ts";
 const compiled = await build({
   stdin: {
     contents:
-      "export { App } from './App.tsx'; export { Feed, pageNumbers } from './Feed.tsx'; export { L1Panel } from './L1Panel.tsx'; export { ReadingSettings } from './ReadingSettings.tsx';",
+      "export { App } from './App.tsx'; export { Feed, pageNumbers } from './Feed.tsx'; export { L1Panel } from './L1Panel.tsx'; export { ReadingSettings } from './ReadingSettings.tsx'; export { Select } from './Select.tsx';",
     resolveDir: fileURLToPath(new URL(".", import.meta.url)),
   },
   bundle: true,
@@ -30,9 +30,36 @@ new Function("require", "module", "exports", compiled.outputFiles[0].text)(
   module,
   module.exports
 );
-const { App, Feed, pageNumbers, L1Panel, ReadingSettings } = module.exports;
+const { App, Feed, pageNumbers, L1Panel, ReadingSettings, Select } =
+  module.exports;
 const renderToStaticMarkup = (element) =>
   renderMarkup(createElement(StaticRouter, { location: "/" }, element));
+
+test("shared select labels its list and preserves disabled and selected options", () => {
+  const render = (disabled = false) =>
+    renderToStaticMarkup(
+      createElement(Select, {
+        id: "choice",
+        "aria-label": "Choose a wallet",
+        value: "saved",
+        disabled,
+        options: [
+          { value: "saved", label: "Saved account" },
+          { value: "unavailable", label: "Unavailable", disabled: true },
+        ],
+        onChange() {},
+      })
+    );
+  const html = render();
+  assert.match(html, /role="combobox"/);
+  assert.match(html, /aria-controls="choice-options"/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.match(html, /role="listbox" aria-label="Choose a wallet" hidden/);
+  assert.match(html, /role="option" aria-selected="true"/);
+  assert.match(html, /aria-disabled="true"/);
+  assert.match(render(true), /<button[^>]*disabled/);
+  assert.doesNotMatch(html, /<select/);
+});
 
 test("L1 panel exposes proof and payment states without resending the L2 post", () => {
   const render = (stage, address = "") =>
@@ -96,11 +123,69 @@ test("React renders the wallet, composer and disconnected action guards", () => 
   controller.dispose();
 });
 
+test("one wallet menu offers MetaMask and Aztec without a second composer", () => {
+  const base = createBillboardController();
+  const view = {
+    ...base.getSnapshot(),
+    walletOpen: true,
+    walletMode: "metamask",
+    request: { available: true, payer: "", jobs: [] },
+  };
+  const html = renderToStaticMarkup(
+    createElement(App, { controller: { ...base, getSnapshot: () => view } })
+  );
+  assert.match(html, /role="combobox"/);
+  assert.match(html, /MetaMask · Pay L1 gas/);
+  assert.match(html, /Azguard · L2 fees sponsored/);
+  assert.doesNotMatch(
+    html,
+    /<select|testing only|testOptions|panel-address|id="localStatus"/
+  );
+  assert.match(html, /Connect MetaMask/);
+  assert.match(html, /You pay L1 gas · L2 sponsored/);
+  assert.equal((html.match(/id="message"/g) || []).length, 1);
+  assert.doesNotMatch(html, /href="\/l1-post-lab"|l1-post-text/);
+  assert.match(html, /id="localOptions" hidden/);
+  base.dispose();
+});
+
+test("MetaMask recovery blocks new posts and keeps the original request visible", () => {
+  const base = createBillboardController();
+  const view = {
+    ...base.getSnapshot(),
+    walletMode: "metamask",
+    connected: true,
+    address: "0xpayer",
+    canPost: false,
+    message: "pending",
+    request: {
+      available: true,
+      payer: "0xpayer",
+      jobs: [{ commitment: "one", text: "pending", l1Tx: "0xpaid" }],
+    },
+  };
+  const render = () =>
+    renderToStaticMarkup(
+      createElement(App, { controller: { ...base, getSnapshot: () => view } })
+    );
+  assert.match(render(), /Resume post/);
+  assert.match(render(), /id="post"[^>]*disabled/);
+  assert.match(render(), /Switch wallet/);
+  assert.doesNotMatch(render(), /class="panel-address"/);
+  view.request.jobs[0].l1Tx = undefined;
+  assert.match(render(), /aria-label="L1 transaction hash"/);
+  assert.match(render(), /Recover post/);
+  view.request.jobs[0].l1Tx = "0xpaid";
+  view.request.jobs[0].l2Attempted = true;
+  assert.match(render(), /aria-label="L2 transaction hash"/);
+  base.dispose();
+});
+
 test("product sections support direct URLs and keep the composer mounted", () => {
   const controller = createBillboardController();
   for (const [section, title] of [
     ["settings", "Settings"],
-    ["activity", "Ethereum copies"],
+    ["activity", "Activity"],
   ]) {
     const html = renderMarkup(
       createElement(
@@ -116,7 +201,9 @@ test("product sections support direct URLs and keep the composer mounted", () =>
     );
     assert.match(
       html,
-      new RegExp(`<section class="[^"]+" aria-label="${title}">`)
+      new RegExp(
+        `<section class="[^"]+" aria-label="${section === "activity" ? "Publishing activity" : title}">`
+      )
     );
     assert.match(
       html,
@@ -229,13 +316,7 @@ test("account actions live in the wallet and enabled Ethereum copies keep the fe
 test("wallet modes, AI consent and L1 states use English-only interface copy", () => {
   const base = createBillboardController();
   try {
-    for (const walletMode of [
-      "local",
-      "create",
-      "import",
-      "test",
-      "extension",
-    ]) {
+    for (const walletMode of ["local", "create", "import", "extension"]) {
       const view = {
         ...base.getSnapshot(),
         walletMode,

@@ -1,6 +1,6 @@
-import type { ChangeEvent } from "react";
 import { useEffect, useRef } from "react";
 
+import { Select } from "./Select";
 import type { BillboardController, ViewProps, WalletMode } from "./types";
 
 function downloadBackup(controller: BillboardController) {
@@ -16,18 +16,6 @@ function downloadBackup(controller: BillboardController) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function networkLabel(nodeUrl?: string) {
-  if (!nodeUrl) return "Connecting";
-  try {
-    const host = new URL(nodeUrl).hostname;
-    return ["localhost", "127.0.0.1", "[::1]"].includes(host)
-      ? "Aztec · Local"
-      : `Aztec · ${host}`;
-  } catch {
-    return "Aztec · Unverified network";
-  }
-}
-
 export function WalletPanel({ view, controller }: ViewProps) {
   const anchor = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLButtonElement>(null);
@@ -35,18 +23,16 @@ export function WalletPanel({ view, controller }: ViewProps) {
   const wasOpen = useRef(false);
   const locked = view.busy || view.connected || view.pendingConnection;
   const mode = view.walletMode;
-  const change =
-    (name: "savedAccount" | "account" | "accountLabel" | "provider") =>
-    (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-      controller.setField(name, event.target.value);
   const connectLabel =
-    mode === "extension"
-      ? `Connect ${view.providers[Number(view.provider)]?.name || "Azguard"}`
-      : mode === "create"
-        ? "Create & connect Aztec account"
-        : mode === "import"
-          ? "Import & connect Aztec account"
-          : "Connect browser wallet";
+    mode === "metamask"
+      ? "Connect MetaMask"
+      : mode === "extension"
+        ? `Connect ${view.providers[Number(view.provider)]?.name || "Azguard"}`
+        : mode === "create"
+          ? "Create & connect Aztec account"
+          : mode === "import"
+            ? "Import & connect Aztec account"
+            : "Connect browser wallet";
 
   useEffect(() => {
     if (view.walletOpen) close.current?.focus();
@@ -117,46 +103,61 @@ export function WalletPanel({ view, controller }: ViewProps) {
         </div>
         <div hidden={view.connected}>
           <label htmlFor="walletMode">Connection method</label>
-          <select
+          <Select
             id="walletMode"
             value={mode}
             disabled={locked}
-            onChange={(event) =>
-              controller.setField(
-                "walletMode",
-                event.target.value as WalletMode
-              )
+            onChange={(value) =>
+              controller.setField("walletMode", value as WalletMode)
             }
+            options={[
+              {
+                value: "metamask",
+                label: "MetaMask · Pay L1 gas",
+                disabled: !view.request.available,
+              },
+              { value: "extension", label: "Azguard · L2 fees sponsored" },
+              { value: "local", label: "Browser wallet · Saved account" },
+              { value: "create", label: "Browser wallet · Create account" },
+              { value: "import", label: "Browser wallet · Import backup" },
+            ]}
+          />
+          <div hidden={mode !== "metamask"} className="small">
+            Each post requires a zero-value Ethereum transaction. You pay L1
+            gas; Sponsored FPC pays L2 fees. An Aztec account is prepared in
+            this browser automatically. Your L1 payer address is public.
+          </div>
+          {!view.request.available && (
+            <p className="small">
+              MetaMask requires a board deployed with an L1 entry.
+            </p>
+          )}
+          <div
+            id="localOptions"
+            hidden={mode === "extension" || mode === "metamask"}
           >
-            <option value="local">Browser wallet · Saved account</option>
-            <option value="create">Browser wallet · Create account</option>
-            <option value="import">Browser wallet · Import backup</option>
-            <option value="test">
-              Browser wallet · Test account (testing only)
-            </option>
-            <option value="extension">Azguard · Extension wallet</option>
-          </select>
-          <div id="localOptions" hidden={mode === "extension"}>
             <div id="savedOptions" hidden={mode !== "local"}>
               <label htmlFor="savedAccount">Saved accounts</label>
-              <select
+              <Select
                 id="savedAccount"
                 value={view.savedAccount}
                 disabled={locked}
-                onChange={change("savedAccount")}
-              >
-                {!view.savedAccounts.length && (
-                  <option value="">
-                    No accounts yet. Create or import one.
-                  </option>
-                )}
-                {view.savedAccounts.map((account) => (
-                  <option key={account.address} value={account.address}>
-                    {account.label || "Aztec account"} ·{" "}
-                    {account.address.slice(0, 10)}…{account.address.slice(-6)}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => controller.setField("savedAccount", value)}
+                options={
+                  view.savedAccounts.length
+                    ? view.savedAccounts.map((account) => ({
+                        value: account.address,
+                        label: `${account.label || "Aztec account"} · ${account.address.slice(0, 10)}…${account.address.slice(-6)}`,
+                      }))
+                    : [
+                        {
+                          value: "",
+                          label: "No saved accounts",
+                          disabled: true,
+                        },
+                      ]
+                }
+              />
             </div>
             <div id="createOptions" hidden={mode !== "create"}>
               <label htmlFor="accountLabel">Account name (optional)</label>
@@ -167,28 +168,15 @@ export function WalletPanel({ view, controller }: ViewProps) {
                 placeholder="e.g. My browser account"
                 disabled={locked}
                 value={view.accountLabel}
-                onChange={change("accountLabel")}
+                onChange={(event) =>
+                  controller.setField("accountLabel", event.target.value)
+                }
               />
               <p className="small">
                 Creates a Schnorr account in this browser. Keys are stored
                 locally without encryption. Download a backup after creation and
                 do not use a shared computer.
               </p>
-            </div>
-            <div id="testOptions" hidden={mode !== "test"}>
-              <label htmlFor="account">Test account</label>
-              <select
-                id="account"
-                value={view.account}
-                disabled={locked}
-                onChange={change("account")}
-              >
-                {view.accounts.map((account) => (
-                  <option key={account.value} value={account.value}>
-                    {account.label}
-                  </option>
-                ))}
-              </select>
             </div>
             <div id="importOptions" hidden={mode !== "import"}>
               <label htmlFor="accountFile">Aztec account JSON backup</label>
@@ -225,14 +213,6 @@ export function WalletPanel({ view, controller }: ViewProps) {
                 Generate real client proofs in the browser (slower)
               </label>
             </details>
-            <div
-              id="localStatus"
-              className="small"
-              role="status"
-              aria-live="polite"
-            >
-              {view.localStatus}
-            </div>
           </div>
           <div id="extensionOptions" hidden={mode !== "extension"}>
             <p className="small">
@@ -250,20 +230,18 @@ export function WalletPanel({ view, controller }: ViewProps) {
               >
                 Scan again
               </button>
-              <select
+              <Select
                 id="provider"
                 aria-label="Aztec extension wallet"
                 hidden={view.providers.length < 2}
                 disabled={locked}
                 value={view.provider}
-                onChange={change("provider")}
-              >
-                {view.providers.map((provider, index) => (
-                  <option key={provider.id} value={String(index)}>
-                    {provider.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => controller.setField("provider", value)}
+                options={view.providers.map((provider, index) => ({
+                  value: String(index),
+                  label: provider.name,
+                }))}
+              />
             </div>
             <div id="extensionStatus" className="small" role="status">
               {view.extensionStatus}
@@ -295,20 +273,15 @@ export function WalletPanel({ view, controller }: ViewProps) {
               hidden={view.grantedAccounts.length < 2}
             >
               <label htmlFor="grantedAccount">Authorized accounts</label>
-              <select
+              <Select
                 id="grantedAccount"
                 value={view.grantedAccount}
                 disabled={view.busy}
-                onChange={(event) =>
-                  controller.selectGrantedAccount(event.target.value)
+                onChange={(value) =>
+                  void controller.selectGrantedAccount(value)
                 }
-              >
-                {view.grantedAccounts.map((account) => (
-                  <option key={account.value} value={account.value}>
-                    {account.label}
-                  </option>
-                ))}
-              </select>
+                options={view.grantedAccounts}
+              />
             </div>
           </div>
           <button
@@ -318,22 +291,21 @@ export function WalletPanel({ view, controller }: ViewProps) {
               locked ||
               !view.deployment ||
               (mode === "local" && !view.savedAccounts.length) ||
-              (mode === "test" && !view.accounts.length)
+              (mode === "metamask" && !view.request.available)
             }
             onClick={controller.connect}
           >
             {connectLabel}
           </button>
         </div>
-        <div className="panel-address">
-          <span>{networkLabel(view.deployment?.nodeUrl)}</span>
-          <span>Current Aztec address</span>
-          <span id="address" className="mono">
-            {view.address || "Not connected"}
-          </span>
-        </div>
         {view.connected && (
           <div className="wallet-account-actions">
+            {mode === "metamask" && (
+              <p className="small">
+                Local prototype · Browser keys are stored unencrypted. Keep this
+                browser&apos;s site data until pending posts finish.
+              </p>
+            )}
             <button
               id="copyAddress"
               disabled={view.busy || !view.address}
@@ -356,6 +328,12 @@ export function WalletPanel({ view, controller }: ViewProps) {
                 </p>
               </>
             )}
+            <button
+              disabled={view.busy}
+              onClick={() => void controller.disconnect()}
+            >
+              Switch wallet
+            </button>
           </div>
         )}
       </section>

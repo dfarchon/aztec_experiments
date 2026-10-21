@@ -8,6 +8,7 @@ import { Hint } from "./Hint";
 import { Icon } from "./Icon";
 import { L1Panel } from "./L1Panel";
 import { ReadingSettings } from "./ReadingSettings";
+import { RequestRecovery } from "./RequestRecovery";
 import type {
   BillboardController,
   BillboardView,
@@ -127,11 +128,12 @@ export function App({ controller }: { controller: BillboardController }) {
   );
   const bytes = new TextEncoder().encode(view.message).length;
   const pending =
-    view.l1?.jobs.filter((job) => job.stage !== "published").length || 0;
+    (view.l1?.jobs.filter((job) => job.stage !== "published").length || 0) +
+    view.request.jobs.filter((job) => job.postId === undefined).length;
   const title = {
     board: "Public board",
     settings: "Settings",
-    activity: "Ethereum copies",
+    activity: "Activity",
   }[section];
   return (
     <div className="billboard-app">
@@ -151,7 +153,7 @@ export function App({ controller }: { controller: BillboardController }) {
               {(
                 [
                   ["settings", "Settings"],
-                  ["activity", "Ethereum copies"],
+                  ["activity", "Activity"],
                 ] as const
               ).map(([key, label]) => (
                 <button
@@ -221,7 +223,11 @@ export function App({ controller }: { controller: BillboardController }) {
                     id="publishToL1"
                     type="checkbox"
                     checked={view.publishToL1 || false}
-                    disabled={view.busy || !view.l1?.available}
+                    disabled={
+                      view.busy ||
+                      !view.l1?.available ||
+                      view.walletMode === "metamask"
+                    }
                     onChange={(event) =>
                       controller.setField("publishToL1", event.target.checked)
                     }
@@ -244,8 +250,25 @@ export function App({ controller }: { controller: BillboardController }) {
             <section
               hidden={section !== "activity"}
               className="activity-page"
-              aria-label="Ethereum copies"
+              aria-label="Publishing activity"
             >
+              {view.request.jobs.length > 0 && (
+                <section aria-label="MetaMask posts">
+                  <h2>MetaMask posts</h2>
+                  {view.request.jobs.map((job) => (
+                    <details key={job.commitment}>
+                      <summary>
+                        {job.postId === undefined
+                          ? "Pending post"
+                          : `Post #${job.postId}`}
+                      </summary>
+                      <p>{job.text}</p>
+                      <p className="mono">L1: {job.l1Tx || "Unknown"}</p>
+                      <p className="mono">L2: {job.l2Tx || "Pending"}</p>
+                    </details>
+                  ))}
+                </section>
+              )}
               <p className="section-description">
                 Copy tasks saved in this browser. L1 gas is paid separately.
               </p>
@@ -275,14 +298,22 @@ export function App({ controller }: { controller: BillboardController }) {
               rows={2}
               placeholder="Leave a message…"
               value={view.message}
-              disabled={view.busy}
+              disabled={
+                view.busy ||
+                (view.walletMode === "metamask" &&
+                  view.request.jobs.some((job) => job.postId === undefined))
+              }
               onChange={(event) =>
                 controller.setField("message", event.target.value)
               }
             />
             <div className="compose-footer">
               <div className="compose-cost">
-                <span className="sponsored-label">L2 fees sponsored</span>
+                <span className="sponsored-label">
+                  {view.walletMode === "metamask"
+                    ? "You pay L1 gas · L2 sponsored"
+                    : "L2 fees sponsored"}
+                </span>
                 <Hint label="About posting">
                   Posts are public and stored onchain; filtering does not delete
                   them. The author address is not shown, but network metadata
@@ -331,6 +362,7 @@ export function App({ controller }: { controller: BillboardController }) {
                 <Icon name="arrow" />
               </button>
             </div>
+            <RequestRecovery view={view} controller={controller} />
             {view.publishToL1 && (
               <p className="publish-notice">
                 Ethereum copy enabled · L1 gas required; payer address public.{" "}

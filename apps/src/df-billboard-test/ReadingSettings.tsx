@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 
 import { Hint } from "./Hint";
+import { Select } from "./Select";
 import type { KeywordMode, ViewProps } from "./types";
 
 function Toggle({
@@ -72,21 +73,20 @@ export function ReadingSettings({ view, controller }: ViewProps) {
           }}
         />
         <label htmlFor="keywordMode">Match mode</label>
-        <select
+        <Select
           id="keywordMode"
           value={view.keywordMode || "contains"}
-          onChange={(event) =>
-            controller.setField(
-              "keywordMode",
-              event.target.value as KeywordMode
-            )
+          onChange={(value) =>
+            controller.setField("keywordMode", value as KeywordMode)
           }
-        >
-          <option value="contains">Contains keyword</option>
-          <option value="word">
-            Whole English words · Substring match for Chinese
-          </option>
-        </select>
+          options={[
+            { value: "contains", label: "Contains keyword" },
+            {
+              value: "word",
+              label: "Whole English words · Substring match for Chinese",
+            },
+          ]}
+        />
         <div className="reading-actions">
           <button
             id="saveKeywords"

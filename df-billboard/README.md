@@ -16,12 +16,12 @@ React 18 + TypeScript + Vite + React Router。视觉沿用 DFArchon 的黑色、
 | `/` 留言广场 | 匿名发帖、读取公开留言、搜索已读取内容、按新旧排序、分批展示、展开折叠内容 |
 | `/?view=settings` 阅读偏好 | 用户关键词、基础规则、本地 AI 三个独立开关 |
 | `/?view=activity` 发布记录 | 本浏览器保存的 L2 → L1 副本任务与 MetaMask 提交进度 |
-| 右上角钱包 | 浏览器账号、备份导入或 Azguard 连接；完整地址和账号备份收在「我的账号」 |
+| 右上角钱包 | MetaMask、Azguard 或浏览器 Aztec 账号；共用同一个留言板与发言框，可用 Switch wallet 切换 |
 | 连接详情 | RPC、留言板、Sponsored FPC 地址及运行记录 |
-| `/l1-post-lab` | 独立本地验证：每帖 MetaMask 付 L1 gas，Sponsored FPC 付 L2 gas |
 
 旧 `/reports`、`/df-billboard-report.html` 跳转到主页；`/df-billboard-test.html`
-也保留兼容跳转。设计与测试不再作为产品页面加载，README 可从侧栏访问。
+也保留兼容跳转。旧 `/l1-post-lab`、`/fee-lab` 现在也跳回主页。
+设计与测试不再作为产品页面加载，README 可从页脚访问。
 
 广场只搜索当前已读取的留言；开启过滤时，折叠内容默认不参与文本搜索，
 选择「查看已折叠内容」后才参与。留言没有作者昵称或可靠的发布时间字段，
@@ -66,7 +66,7 @@ React 18 + TypeScript + Vite + React Router。视觉沿用 DFArchon 的黑色、
 
 ### 已验证的本地实验：MetaMask 按帖支付 gas
 
-`/l1-post-lab` 使用独立部署，不改变主页现有留言板：
+主页 Connect wallet 选择 MetaMask，与 Aztec 钱包使用同一份部署及公开留言：
 
 1. 浏览器随机创建 Aztec 账号；不从 MetaMask 签名派生账号密钥。
 2. MetaMask 调用 `BillboardInbox.requestPost`，转账金额为零，仅支付 L1 gas。
@@ -74,10 +74,17 @@ React 18 + TypeScript + Vite + React Router。视觉沿用 DFArchon 的黑色、
 4. `post_from_l1` 私有调用验证固定 L1 合约来源、正文和账号绑定，并消费一次性消息。
 5. 共用 Sponsored FPC 支付 L2 gas，沿用每账号 10 条 / 24 小时配额，公开保存正文。
 
-无需充值、质押或兑换费用资产；旧 `/fee-lab` 路径跳转到新实验。
+无需充值、质押或兑换费用资产。进度使用主页 toast，待处理请求在发言框提供
+Resume / Recover，交易记录在 Activity 查看。切换钱包不会删除账号或待处理请求。
+MetaMask 模式不会再额外开启 L2 → L1 副本，避免混淆两种付费路径。
 普通 `post` 和 `post_to_l1` 仍开放，L1 付款不是所有入口的强制门槛。
 消息验证和发帖原子执行，失败不消耗授权；已提交交易保存哈希并支持核对恢复，
 不自动重复支付 L1 gas。未知交易结果需先核对，不能盲目重发。
+
+新 `deploy:df:harness` 同时部署 L1 Inbox、带 Inbox 初始化参数的 Aztec 留言板和
+L1 Publisher。旧 L2-only 留言板不能修改初始化配置，仍可用 Aztec 钱包；
+MetaMask 入口会禁用。重新部署会创建新留言板而非删除旧链上数据，
+旧独立实验的恢复数据也不删除，但不会混入新留言板。切换部署前备份旧清单和账号。
 
 L1 付款地址公开；正文最终在 Aztec L2，而非原生 L1 发帖。样本中未发现被检查的
 付款地址、Aztec 账号和凭证明文出现在公开 L2 交易中，但时间、RPC/IP 等仍可能关联。
@@ -190,8 +197,7 @@ npm run build:df:harness
 ```sh
 npm run test:df:e2e
 npm run test:df:l1:e2e
-# 按帖付 L1 gas 的实验，与主页独立部署；先完成 deploy:df:harness
-npm run deploy:df:l1-post-lab
+# MetaMask 请求与普通发帖使用 deploy:df:harness 的同一个留言板
 npm run test:df:l1-request
 npm run test:df:l1-post-lab:e2e
 ```
@@ -204,7 +210,7 @@ npm run test:df:l1-post-lab:e2e
 - 工具链已对齐公共测试网 `6.0.0-rc.3`；仍需公共网部署配置、前端真实证明模式和链上验收，
   不能直接解除本地脚本的安全限制使用公开测试网。
 - 落实 Sponsored FPC 的资金、预算和调用限制，防止开放账号消耗全部代付资金。
-- 将已验证的 L1 请求发帖路径整合进产品主页，并完善失败恢复与链重组处理。
+- 验收主页 MetaMask 钱包真实交互，进一步完善链重组处理。
 - 改进账号密钥保存与恢复；当前浏览器账号是本地测试存储，不适合承载真实资产。
 - 扩大中英文独立测试集、验证真实网络隐私边界，以及大规模消息读取性能。
 

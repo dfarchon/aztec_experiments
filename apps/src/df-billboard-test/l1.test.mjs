@@ -1,7 +1,49 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createL1Queue } from "./l1.ts";
+import { createL1Queue, switchLocalEthereumChain } from "./l1.ts";
+
+test("both MetaMask flows add an unknown local chain but never bypass rejection", async () => {
+  const calls = [];
+  let added = false;
+  const provider = {
+    async request(request) {
+      calls.push(request);
+      if (request.method === "eth_chainId") return "0x1";
+      if (request.method === "wallet_switchEthereumChain" && !added)
+        throw { code: 4902 };
+      if (request.method === "wallet_addEthereumChain") added = true;
+    },
+  };
+  await switchLocalEthereumChain(provider, "0x7a69", "http://127.0.0.1:5954");
+  assert.deepEqual(
+    calls.map(({ method }) => method),
+    [
+      "eth_chainId",
+      "wallet_switchEthereumChain",
+      "wallet_addEthereumChain",
+      "wallet_switchEthereumChain",
+    ]
+  );
+  assert.deepEqual(calls[2].params[0].rpcUrls, ["http://127.0.0.1:5954"]);
+  const rejected = [];
+  await assert.rejects(
+    () =>
+      switchLocalEthereumChain(
+        {
+          async request({ method }) {
+            rejected.push(method);
+            if (method === "eth_chainId") return "0x1";
+            throw Object.assign(new Error("Rejected"), { code: 4001 });
+          },
+        },
+        "0x7a69",
+        "http://127.0.0.1:5954"
+      ),
+    /Rejected/
+  );
+  assert.deepEqual(rejected, ["eth_chainId", "wallet_switchEthereumChain"]);
+});
 
 const hash = `0x${"a".repeat(64)}`;
 const l1Hash = `0x${"b".repeat(64)}`;

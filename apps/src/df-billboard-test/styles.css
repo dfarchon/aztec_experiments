@@ -43,14 +43,12 @@ a:hover {
   color: var(--accent);
 }
 button,
-select,
 input,
 textarea {
   font: inherit;
   scroll-margin-top: 100px;
 }
 button,
-select,
 input:not([type="checkbox"]),
 textarea {
   border: 1px solid var(--line);
@@ -81,7 +79,6 @@ button:disabled {
 }
 button:focus-visible,
 a:focus-visible,
-select:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 summary:focus-visible {
@@ -91,11 +88,76 @@ summary:focus-visible {
 input[type="checkbox"] {
   accent-color: var(--accent);
 }
-select {
-  padding: 7px;
+.select {
+  min-width: 0;
 }
-option {
+.select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  font-weight: 400;
+}
+.select-trigger > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.select-trigger > svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.select-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+}
+.select-trigger[aria-expanded="true"] > svg {
+  transform: rotate(180deg);
+}
+.select-options {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
   background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 50%);
+  overflow: auto;
+  overscroll-behavior: contain;
+  font: 13px/1.5 var(--font);
+}
+.select-options::backdrop {
+  pointer-events: none;
+}
+.select-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  padding: 10px;
+  border-radius: 3px;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.select-option > span:last-child {
+  flex: 0 0 14px;
+}
+.select-option.active:not([aria-disabled="true"]),
+.select-option:hover:not([aria-disabled="true"]) {
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+.select-option[aria-selected="true"] {
+  color: var(--accent);
+}
+.select-option[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 h1,
 h2,
@@ -124,34 +186,6 @@ summary {
 code {
   font-family: var(--font-mono);
   overflow-wrap: anywhere;
-}
-.l1-post-lab {
-  max-width: 1080px;
-  padding: 32px;
-  overflow-wrap: anywhere;
-}
-.l1-post-lab > p,
-.l1-post-lab header {
-  margin-bottom: 20px;
-}
-.l1-post-lab > section {
-  padding: 20px;
-  margin-bottom: 20px;
-  border: 1px solid var(--line);
-}
-.l1-post-lab textarea {
-  display: block;
-  width: 100%;
-  min-height: 100px;
-  padding: 10px;
-  margin: 12px 0;
-}
-.l1-post-lab [role="status"],
-.l1-post-lab article {
-  margin-top: 12px;
-}
-.l1-post-lab [role="alert"] {
-  color: var(--danger);
 }
 .billboard-app {
   isolation: isolate;
@@ -297,7 +331,6 @@ code {
   display: block;
   margin: 12px 0 6px;
 }
-.wallet-popover select,
 .wallet-popover input:not([type="checkbox"]) {
   width: 100%;
   padding: 7px;
@@ -330,14 +363,6 @@ code {
 #emoji {
   font-size: 25px;
   letter-spacing: 5px;
-}
-.panel-address {
-  display: grid;
-  gap: 5px;
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-  font-size: 12px;
 }
 .shell {
   max-width: 1280px;
@@ -500,7 +525,7 @@ textarea::placeholder {
   color: var(--muted);
 }
 .reading-option textarea,
-.reading-option select {
+.reading-option .select-trigger {
   width: 100%;
   padding: 7px;
   font-size: 12px;
@@ -982,6 +1007,19 @@ textarea::placeholder {
   font-size: 12px;
   color: var(--muted);
 }
+.request-recovery {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  grid-column: 1 / -1;
+}
+.request-recovery input {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+}
 .feed-card {
   display: flex;
   flex-direction: column;
@@ -1051,9 +1089,10 @@ textarea::placeholder {
   padding: 10px 0;
   font-size: 13px;
 }
-.feed-search select {
+.feed-search .select {
   font-size: 12px;
-  max-width: 120px;
+  width: 142px;
+  flex-shrink: 0;
 }
 .text-button {
   border-color: transparent;
@@ -1277,11 +1316,11 @@ textarea::placeholder {
   }
   .reading-option input:not([type="checkbox"]),
   .reading-option textarea,
-  .reading-option select,
+  .reading-option .select-trigger,
   .wallet-popover input:not([type="checkbox"]),
-  .wallet-popover select,
+  .wallet-popover .select-trigger,
   .search-field input,
-  .feed-search select {
+  .feed-search .select-trigger {
     font-size: 16px;
   }
 }

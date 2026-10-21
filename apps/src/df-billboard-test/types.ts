@@ -1,4 +1,5 @@
 import type { L1View } from "./l1";
+import type { RequestView } from "./metamask-posting";
 
 export type KeywordMode = "contains" | "word";
 export type RuleCategory =
@@ -7,7 +8,12 @@ export type RuleCategory =
   | "token-claim-link"
   | "adult-solicitation"
   | "repeated-solicitation";
-export type WalletMode = "local" | "create" | "import" | "test" | "extension";
+export type WalletMode =
+  | "local"
+  | "create"
+  | "import"
+  | "extension"
+  | "metamask";
 export interface PostData {
   id: number | string;
   text?: string;
@@ -29,7 +35,6 @@ export interface Progress {
 export interface EditableFields {
   walletMode: WalletMode;
   savedAccount: string;
-  account: string;
   accountLabel: string;
   accountFile: File | null;
   realProofs: boolean;
@@ -42,6 +47,7 @@ export interface EditableFields {
 }
 export interface BillboardView extends EditableFields {
   l1: L1View;
+  request: RequestView;
   busy: boolean;
   connected: boolean;
   address: string;
@@ -51,7 +57,6 @@ export interface BillboardView extends EditableFields {
   walletOpen: boolean;
   fileVersion: number;
   savedAccounts: { address: string; label: string }[];
-  accounts: { value: string; label: string }[];
   providers: { id: string; name: string }[];
   pendingConnection: boolean;
   verification: boolean;
@@ -66,7 +71,6 @@ export interface BillboardView extends EditableFields {
   } | null;
   progress: Progress | null;
   actionError: { label: string; message: string; guidance: string } | null;
-  localStatus: string;
   extensionStatus: string;
   copied: boolean;
   logs: { id: number; message: string; type: string; time: string }[];
@@ -99,6 +103,8 @@ export interface BillboardController {
   copyAddress(): Promise<void>;
   accountBackup(): { filename: string; contents: string } | null;
   connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  resumeRequest(hash?: string): Promise<void>;
   scan(): Promise<void>;
   confirmWallet(): Promise<void>;
   cancelWallet(): void;

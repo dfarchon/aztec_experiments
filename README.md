@@ -6,9 +6,10 @@ Aztec posting, personal reading preferences and optional Ethereum publication.
 
 **[Current product design, setup and test results → df-billboard/README.md](df-billboard/README.md)**
 
-The former `/reports` web page has moved to that README. The local
-`/l1-post-lab` route verifies per-post MetaMask L1 gas payment with sponsored
-L2 execution, without prepayment. It uses a separate deployment from the homepage.
+The former `/reports` web page has moved to that README. The homepage supports
+Aztec wallets and MetaMask on the same board. MetaMask users pay L1 gas per post;
+Sponsored FPC covers L2 execution, without prepayment. The old `/l1-post-lab`
+and `/fee-lab` routes redirect to the homepage. This remains a local-only prototype.
 
 ## Original upstream experiment (historical reference)
 

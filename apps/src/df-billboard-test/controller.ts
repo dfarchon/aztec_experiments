@@ -13,6 +13,7 @@ import {
   emptyL1View,
   l1MessageLeaf,
 } from "./l1.ts";
+import { createMetaMaskPosting, emptyRequestView } from "./metamask-posting.ts";
 import { classifyRulePosts } from "./moderation.ts";
 import type { BillboardController } from "./types";
 
@@ -41,8 +42,6 @@ export function createBillboardController(deps = {}): BillboardController {
     walletMode: "create",
     savedAccounts: [],
     savedAccount: "",
-    accounts: [],
-    account: "0",
     accountLabel: "",
     accountFile: null,
     fileVersion: 0,
@@ -57,12 +56,12 @@ export function createBillboardController(deps = {}): BillboardController {
     deployment: null,
     progress: null,
     actionError: null,
-    localStatus: "Browser wallet not initialized",
     extensionStatus: "Waiting to connect Azguard",
     copied: false,
     message: "",
     publishToL1: false,
     l1: emptyL1View,
+    request: emptyRequestView,
     logs: [],
     posts: [],
     feedLoaded: false,
@@ -105,11 +104,11 @@ export function createBillboardController(deps = {}): BillboardController {
     posts: [],
   };
   let deployment;
-  let accounts;
   let contracts;
   let boardArtifact;
   let publicNode;
   let l1Queue;
+  let requestPosting;
   let l1Timer;
   let providers = [];
   let pendingConnection = null;
@@ -278,14 +277,16 @@ export function createBillboardController(deps = {}): BillboardController {
     }
   }
   function publishSession() {
+    const metamask = view.walletMode === "metamask";
     patch({
       busy,
-      connected: Boolean(state.wallet),
-      address: state.address?.toString() || "",
-      hasLocalAccount: Boolean(state.localAccount),
-      canPost: Boolean(
-        state.wallet && state.feePaymentMethod && contracts?.board
-      ),
+      connected: metamask ? Boolean(view.request.payer) : Boolean(state.wallet),
+      address: metamask ? view.request.payer : state.address?.toString() || "",
+      hasLocalAccount: !metamask && Boolean(state.localAccount),
+      canPost: metamask
+        ? Boolean(view.request.payer) &&
+          !view.request.jobs.some((job) => job.postId === undefined)
+        : Boolean(state.wallet && state.feePaymentMethod && contracts?.board),
       pendingConnection: Boolean(pendingConnection),
     });
   }
@@ -394,22 +395,9 @@ export function createBillboardController(deps = {}): BillboardController {
       throw new Error(
         "Local deployment is missing Sponsored FPC. Run npm run deploy:df:harness again."
       );
-    const accountResponse = await fetch("/df-local-accounts.json", {
-      cache: "no-store",
-    });
-    accounts = accountResponse.ok ? await accountResponse.json() : [];
-    patch({
-      deployment,
-      accounts: accounts.map(({ label }, index) => ({
-        label,
-        value: String(index),
-      })),
-    });
+    patch({ deployment });
     patch({
       walletMode: publishLocalAccounts().length ? "local" : "create",
-      account:
-        sessionStorage.getItem("df-harness-account") ||
-        (accounts.length > 1 ? "1" : "0"),
     });
     window.RPC_CONFIG = { nodeUrl: deployment.nodeUrl };
     publicNode = A().createAztecNodeClient(deployment.nodeUrl);
@@ -426,6 +414,28 @@ export function createBillboardController(deps = {}): BillboardController {
         "Billboard deployment or contract version mismatch. Run npm run deploy:df:harness again."
       );
     patch({ canRead: true });
+    if (deployment.l1Request) {
+      const config = {
+        kind: "local-sponsored-l1-post",
+        nodeUrl: deployment.nodeUrl,
+        rollupAddress: deployment.rollupAddress,
+        rollupVersion: String(deployment.rollupVersion),
+        board: deployment.board,
+        sponsoredFpc: deployment.sponsoredFpc,
+        sponsorSalt: deployment.sponsorSalt,
+        l1: deployment.l1Request,
+      };
+      requestPosting = (deps.createMetaMaskPosting || createMetaMaskPosting)(
+        config,
+        A(),
+        (request) => {
+          patch({ request });
+          publishSession();
+        },
+        showProgress
+      );
+      patch({ request: { ...emptyRequestView, available: true } });
+    }
     if (deployment.l1) {
       const bridge = {
         discover: async (hash) => {
@@ -614,8 +624,9 @@ export function createBillboardController(deps = {}): BillboardController {
             ? savedLocalAccounts().find(
                 (item) => item.address === view.savedAccount
               )
-            : accounts[Number(view.account)];
-    if (!account) throw new Error("Invalid test account");
+            : undefined;
+    if (!account)
+      throw new Error("Choose a saved account, or create/import one");
     const signingKey = /^0x/i.test(account.signingKey)
       ? `0x${account.signingKey.slice(2)}`
       : `0x${account.signingKey}`;
@@ -635,7 +646,6 @@ export function createBillboardController(deps = {}): BillboardController {
     // Persist new/imported credentials before the slower PXE setup. A failed
     // initialization can then be retried through "Saved accounts" after reloading.
     if (mode === "create" || mode === "import") rememberLocalAccount(account);
-    patch({ localStatus: "Initializing the browser Aztec wallet…" });
     try {
       const connected = await ensureAztecSetup(state, "log", {
         secretKey: account.secretKey,
@@ -645,9 +655,6 @@ export function createBillboardController(deps = {}): BillboardController {
         proverEnabled: view.realProofs,
         blockMonitor: false,
         onProgress: (step, total, message) => {
-          patch({
-            localStatus: `Wallet initialization ${step}/${total} · ${message}`,
-          });
           showProgress(`Wallet initialization · ${message}`, step, total);
         },
       });
@@ -657,22 +664,9 @@ export function createBillboardController(deps = {}): BillboardController {
       ) {
         throw new Error("Browser account address does not match the backup");
       }
-      if (mode !== "test") {
-        rememberLocalAccount(account);
-        state.localAccount = account;
-      }
-      await finishConnect(
-        account.label ||
-          (mode === "test"
-            ? "Preconfigured test account"
-            : "Aztec browser account")
-      );
-      patch({
-        localStatus:
-          mode === "create"
-            ? "Account created and connected. Use Download account backup to keep your keys safe."
-            : "Browser wallet connected.",
-      });
+      rememberLocalAccount(account);
+      state.localAccount = account;
+      await finishConnect(account.label || "Aztec browser account");
     } finally {
       patch({ accountFile: null, fileVersion: view.fileVersion + 1 });
     }
@@ -892,7 +886,18 @@ export function createBillboardController(deps = {}): BillboardController {
   }
 
   async function connect() {
-    if (view.walletMode === "extension") {
+    if (view.walletMode === "metamask") {
+      if (!requestPosting)
+        throw new Error(
+          "This board has no L1 entry. Deploy a board with MetaMask support first."
+        );
+      await checkChain();
+      await checkSponsorBalance();
+      await requestPosting.connect();
+      patch({ publishToL1: false });
+      setWalletPanel(false);
+      await refresh(false);
+    } else if (view.walletMode === "extension") {
       try {
         if (!providers.length) await scanWallets();
         await startExtensionConnection();
@@ -914,12 +919,44 @@ export function createBillboardController(deps = {}): BillboardController {
         state.localAccount = null;
         state.feePaymentMethod = null;
         contracts = null;
-        patch({
-          localStatus: `Connection failed: ${error.message || String(error)}. Reload the page to retry.`,
-        });
         throw error;
       }
     }
+  }
+
+  async function disconnect() {
+    pendingConnection?.cancel();
+    pendingConnection = null;
+    requestPosting?.disconnect();
+    await state.provider?.disconnect?.();
+    await state.pxe?.stop?.();
+    Object.assign(state, {
+      wallet: null,
+      pxe: null,
+      address: null,
+      aztecNode: null,
+      localAccount: null,
+      feePaymentMethod: null,
+      provider: null,
+    });
+    contracts = null;
+    providers = [];
+    patch({
+      providers: [],
+      grantedAccounts: [],
+      verification: false,
+      publishToL1: false,
+      copied: false,
+      walletOpen: true,
+    });
+    publishSession();
+  }
+
+  async function finishRequest(message) {
+    // Clear only the confirmed draft, including after resuming a saved request.
+    if (view.message === message) patch({ message: "" });
+    showProgress("Post confirmed. Refreshing the public feed…");
+    await refresh(false);
   }
 
   async function post() {
@@ -927,6 +964,14 @@ export function createBillboardController(deps = {}): BillboardController {
     const message = view.message;
     showProgress("Checking and encoding the message…", 0, 2);
     const { text, length } = encodeDFMessage(message);
+    if (view.walletMode === "metamask") {
+      if (!requestPosting)
+        throw new Error("MetaMask posting is not configured");
+      await checkChain();
+      await checkSponsorBalance();
+      await finishRequest(await requestPosting.post(message));
+      return;
+    }
     if (!state.wallet || !contracts?.board || !state.feePaymentMethod)
       throw new Error("Connect an Aztec wallet first");
     await checkChain();
@@ -1240,7 +1285,6 @@ export function createBillboardController(deps = {}): BillboardController {
     const editable = [
       "walletMode",
       "savedAccount",
-      "account",
       "accountLabel",
       "accountFile",
       "realProofs",
@@ -1261,13 +1305,20 @@ export function createBillboardController(deps = {}): BillboardController {
       return;
     if (name === "keywordMode" && !["contains", "word"].includes(value)) return;
     if (
-      ["walletMode", "savedAccount", "account", "provider"].includes(name) &&
-      (state.wallet || pendingConnection)
+      ["walletMode", "savedAccount", "provider"].includes(name) &&
+      (state.wallet || view.request.payer || pendingConnection)
     )
       return;
+    if (
+      name === "walletMode" &&
+      !["local", "create", "import", "extension", "metamask"].includes(value)
+    )
+      return;
+    if (name === "publishToL1" && view.walletMode === "metamask") return;
     patch({ [name]: value });
+    if (name === "walletMode" && value === "metamask")
+      patch({ publishToL1: false });
     if (readingFields.includes(name)) savePreferences();
-    if (name === "account") sessionStorage.setItem("df-harness-account", value);
     if (name === "walletMode" || name === "provider") publishSession();
   }
   function setAiHints(enabled) {
@@ -1333,9 +1384,9 @@ export function createBillboardController(deps = {}): BillboardController {
     }
   }
   async function copyAddress() {
-    if (!state.address) return;
+    if (!view.address) return;
     try {
-      await navigator.clipboard.writeText(state.address.toString());
+      await navigator.clipboard.writeText(view.address);
       patch({ copied: true });
       clearTimeout(copyTimer);
       copyTimer = setTimeout(() => patch({ copied: false }), 1800);
@@ -1379,6 +1430,13 @@ export function createBillboardController(deps = {}): BillboardController {
     copyAddress,
     accountBackup,
     connect: () => action(connect, "Connect wallet"),
+    disconnect: () => action(disconnect, "Switch wallet"),
+    resumeRequest: (hash) =>
+      action(async () => {
+        if (!view.request.payer || !requestPosting)
+          throw new Error("Reconnect MetaMask first");
+        await finishRequest(await requestPosting.resume(hash));
+      }, "Anonymous posting"),
     scan: () => action(scanWallets, "Scan extension wallets"),
     confirmWallet: () =>
       action(confirmExtensionConnection, "Authorize and connect wallet"),
@@ -1400,6 +1458,7 @@ export function createBillboardController(deps = {}): BillboardController {
       disposed = true;
       clearInterval(l1Timer);
       l1Queue?.dispose();
+      requestPosting?.dispose();
       aiGeneration++;
       aiNeedsRun = false;
       pendingConnection?.cancel();

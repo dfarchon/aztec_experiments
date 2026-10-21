@@ -11,8 +11,7 @@ const source = path.join(root, 'apps/src/df-billboard-test');
 fs.mkdirSync(dist, { recursive: true });
 const boardArtifact = path.join(root, 'df-billboard/target/df_billboard-DFBillboard.json');
 if (!fs.existsSync(boardArtifact)) throw new Error(`Missing ${boardArtifact}. Run npm run build:df first.`);
-// Keep a running deployment's matching artifact while an isolated experiment
-// compiles a newer class. Its deployment publishes its own artifact/manifest.
+// Keep the artifact matching the running deployment until it is redeployed.
 const publishedArtifact = path.join(dist, 'df-board-artifact.json');
 const manifestFile = path.join(dist, 'df-local.json');
 const digest = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');

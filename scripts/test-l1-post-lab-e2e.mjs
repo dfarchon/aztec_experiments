@@ -23,7 +23,9 @@ import { createRequestSession, readRequestReceipt, requestABI, requestCommitment
 import { syncLocalClock } from './sync-df-clock.mjs';
 
 const root = new URL('../', import.meta.url);
-const config = JSON.parse(fs.readFileSync(new URL('.local/l1-post-lab.json', root)));
+const manifest = JSON.parse(fs.readFileSync(new URL('.local/billboard-harness.json', root)));
+assert(manifest.l1Request, 'Redeploy the main board with L1 entry support');
+const config = { ...manifest, kind: 'local-sponsored-l1-post', l1: manifest.l1Request };
 const a = { createAztecNodeClient, AztecAddress, Contract, NO_WAIT, getContractClassFromArtifact,
   getContractInstanceFromInstantiationParams, EventSelector, loadContractArtifact, getPublicEvents,
   Fr, Fq, GasFees, TxHash, NO_FROM, SponsoredFeePaymentMethod, computeSecretHash, siloNullifier, computeFeeJuiceMessageNullifier };
@@ -31,7 +33,7 @@ const node = await validateRequestConfig(a, config);
 await syncLocalClock(node, createAztecNodeDebugClient(config.nodeUrl), config);
 const rpc = new JsonRpcProvider(config.l1.rpcUrl, undefined, { cacheTimeout: -1 });
 const wallet = await EmbeddedWallet.create(node, { ephemeral: true, pxeConfig: { proverEnabled: false } });
-const raw = JSON.parse(fs.readFileSync(new URL('apps/dist/df-l1-post-artifact.json', root)));
+const raw = JSON.parse(fs.readFileSync(new URL('apps/dist/df-board-artifact.json', root)));
 const sponsorRaw = JSON.parse(fs.readFileSync(new URL('apps/dist/df-sponsor-artifact.json', root)));
 const results = [];
 const debug = createAztecNodeDebugClient(config.nodeUrl);
