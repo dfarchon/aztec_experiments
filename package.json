@@ -27,7 +27,6 @@
     "test:df:e2e": "bash scripts/with-toolchain.sh node scripts/test-df-e2e.mjs",
     "build:df:l1": "bash scripts/with-toolchain.sh bash -c 'cd df-billboard/portal && aztec-forge build'",
     "test:df:l1": "bash scripts/with-toolchain.sh bash -c 'cd df-billboard/portal && aztec-forge test'",
-    "test:df:l1:e2e": "bash scripts/with-toolchain.sh node scripts/test-df-l1-e2e.mjs",
     "test:df:l1-request": "node --test apps/src/df-billboard-test/l1-request.test.mjs",
     "test:df:l1-post-lab:e2e": "node scripts/test-l1-post-lab-e2e.mjs",
     "build:contract": "bash scripts/with-toolchain.sh node scripts/build-contract.mjs",

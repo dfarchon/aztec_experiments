@@ -282,7 +282,7 @@ test("MetaMask and Aztec use one board, one feed and the same composer", async (
   assert.equal(controller.getSnapshot().address, "0xpayer");
   controller.setField("message", "one shared board");
   controller.setField("publishToL1", true);
-  assert.equal(controller.getSnapshot().publishToL1, false);
+  assert.equal("publishToL1" in controller.getSnapshot(), false);
   await controller.post();
   assert.equal(controller.getSnapshot().message, "");
   assert.ok(

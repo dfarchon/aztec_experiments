@@ -15,7 +15,6 @@ import { getFeeJuiceBalance } from '@aztec-labs/aztec.js/utils';
 import { SponsoredFPCContract } from '@aztec-labs/noir-contracts.js/SponsoredFPC';
 import { Tx } from '@aztec-labs/aztec.js/tx';
 import { GasFees } from '@aztec-labs/stdlib/gas';
-import { EthAddress } from '@aztec-labs/foundation/eth-address';
 import { encodeDFMessage, decodeDFMessage, getBillboardFeeOptions } from '../shared/df-billboard.mjs';
 
 const deployment = JSON.parse(fs.readFileSync(new URL('../.local/billboard-harness.json', import.meta.url)));
@@ -104,7 +103,7 @@ try {
   console.log('PASS 11th post rejected inside rolling 24-hour window');
   await send(other);
   await assert.rejects(
-    async () => board.methods._publish(Array(17).fill(0n), 1, EthAddress.ZERO).simulate({ from: other, fee: await getBillboardFeeOptions(node, paymentMethod, GasFees) }),
+    async () => board.methods._publish(Array(17).fill(0n), 1).simulate({ from: other, fee: await getBillboardFeeOptions(node, paymentMethod, GasFees) }),
     /only be called by the same contract/);
   const count = BigInt((await node.getPublicStorageAt('latest', instance.address, artifact.storageLayout.post_count.slot)).toString());
   assert.equal(count, initialCount + 11n);

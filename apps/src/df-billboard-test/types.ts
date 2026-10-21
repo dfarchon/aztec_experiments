@@ -1,4 +1,3 @@
-import type { L1View } from "./l1";
 import type { RequestView } from "./metamask-posting";
 
 export type KeywordMode = "contains" | "word";
@@ -40,13 +39,11 @@ export interface EditableFields {
   realProofs: boolean;
   provider: string;
   message: string;
-  publishToL1: boolean;
   rulesEnabled: boolean;
   keywordEnabled: boolean;
   keywordMode: KeywordMode;
 }
 export interface BillboardView extends EditableFields {
-  l1: L1View;
   request: RequestView;
   busy: boolean;
   connected: boolean;
@@ -110,11 +107,6 @@ export interface BillboardController {
   cancelWallet(): void;
   selectGrantedAccount(value: string): Promise<void>;
   post(): Promise<void>;
-  connectL1(): Promise<void>;
-  publishL1(hash: string): Promise<void>;
-  refreshL1(): Promise<void>;
-  proveL1(): Promise<void>;
-  fundL1(): Promise<void>;
   refresh(): Promise<void>;
 }
 export interface ViewProps {

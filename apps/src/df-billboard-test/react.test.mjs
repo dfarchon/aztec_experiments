@@ -14,7 +14,7 @@ import { classifyRulePosts } from "./moderation.ts";
 const compiled = await build({
   stdin: {
     contents:
-      "export { App } from './App.tsx'; export { Feed, pageNumbers } from './Feed.tsx'; export { L1Panel } from './L1Panel.tsx'; export { ReadingSettings } from './ReadingSettings.tsx'; export { Select } from './Select.tsx';",
+      "export { App } from './App.tsx'; export { Feed, pageNumbers } from './Feed.tsx'; export { ReadingSettings } from './ReadingSettings.tsx'; export { Select } from './Select.tsx';",
     resolveDir: fileURLToPath(new URL(".", import.meta.url)),
   },
   bundle: true,
@@ -30,8 +30,7 @@ new Function("require", "module", "exports", compiled.outputFiles[0].text)(
   module,
   module.exports
 );
-const { App, Feed, pageNumbers, L1Panel, ReadingSettings, Select } =
-  module.exports;
+const { App, Feed, pageNumbers, ReadingSettings, Select } = module.exports;
 const renderToStaticMarkup = (element) =>
   renderMarkup(createElement(StaticRouter, { location: "/" }, element));
 
@@ -59,44 +58,6 @@ test("shared select labels its list and preserves disabled and selected options"
   assert.match(html, /aria-disabled="true"/);
   assert.match(render(true), /<button[^>]*disabled/);
   assert.doesNotMatch(html, /<select/);
-});
-
-test("L1 panel exposes proof and payment states without resending the L2 post", () => {
-  const render = (stage, address = "") =>
-    renderToStaticMarkup(
-      createElement(L1Panel, {
-        view: {
-          l1: {
-            available: true,
-            busy: false,
-            address,
-            error: "",
-            jobs: [
-              {
-                l2Tx: `0x${"a".repeat(64)}`,
-                text: "<script>public text</script>",
-                stage,
-                postId: "0",
-              },
-            ],
-          },
-        },
-        controller: {},
-      })
-    );
-  assert.match(render("waiting-proof"), /Waiting for proof/);
-  assert.doesNotMatch(render("waiting-proof"), /class="publish-l1"/);
-  assert.match(render("ready"), /class="publish-l1" disabled/);
-  assert.doesNotMatch(render("ready", "0x1234"), /class="publish-l1" disabled/);
-  assert.match(render("signing"), /Awaiting MetaMask approval/);
-  assert.match(render("confirming"), /Confirming on L1/);
-  assert.match(render("published"), /Published on L1/);
-  assert.doesNotMatch(render("published"), /class="publish-l1"/);
-  assert.match(
-    render("published"),
-    /&lt;script&gt;public text&lt;\/script&gt;/
-  );
-  assert.match(render("published"), /submitting address is public/);
 });
 
 test("React renders the wallet, composer and disconnected action guards", () => {
@@ -282,7 +243,7 @@ test("operation toast sits outside the board and retains accessible progress sta
   base.dispose();
 });
 
-test("account actions live in the wallet and enabled Ethereum copies keep the fee warning", () => {
+test("account actions live in the wallet without Ethereum copy controls", () => {
   const base = createBillboardController();
   const view = {
     ...base.getSnapshot(),
@@ -290,7 +251,6 @@ test("account actions live in the wallet and enabled Ethereum copies keep the fe
     address: "0x123456789",
     hasLocalAccount: true,
     walletOpen: true,
-    publishToL1: true,
   };
   const controller = { ...base, getSnapshot: () => view };
   const html = renderToStaticMarkup(createElement(App, { controller }));
@@ -300,10 +260,7 @@ test("account actions live in the wallet and enabled Ethereum copies keep the fe
   assert.match(header, /id="backupAccount"/);
   assert.match(header, /Keep the backup private/);
   assert.doesNotMatch(html, /id="accountBar"/);
-  assert.match(
-    html,
-    /Ethereum copy enabled · L1 gas required; payer address public/
-  );
+  assert.doesNotMatch(html, /publishToL1|Ethereum cop|publish-l1/);
   const settings = html.slice(
     html.indexOf('class="preferences-page"'),
     html.indexOf('class="activity-page"')
@@ -313,40 +270,28 @@ test("account actions live in the wallet and enabled Ethereum copies keep the fe
   base.dispose();
 });
 
-test("wallet modes, AI consent and L1 states use English-only interface copy", () => {
+test("wallet modes and AI consent use English-only interface copy", () => {
   const base = createBillboardController();
   try {
-    for (const walletMode of ["local", "create", "import", "extension"]) {
+    for (const walletMode of [
+      "local",
+      "create",
+      "import",
+      "extension",
+      "metamask",
+    ]) {
       const view = {
         ...base.getSnapshot(),
         walletMode,
         walletOpen: true,
         aiConsentOpen: true,
         aiHints: true,
-        l1: {
-          available: true,
-          busy: false,
-          address: "0x1234",
-          error: "",
-          jobs: [
-            "waiting-proof",
-            "ready",
-            "signing",
-            "confirming",
-            "published",
-          ].map((stage, id) => ({
-            stage,
-            postId: id,
-            l2Tx: `0x${id}`,
-            text: "Test post",
-          })),
-        },
       };
       const controller = { ...base, getSnapshot: () => view };
       const html = renderToStaticMarkup(createElement(App, { controller }));
       assert.doesNotMatch(html, /\p{Script=Han}/u, walletMode);
       assert.match(html, /Download &amp; enable/);
-      assert.match(html, /submitting address is public/);
+      assert.match(html, /Your L1 payer address is public/);
     }
   } finally {
     base.dispose();

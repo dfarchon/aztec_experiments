@@ -7,12 +7,6 @@ import {
 } from "../../../shared/df-billboard.mjs";
 import { AI_CACHE_NAME, AI_MODEL_VERSION, safetyResult } from "./ai-config.ts";
 import { parseKeywords } from "./keywords.ts";
-import {
-  createL1Ports,
-  createL1Queue,
-  emptyL1View,
-  l1MessageLeaf,
-} from "./l1.ts";
 import { createMetaMaskPosting, emptyRequestView } from "./metamask-posting.ts";
 import { classifyRulePosts } from "./moderation.ts";
 import type { BillboardController } from "./types";
@@ -59,8 +53,6 @@ export function createBillboardController(deps = {}): BillboardController {
     extensionStatus: "Waiting to connect Azguard",
     copied: false,
     message: "",
-    publishToL1: false,
-    l1: emptyL1View,
     request: emptyRequestView,
     logs: [],
     posts: [],
@@ -107,9 +99,7 @@ export function createBillboardController(deps = {}): BillboardController {
   let contracts;
   let boardArtifact;
   let publicNode;
-  let l1Queue;
   let requestPosting;
-  let l1Timer;
   let providers = [];
   let pendingConnection = null;
   let busy = false;
@@ -435,97 +425,6 @@ export function createBillboardController(deps = {}): BillboardController {
         showProgress
       );
       patch({ request: { ...emptyRequestView, available: true } });
-    }
-    if (deployment.l1) {
-      const bridge = {
-        discover: async (hash) => {
-          const a = A();
-          const abiType = boardArtifact.outputs.structs.events.find((event) =>
-            event.path.endsWith("::L1PostQueued")
-          );
-          if (!abiType)
-            throw new Error(
-              "Billboard artifact is missing the L1 event. Redeploy the contract."
-            );
-          const found = await a.getPublicEvents(
-            publicNode,
-            {
-              abiType,
-              eventSelector: await a.EventSelector.fromSignature(
-                "L1PostQueued(u32,Field)"
-              ),
-              fieldNames: abiType.fields.map((field) => field.name),
-            },
-            {
-              contractAddress: a.AztecAddress.fromStringUnsafe(
-                deployment.board
-              ),
-              txHash: a.TxHash.fromString(hash),
-            }
-          );
-          if (found.events.length !== 1)
-            throw new Error(
-              "No matching L1 post event found for this transaction."
-            );
-          const event = found.events[0].event;
-          const content = new a.Fr(BigInt(event.content)).toString();
-          const leaf = l1MessageLeaf(
-            deployment.board,
-            deployment.rollupVersion,
-            deployment.l1.publisher,
-            content
-          );
-          const effect = await publicNode.getTxEffect(
-            a.TxHash.fromString(hash)
-          );
-          const index = effect.data.l2ToL1Msgs.findIndex(
-            (message) => message.toString() === leaf
-          );
-          if (index < 0)
-            throw new Error(
-              "Cross-chain message does not match the receiver contract."
-            );
-          return { id: event.id.toString(), leaf, index };
-        },
-        witness: async (hash, leaf, index) => {
-          const witness = await publicNode.getL2ToL1MembershipWitness(
-            A().TxHash.fromString(hash),
-            A().Fr.fromString(leaf),
-            index
-          );
-          return witness
-            ? [
-                Number(witness.epochNumber),
-                Number(witness.numCheckpointsInEpoch),
-                BigInt(witness.leafIndex),
-                witness.siblingPath
-                  .toBufferArray()
-                  .map(
-                    (buffer) =>
-                      `0x${Array.from(buffer, (byte) => byte.toString(16).padStart(2, "0")).join("")}`
-                  ),
-              ]
-            : null;
-        },
-        prove: async () => {
-          await checkChain();
-          await A().createAztecNodeDebugClient(deployment.nodeUrl).prove();
-        },
-      };
-      try {
-        l1Queue = createL1Queue(
-          createL1Ports(deployment, bridge, () => l1Queue?.disconnect()),
-          localStorage,
-          `billboard:l1:${deployment.rollupAddress}:${deployment.board}:${deployment.l1.publisher}`,
-          (l1) => patch({ l1 })
-        );
-        await l1Queue.initialize();
-        l1Timer = setInterval(() => void l1Queue.refresh(), 4000);
-      } catch (error) {
-        l1Queue?.dispose();
-        l1Queue = null;
-        patch({ l1: { ...emptyL1View, error: error.message } });
-      }
     }
     await refresh(false);
     publishSession();
@@ -894,7 +793,6 @@ export function createBillboardController(deps = {}): BillboardController {
       await checkChain();
       await checkSponsorBalance();
       await requestPosting.connect();
-      patch({ publishToL1: false });
       setWalletPanel(false);
       await refresh(false);
     } else if (view.walletMode === "extension") {
@@ -945,7 +843,6 @@ export function createBillboardController(deps = {}): BillboardController {
       providers: [],
       grantedAccounts: [],
       verification: false,
-      publishToL1: false,
       copied: false,
       walletOpen: true,
     });
@@ -980,17 +877,7 @@ export function createBillboardController(deps = {}): BillboardController {
     showProgress(
       "Generating a proof and submitting the anonymous post. Waiting for confirmation…"
     );
-    if (view.publishToL1 && !view.l1.available)
-      throw new Error("L1 deployment is not ready");
-    const mirror = view.publishToL1;
-    const interaction = mirror
-      ? contracts.board.methods.post_to_l1(
-          text,
-          length,
-          A().EthAddress.fromString(deployment.l1.publisher)
-        )
-      : contracts.board.methods.post(text, length);
-    const tx = await interaction.send({
+    const tx = await contracts.board.methods.post(text, length).send({
       from,
       fee: await getBillboardFeeOptions(
         state.aztecNode,
@@ -1002,7 +889,6 @@ export function createBillboardController(deps = {}): BillboardController {
       throw new Error(`Posting failed: ${tx.receipt.executionResult}`);
     // Confirmation consumes this draft, even if the later feed refresh fails.
     if (view.message === message) patch({ message: "" });
-    if (mirror) l1Queue.add(tx.receipt.txHash.toString(), message);
     log(
       `Anonymous post confirmed onchain: ${tx.receipt.txHash}`,
       "success",
@@ -1290,7 +1176,6 @@ export function createBillboardController(deps = {}): BillboardController {
       "realProofs",
       "provider",
       "message",
-      "publishToL1",
       "rulesEnabled",
       "keywordEnabled",
       "keywordMode",
@@ -1299,7 +1184,7 @@ export function createBillboardController(deps = {}): BillboardController {
     if (!editable.includes(name) || (busy && !readingFields.includes(name)))
       return;
     if (
-      ["rulesEnabled", "keywordEnabled", "publishToL1"].includes(name) &&
+      ["rulesEnabled", "keywordEnabled"].includes(name) &&
       typeof value !== "boolean"
     )
       return;
@@ -1314,10 +1199,7 @@ export function createBillboardController(deps = {}): BillboardController {
       !["local", "create", "import", "extension", "metamask"].includes(value)
     )
       return;
-    if (name === "publishToL1" && view.walletMode === "metamask") return;
     patch({ [name]: value });
-    if (name === "walletMode" && value === "metamask")
-      patch({ publishToL1: false });
     if (readingFields.includes(name)) savePreferences();
     if (name === "walletMode" || name === "provider") publishSession();
   }
@@ -1448,16 +1330,9 @@ export function createBillboardController(deps = {}): BillboardController {
         await finishConnect(state.provider.name);
       }, "Switch wallet account"),
     post: () => action(post, "Anonymous posting"),
-    connectL1: () => l1Queue?.connect(),
-    publishL1: (hash) => l1Queue?.publish(hash),
-    refreshL1: () => l1Queue?.refresh(),
-    proveL1: () => l1Queue?.prove(),
-    fundL1: () => l1Queue?.faucet(),
     refresh: () => action(refresh, "Refresh posts"),
     dispose: () => {
       disposed = true;
-      clearInterval(l1Timer);
-      l1Queue?.dispose();
       requestPosting?.dispose();
       aiGeneration++;
       aiNeedsRun = false;

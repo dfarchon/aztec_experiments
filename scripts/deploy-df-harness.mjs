@@ -101,28 +101,6 @@ try {
       await wallet.stop();
     }
   }
-  let publisher;
-  let runtimeCodeHash;
-  if (previous?.board === boardAddress && previous.l1?.rpcUrl === l1RpcUrl) {
-    const code = await l1Provider.getCode(previous.l1.publisher);
-    if (code !== '0x' && keccak256(code) === previous.l1.runtimeCodeHash) {
-      publisher = previous.l1.publisher;
-      runtimeCodeHash = previous.l1.runtimeCodeHash;
-    }
-  }
-  if (!publisher) {
-    const portalArtifact = JSON.parse(
-      fs.readFileSync(new URL('../.local/billboard-l1-out/BillboardPublisher.sol/BillboardPublisher.json', import.meta.url)),
-    );
-    const deployed = await new ContractFactory(portalArtifact.abi, portalArtifact.bytecode.object, await l1Provider.getSigner(0)).deploy(
-      l1.rollupAddress.toString(),
-      boardAddress,
-      info.rollupVersion,
-    );
-    await deployed.waitForDeployment();
-    publisher = await deployed.getAddress();
-    runtimeCodeHash = keccak256(await l1Provider.getCode(publisher));
-  }
   const manifest = {
     kind: 'standalone-billboard',
     schemaVersion: 1,
@@ -135,7 +113,6 @@ try {
     sponsorSalt: '0',
     boardArtifactHash,
     boardClassId: boardClass.id.toString(),
-    l1: { chainId: 31337, rpcUrl: l1RpcUrl, publisher, runtimeCodeHash },
     l1Request: {
       chainId: 31337,
       rpcUrl: l1RpcUrl,

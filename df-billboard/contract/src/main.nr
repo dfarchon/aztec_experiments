@@ -4,7 +4,7 @@ use aztec::macros::aztec;
 
 #[aztec]
 pub contract DFBillboard {
-    use crate::bridge::{content_hash, request_commitment};
+    use crate::bridge::request_commitment;
     use aztec::{
         keys::getters::get_public_keys,
         macros::{
@@ -29,12 +29,6 @@ pub contract DFBillboard {
     global U64_MASK: u128 = 18446744073709551615;
     global MAX_BYTES: u32 = 512;
     global TEXT_FIELDS: u32 = 17;
-
-    #[event]
-    struct L1PostQueued {
-        id: u32,
-        content: Field,
-    }
 
     #[event]
     struct PostPublished {
@@ -94,7 +88,7 @@ pub contract DFBillboard {
         self.context.consume_l1_to_l2_message(content, [secret], inbox, message_leaf_index);
         // Message consumption and publication are atomic. Failed validation
         // rolls back the consumption, allowing the original request to retry.
-        self.internal.post_inner(text, length, EthAddress::zero());
+        self.internal.post_inner(text, length);
     }
 
     #[external("public")]
@@ -105,19 +99,11 @@ pub contract DFBillboard {
 
     #[external("private")]
     fn post(text: [u8; MAX_BYTES], length: u32) {
-        self.internal.post_inner(text, length, EthAddress::zero());
-    }
-
-    // The signed private call selects the recipient. Each L1 publisher pins its
-    // trusted L2 board/version; the protocol envelope also binds recipient/chain.
-    #[external("private")]
-    fn post_to_l1(text: [u8; MAX_BYTES], length: u32, portal: EthAddress) {
-        assert(portal.to_field() != 0, "L1 publisher cannot be zero");
-        self.internal.post_inner(text, length, portal);
+        self.internal.post_inner(text, length);
     }
 
     #[internal("private")]
-    fn post_inner(text: [u8; MAX_BYTES], length: u32, portal: EthAddress) {
+    fn post_inner(text: [u8; MAX_BYTES], length: u32) {
         assert(length > 0, "Empty message");
         assert(length <= MAX_BYTES, "Message too long");
         let owner = self.msg_sender();
@@ -191,12 +177,12 @@ pub contract DFBillboard {
             }
             packed[i] = value;
         }
-        self.enqueue_self._publish(packed, length, portal);
+        self.enqueue_self._publish(packed, length);
     }
 
     #[external("public")]
     #[only_self]
-    fn _publish(text: [Field; TEXT_FIELDS], length: u32, portal: EthAddress) {
+    fn _publish(text: [Field; TEXT_FIELDS], length: u32) {
         let id = self.storage.post_count.read();
         for i in 0..TEXT_FIELDS {
             self.storage.post_data.at(id * TEXT_FIELDS + i).write(text[i]);
@@ -204,11 +190,6 @@ pub contract DFBillboard {
         self.storage.post_lengths.at(id).write(length);
         self.storage.post_count.write(id + 1);
         self.emit(PostPublished { id });
-        if portal.to_field() != 0 {
-            let content = content_hash(id, length, text);
-            self.context.message_portal(portal, content);
-            self.emit(L1PostQueued { id, content });
-        }
     }
 
     #[external("public")]

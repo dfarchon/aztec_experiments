@@ -6,7 +6,6 @@ import { Brand } from "./Brand";
 import { Feed } from "./Feed";
 import { Hint } from "./Hint";
 import { Icon } from "./Icon";
-import { L1Panel } from "./L1Panel";
 import { ReadingSettings } from "./ReadingSettings";
 import { RequestRecovery } from "./RequestRecovery";
 import type {
@@ -127,9 +126,9 @@ export function App({ controller }: { controller: BillboardController }) {
     controller.getSnapshot
   );
   const bytes = new TextEncoder().encode(view.message).length;
-  const pending =
-    (view.l1?.jobs.filter((job) => job.stage !== "published").length || 0) +
-    view.request.jobs.filter((job) => job.postId === undefined).length;
+  const pending = view.request.jobs.filter(
+    (job) => job.postId === undefined
+  ).length;
   const title = {
     board: "Public board",
     settings: "Settings",
@@ -218,32 +217,6 @@ export function App({ controller }: { controller: BillboardController }) {
               <ReadingSettings view={view} controller={controller} />
               <details className="advanced-settings">
                 <summary>Advanced</summary>
-                <label className="l1-choice" htmlFor="publishToL1">
-                  <input
-                    id="publishToL1"
-                    type="checkbox"
-                    checked={view.publishToL1 || false}
-                    disabled={
-                      view.busy ||
-                      !view.l1?.available ||
-                      view.walletMode === "metamask"
-                    }
-                    onChange={(event) =>
-                      controller.setField("publishToL1", event.target.checked)
-                    }
-                  />
-                  Also publish an Ethereum copy
-                  <Hint label="Cross-chain fees">
-                    Publish on L2 first, then wait for a proof. MetaMask pays
-                    the L1 submission gas; the payer address is public.
-                  </Hint>
-                </label>
-                <button
-                  className="text-button"
-                  onClick={() => navigate("activity")}
-                >
-                  Ethereum copies <Icon name="arrow" />
-                </button>
                 <DebugPanel view={view} />
               </details>
             </section>
@@ -269,15 +242,11 @@ export function App({ controller }: { controller: BillboardController }) {
                   ))}
                 </section>
               )}
-              <p className="section-description">
-                Copy tasks saved in this browser. L1 gas is paid separately.
-              </p>
-              <L1Panel view={view} controller={controller} />
-              {!view.l1?.available && !view.l1?.error && (
+              {!view.request.jobs.length && (
                 <div className="empty-state">
                   <Icon name="activity" />
-                  <h2>Cross-chain publishing is not configured</h2>
-                  <p>You can still publish Aztec posts on the public board.</p>
+                  <h2>No MetaMask posts yet</h2>
+                  <p>Your MetaMask posting requests will appear here.</p>
                   <button onClick={() => navigate("board")}>
                     Go to public board
                   </button>
@@ -363,17 +332,6 @@ export function App({ controller }: { controller: BillboardController }) {
               </button>
             </div>
             <RequestRecovery view={view} controller={controller} />
-            {view.publishToL1 && (
-              <p className="publish-notice">
-                Ethereum copy enabled · L1 gas required; payer address public.{" "}
-                <button
-                  className="text-button"
-                  onClick={() => navigate("settings")}
-                >
-                  Change
-                </button>
-              </p>
-            )}
           </section>
         </main>
       </div>

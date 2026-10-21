@@ -2,7 +2,7 @@
 
 The current independent billboard lives in `df-billboard/` and
 `apps/src/df-billboard-test/`. Its React client provides a public feed, sponsored
-Aztec posting, personal reading preferences and optional Ethereum publication.
+Aztec posting, a MetaMask L1-gas entry point, and personal reading preferences.
 
 **[Current product design, setup and test results → df-billboard/README.md](df-billboard/README.md)**
 

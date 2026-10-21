@@ -15,7 +15,7 @@ React 18 + TypeScript + Vite + React Router。视觉沿用 DFArchon 的黑色、
 | --- | --- |
 | `/` 留言广场 | 匿名发帖、读取公开留言、搜索已读取内容、按新旧排序、分批展示、展开折叠内容 |
 | `/?view=settings` 阅读偏好 | 用户关键词、基础规则、本地 AI 三个独立开关 |
-| `/?view=activity` 发布记录 | 本浏览器保存的 L2 → L1 副本任务与 MetaMask 提交进度 |
+| `/?view=activity` 发布记录 | 本浏览器保存的 MetaMask 发帖请求及提交进度 |
 | 右上角钱包 | MetaMask、Azguard 或浏览器 Aztec 账号；共用同一个留言板与发言框，可用 Switch wallet 切换 |
 | 连接详情 | RPC、留言板、Sponsored FPC 地址及运行记录 |
 
@@ -51,20 +51,9 @@ React 18 + TypeScript + Vite + React Router。视觉沿用 DFArchon 的黑色、
 直接调用合约时，UTF-8 有效性仍依赖客户端；读取端遇到无效编码会跳过内容展示。
 每账号配额不等于每人配额。公开记录不存作者地址也不等于网络元数据无法关联。
 
-## Ethereum 副本与费用实验
+## MetaMask 按帖支付 L1 gas
 
-### 已实现：L2 → L1 副本
-
-`post_to_l1` 与普通发帖共享额度，发布正文并产生 L2 → L1 消息。
-`portal/src/BillboardPublisher.sol` 验证 Aztec Outbox 消息来源、正文和一次性消费，
-然后在 Ethereum 发布完整正文。
-
-界面在「发布选项」开启副本后，记录任务：
-等待证明 → 可提交 → MetaMask 签名 → L1 确认 → 成功。
-用户自己支付 L1 gas，L1 提交地址公开。失败时继续原任务，不重新发送 L2 帖子。
-这不是从 L1 发起的匿名发帖。
-
-### 已验证的本地实验：MetaMask 按帖支付 gas
+正文只发布在 Aztec；不提供额外发布到 Ethereum 的副本功能。
 
 主页 Connect wallet 选择 MetaMask，与 Aztec 钱包使用同一份部署及公开留言：
 
@@ -76,13 +65,11 @@ React 18 + TypeScript + Vite + React Router。视觉沿用 DFArchon 的黑色、
 
 无需充值、质押或兑换费用资产。进度使用主页 toast，待处理请求在发言框提供
 Resume / Recover，交易记录在 Activity 查看。切换钱包不会删除账号或待处理请求。
-MetaMask 模式不会再额外开启 L2 → L1 副本，避免混淆两种付费路径。
-普通 `post` 和 `post_to_l1` 仍开放，L1 付款不是所有入口的强制门槛。
+Aztec 钱包仍可直接调用 `post`，L1 付款不是所有入口的强制门槛。
 消息验证和发帖原子执行，失败不消耗授权；已提交交易保存哈希并支持核对恢复，
 不自动重复支付 L1 gas。未知交易结果需先核对，不能盲目重发。
 
-新 `deploy:df:harness` 同时部署 L1 Inbox、带 Inbox 初始化参数的 Aztec 留言板和
-L1 Publisher。旧 L2-only 留言板不能修改初始化配置，仍可用 Aztec 钱包；
+`deploy:df:harness` 部署 L1 Inbox 和带 Inbox 初始化参数的 Aztec 留言板。旧 L2-only 留言板不能修改初始化配置，仍可用 Aztec 钱包；
 MetaMask 入口会禁用。重新部署会创建新留言板而非删除旧链上数据，
 旧独立实验的恢复数据也不删除，但不会混入新留言板。切换部署前备份旧清单和账号。
 
@@ -188,7 +175,7 @@ npm run build:df:harness
 
 - Noir：无需注册直接发帖、10/11 条配额、滚动时间边界、防重置、长度和补零、
   禁止外部调用 `_publish`、账号和留言板额度隔离。
-- Solidity：Outbox 来源及正文验证、重复消费，Inbox 零金额请求及字段校验。
+- Solidity：Inbox 零金额请求、留言板与承诺字段校验及消息入队。
 - React/controller：未连接状态、错误保留、正文转义、三个过滤器、折叠恢复及 L1 状态。
 - 消息与过滤：UTF-8 边界、关键词、基础规则和报告数据完整性。
 
@@ -196,7 +183,6 @@ npm run build:df:harness
 
 ```sh
 npm run test:df:e2e
-npm run test:df:l1:e2e
 # MetaMask 请求与普通发帖使用 deploy:df:harness 的同一个留言板
 npm run test:df:l1-request
 npm run test:df:l1-post-lab:e2e
