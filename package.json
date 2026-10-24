@@ -1,7 +1,7 @@
 {
   "private": true,
   "engines": {
-    "node": "24.12.0"
+    "node": "24.22.1"
   },
   "scripts": {
     "check:testnet": "node scripts/check-testnet.mjs",

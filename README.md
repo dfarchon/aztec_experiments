@@ -314,7 +314,7 @@ The `auto` action runs the full flow end-to-end: deposit → wait for L2 ingest 
 ## Building
 
 ```bash
-# From the repository root, with Node 24.12.0 and Aztec 6.0.0-rc.3 installed:
+# From the repository root, with Node 24.22.1 and Aztec 6.0.0-rc.3 installed:
 npm ci
 npm run build:contract
 npm run build:portal

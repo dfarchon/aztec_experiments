@@ -145,7 +145,7 @@ revision：`6152f768a82207aab4ae7305b9df235a4a5163d9`；
 
 ## 本地开发
 
-在仓库根目录执行，使用 Node `24.12.0`、Aztec `6.0.0-rc.3`、Noir `1.0.0-rc.3`。
+在仓库根目录执行，使用 Node `24.22.1`、Aztec `6.0.0-rc.3`、Noir `1.0.0-rc.3`。
 SDK 使用 `@aztec-labs`；配套证明库、Noir WASM 和 L1 artifacts 使用 SDK 要求的
 `@aztec-foundation` `6.0.0-rc.6`，不是把所有包强行设成同一个版本。以下命令连接本地测试环境；
 本地脚本不能直接用于公开测试网。
