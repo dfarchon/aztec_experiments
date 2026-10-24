@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const dist = path.join(root, 'apps/dist');
+const dist = process.env.BILLBOARD_OUTPUT_DIR ? path.resolve(process.env.BILLBOARD_OUTPUT_DIR) : path.join(root, 'apps/dist');
 const source = path.join(root, 'apps/src/df-billboard-test');
 fs.mkdirSync(dist, { recursive: true });
 const boardArtifact = path.join(root, 'df-billboard/target/df_billboard-DFBillboard.json');
@@ -51,4 +51,4 @@ for (const name of ['df-helpers.js', 'df-aztec-lib.js']) {
 for (const [file, route] of [['df-billboard-test.html', '/'], ['df-billboard-report.html', '/']]) {
   fs.writeFileSync(path.join(dist, file), `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${route}"><title>Dark Forest Billboard</title></head><body><a href="${route}">Continue to Billboard</a></body></html>`);
 }
-console.log('Prepared standalone billboard runtime assets in apps/dist');
+console.log(`Prepared standalone billboard runtime assets in ${dist}`);

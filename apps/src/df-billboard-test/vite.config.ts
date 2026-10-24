@@ -8,7 +8,9 @@ import { type Connect, defineConfig, type Plugin } from "vite";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const repository = path.resolve(root, "../../..");
-const dist = path.join(repository, "apps/dist");
+const dist = process.env.BILLBOARD_OUTPUT_DIR
+  ? path.resolve(process.env.BILLBOARD_OUTPUT_DIR)
+  : path.join(repository, "apps/dist");
 const worker = path.join(dist, "df-toxicity.worker.js");
 const fontLicense = path.join(
   repository,

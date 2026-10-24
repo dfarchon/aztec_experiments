@@ -5,6 +5,9 @@
   },
   "scripts": {
     "check:testnet": "node scripts/check-testnet.mjs",
+    "deploy:df:testnet": "bash scripts/with-toolchain.sh node scripts/deploy-billboard-testnet.mjs",
+    "test:df:deployment": "node --test scripts/testnet/deployment.test.mjs",
+    "test:df:release": "node --test scripts/testnet/release.test.mjs",
     "build:df": "bash scripts/with-toolchain.sh bash -c 'cd df-billboard && aztec compile'",
     "deploy:df:harness": "bash scripts/with-toolchain.sh node scripts/deploy-df-harness.mjs",
     "prepare:df:site": "node scripts/build-df-harness.mjs",

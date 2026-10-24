@@ -179,6 +179,10 @@ MetaMask 还需匹配的 Sepolia Inbox 请求合约配置，包括链 ID `111551
 公共网络等待 Inbox 时仅查询状态，不调用本地时间推进接口；超时保留请求，使用 Resume 继续，不重新付款。
 这些校验不代替部署验证、代付授权检查或正式安全审计。
 
+公共测试网的部署、断点恢复和 Vercel 发布包生成见 [DEPLOYMENT.md](./DEPLOYMENT.md)。
+`npm run deploy:df:testnet -- plan` 默认只读；真实部署必须显式加 `deploy --broadcast`。
+部署日志和密钥保留在本地，Vercel 只接收静态发布包及公开合约配置。
+
 若要与旧本地链并行运行，可分别设置启动时的 `ANVIL_PORT`、`L2_PORT`、`ADMIN_PORT`，
 以及部署时的 `DF_NODE_URL`、`DF_L1_RPC_URL`。部署会更新本地清单和页面运行产物，
 切换前应备份；不会停止旧节点。
