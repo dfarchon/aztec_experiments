@@ -21,7 +21,7 @@ assert(['127.0.0.1', 'localhost'].includes(new URL(url).hostname), 'Only local n
 const node = createAztecNodeClient(url);
 const info = await node.getNodeInfo();
 assert.equal(info.l1ChainId, 31337, 'Expected Anvil chain 31337');
-assert.equal(info.nodeVersion, '6.0.0-rc.3', 'Expected Aztec 6.0.0-rc.3');
+assert.equal(info.nodeVersion, '6.0.0', 'Expected Aztec 6.0.0');
 assert.equal(info.realProofs, false, 'Expected synthetic-proof local network');
 const l1 = await node.getL1ContractAddresses();
 const manifestUrl = new URL('../.local/billboard-harness.json', import.meta.url);

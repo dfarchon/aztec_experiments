@@ -1,5 +1,5 @@
 export type Environment = "local" | "testnet";
-export const SDK_VERSION = "6.0.0-rc.3";
+export const SDK_VERSION = "6.0.0";
 export function environment(value: unknown): Environment {
   if (value === undefined || value === "local") return "local";
   if (value === "testnet") return value;

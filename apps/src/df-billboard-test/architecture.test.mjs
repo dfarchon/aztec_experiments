@@ -78,7 +78,7 @@ test("network policies fail closed on RPC, version, rollup and proof mismatches"
     const p = networkPolicy(env);
     const info = {
       l1ChainId: p.chainId,
-      nodeVersion: "6.0.0-rc.3",
+      nodeVersion: "6.0.0",
       realProofs: p.realProofs,
       rollupVersion: 1,
     };

@@ -23,7 +23,7 @@ const debug = createAztecNodeDebugClient('http://127.0.0.1:5180');
 const provider = new JsonRpcProvider('http://127.0.0.1:5954');
 const info = await node.getNodeInfo();
 assert.equal(info.l1ChainId, 31337, 'Refusing non-local chain');
-assert.equal(info.nodeVersion, '6.0.0-rc.3');
+assert.equal(info.nodeVersion, '6.0.0');
 assert.equal(info.realProofs, false, 'This test expects a synthetic-proof local network');
 let advancing = false;
 const clock = setInterval(async () => {

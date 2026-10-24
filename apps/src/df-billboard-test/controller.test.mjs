@@ -114,7 +114,7 @@ function fixture(t, overrides = {}) {
   const info = {
     l1ChainId: 31337,
     rollupVersion: 1,
-    nodeVersion: "6.0.0-rc.3",
+    nodeVersion: "6.0.0",
     realProofs: false,
   };
   const node = {

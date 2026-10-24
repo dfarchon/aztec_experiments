@@ -87,6 +87,7 @@ export function createMetaMaskPosting(
   let disposed = false;
   let operating = false;
   const local: Local = {};
+  // Keep the recovery prefix stable across SDK upgrades; deployment addresses isolate records.
   const key = `l1-post-lab/6.0.0-rc.3/${config.rollupAddress}/${config.board}`;
   function syncSaved() {
     const latest = readStored<Saved>(localStorage, key);

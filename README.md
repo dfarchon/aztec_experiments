@@ -314,7 +314,7 @@ The `auto` action runs the full flow end-to-end: deposit → wait for L2 ingest 
 ## Building
 
 ```bash
-# From the repository root, with Node 24.22.1 and Aztec 6.0.0-rc.3 installed:
+# From the repository root, with Node 24.22.1 and Aztec 6.0.0 installed:
 npm ci
 npm run build:contract
 npm run build:portal
@@ -334,11 +334,13 @@ lake build   # 2125 jobs, zero sorrys
 
 ### Important: aztec-nr version must match the bundle
 
-This fork pins `aztec-nr`, the JavaScript SDK and PXE to **6.0.0-rc.3**, matching the public testnet RPC checked on 2026-10-20. The SDK packages use `@aztec-labs`; their foundation dependencies (`bb.js`, Noir WASM and L1 artifacts) use `@aztec-foundation` **6.0.0-rc.6**, as required by that SDK. The compiler is Noir **1.0.0-rc.3**. Build the SDK from `shared/sdk-entry.mjs` using the committed npm lockfile; `build:apps` alone only assembles pages and copies the existing bundle.
+This fork pins `aztec-nr`, the JavaScript SDK and PXE to **6.0.0**. The SDK packages use `@aztec-labs`; their foundation dependencies (`bb.js`, Noir WASM and L1 artifacts) use `@aztec-foundation` **6.0.0**, as required by that SDK. The release pins Noir **1.0.0-rc.3** (commit `5a7ee9bf5ed8973076df7bb0d2b723024db09ae7`). Build the SDK from `shared/sdk-entry.mjs` using the committed npm lockfile; `build:apps` alone only assembles pages and copies the existing bundle.
 
 The toolchain wrapper checks `.aztec-version` and `.nvmrc` without changing the global installation. It supports the standard versioned installation, an isolated `.local/toolchains/<version>` installation, or an explicit `AZTEC_TOOLCHAIN_DIR`. Recompile all contracts: old artifacts, deployments and PXE stores are not interchangeable with v6.
 
-After `npm run build:df`, run `npm run check:testnet` for a read-only public-network compatibility check. This does not deploy contracts, spend funds, or enable public-network sending in the local-only test UI. Public deployment still needs network-specific manifests, real proving, sponsor authorization and funding, and Sepolia transactions.
+Use the Foundry binaries shipped with the matching toolchain (local validation uses Foundry **1.8.6**). The wrapper sets `FORGE_BIN` and `ANVIL_BIN` to that installation unless explicitly overridden; Aztec 6 resolves these independently of `PATH`, so an older global installation must not take precedence.
+
+After `npm run build:df`, run `npm run check:testnet` for a read-only public-network compatibility check. This does not deploy contracts or spend funds. The frontend requires real proving for public-testnet configurations; public deployment still needs network-specific manifests, sponsor authorization and funding, and end-to-end acceptance with Sepolia transactions. Local deployment scripts deliberately reject public networks.
 
 The SDK build bundles upstream `main.worker.js` and `thread.worker.js` entrypoints directly. The old generated-bundle patch/extraction scripts are legacy tools and must not be applied to the new bundle. Browser/CLI IndexedDB stores use a version, chain and rollup namespace; old wallet stores are not deleted or automatically migrated.
 

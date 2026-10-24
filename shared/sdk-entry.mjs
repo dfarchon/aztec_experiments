@@ -36,7 +36,7 @@ import { createLogger } from '@aztec-labs/foundation/log';
 // Callers provide a rollup-specific prefix; include the SDK version as well.
 export function createIndexedDBStore(name, config) {
   if (!config.rollupAddress || config.l1ChainId == null) throw new Error('PXE store requires a chain ID and rollup address');
-  const namespace = `${config.dataDirectory ?? 'billboard'}/6.0.0-rc.3/${config.l1ChainId}/${config.rollupAddress}/${name}`;
+  const namespace = `${config.dataDirectory ?? 'billboard'}/${SDK_VERSION}/${config.l1ChainId}/${config.rollupAddress}/${name}`;
   return AztecIndexedDBStore.open(createLogger('billboard:indexeddb'), namespace, false);
 }
 import { createPXE as createBundledPXE } from '@aztec-labs/pxe/client/bundle';
@@ -51,4 +51,4 @@ export { deriveKeys, deriveKeysFromMasterSecretKeys, deriveMasterMessageSigningS
 export { deriveStorageSlotInMap } from '@aztec-labs/stdlib/hash';
 export { poseidon2Hash, poseidon2HashBytes, poseidon2HashWithSeparator } from '@aztec-labs/foundation/crypto/poseidon';
 export { sha256ToField } from '@aztec-labs/foundation/crypto/sha256';
-export const SDK_VERSION = '6.0.0-rc.3';
+export const SDK_VERSION = '6.0.0';

@@ -8,7 +8,7 @@ import 'fake-indexeddb/auto';
 globalThis.self = globalThis;
 vm.runInThisContext(fs.readFileSync(new URL('../shared/aztec_bundle.js', import.meta.url), 'utf8'));
 const a = globalThis.__aztec;
-assert.equal(a.SDK_VERSION, '6.0.0-rc.3');
+assert.equal(a.SDK_VERSION, '6.0.0');
 // Noir initialization must work without a document URL or any runtime fetch.
 // In the old build, wallet sync failed later when the simulator fetched WASM.
 const originalFetch = globalThis.fetch;

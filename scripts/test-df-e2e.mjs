@@ -24,7 +24,7 @@ assert(!process.argv.includes('--df-core'), 'DF eligibility was removed; use the
 const node = createAztecNodeClient(deployment.nodeUrl);
 const info = await node.getNodeInfo();
 assert.equal(info.l1ChainId, 31337, 'Refusing non-local chain');
-assert.equal(info.nodeVersion, '6.0.0-rc.3');
+assert.equal(info.nodeVersion, '6.0.0');
 assert.equal(info.realProofs, false, 'Expected synthetic-proof local network');
 assert.equal((await node.getL1ContractAddresses()).rollupAddress.toString(), deployment.rollupAddress);
 const wallet = await EmbeddedWallet.create(node, { ephemeral: true, pxeConfig: { proverEnabled: false } });

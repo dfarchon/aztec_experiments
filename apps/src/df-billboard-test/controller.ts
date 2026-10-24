@@ -16,7 +16,12 @@ import { createFeedReader } from "./feed-reader.ts";
 import { parseKeywords } from "./keywords.ts";
 import { createMetaMaskPosting, emptyRequestView } from "./metamask-posting.ts";
 import { classifyRulePosts } from "./moderation.ts";
-import { environment, validateChain, validateRpc } from "./network.ts";
+import {
+  environment,
+  SDK_VERSION,
+  validateChain,
+  validateRpc,
+} from "./network.ts";
 import { createReadingController } from "./reading.ts";
 import type { BillboardController } from "./types";
 import { withWalletLock } from "./wallet-lock.ts";
@@ -625,7 +630,7 @@ export function createBillboardController(deps = {}): BillboardController {
     patch({
       extensionStatus: providers.length
         ? `Found ${providers.map((provider) => provider.name).join(", ")}. Azguard is preferred.`
-        : "No Azguard response. After switching nodes, approve this site again in your wallet. Check extension site permissions and compatibility with local Aztec 6.0.0-rc.3.",
+        : `No Azguard response. After switching nodes, approve this site again in your wallet. Check extension site permissions and compatibility with Aztec ${SDK_VERSION}.`,
     });
     publishSession();
     log(
@@ -641,7 +646,7 @@ export function createBillboardController(deps = {}): BillboardController {
     const provider = providers[Number(view.provider)];
     if (!provider)
       throw new Error(
-        "Azguard was not found. Check extension site permissions and Aztec 6.0.0-rc.3 compatibility."
+        `Azguard was not found. Check extension site permissions and Aztec ${SDK_VERSION} compatibility.`
       );
     patch({
       extensionStatus: `Requesting a secure connection to ${provider.name}…`,
