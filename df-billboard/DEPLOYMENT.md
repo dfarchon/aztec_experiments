@@ -110,6 +110,18 @@ The release rebuilds the SDK, typechecks the client, prepares runtime assets,
 and builds React. It does not copy the existing `apps/dist` or change its local
 deployment manifest.
 
+The package includes only the ONNX runtime referenced by the bundled model
+worker, not every backend distributed with ONNX Runtime. Release source maps
+are omitted; normal local builds still generate them. Model weights remain
+downloaded on demand when the reader enables AI filtering.
+
+Before writing the deployable config, the build checks the uncompressed output
+against a conservative **100,000,000-byte / 15,000-file budget**. This matches
+the [Hobby CLI upload limits](https://vercel.com/docs/limits#static-file-uploads)
+without relying on archive compression. Run `npm run test:df:release` for an
+offline fixture build, asset/budget checks, and a size report. It never deploys
+contracts or uploads to Vercel; passing is not a hosted-browser acceptance test.
+
 Generated [Vercel Build Output API](https://vercel.com/docs/build-output-api) layout:
 
 ```text
@@ -138,21 +150,26 @@ and workers. Only known app routes fall back to HTML; missing JS/WASM/JSON retur
 404. Runtime assets revalidate instead of retaining stale contract metadata.
 
 When ready to publish, install/use the Vercel CLI, enter the generated directory,
-and link the **intended Vercel project**:
+and link a **dedicated testnet Vercel project**. Vercel's first deployment of a
+new project is production even without `--prod`; do not use an existing live
+product's project or domain for this first validation:
 
 ```sh
 cd .local/releases/testnet-v1
 vercel link
 vercel deploy --prebuilt
-# After checking the preview:
+# Subsequent production updates, after checking a preview:
 vercel deploy --prebuilt --prod
 ```
 
 These publish commands are manual and are never called by the deployment script.
 See [Vercel prebuilt deployment](https://vercel.com/docs/cli/deploy#prebuilt).
-Check the target account's current upload limits; this app includes a large
-Aztec SDK and WASM runtimes. Vercel also supports `--archive=tgz` for prebuilt
-uploads. Do not connect an auto-build to the repository expecting it to deploy
+Vercel also supports `--archive=tgz` for prebuilt uploads. The budget check
+covers this generated output, not extra files added to the release directory.
+Hobby is for [personal, non-commercial use](https://vercel.com/docs/plans/hobby);
+meeting its upload limit does not establish that a team's commercial deployment
+is eligible. Confirm the intended use and account plan before publishing.
+Do not connect an auto-build to the repository expecting it to deploy
 contracts or reconstruct a private journal.
 
 ## Before inviting users

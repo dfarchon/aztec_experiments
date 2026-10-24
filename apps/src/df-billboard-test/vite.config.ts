@@ -144,6 +144,6 @@ export default defineConfig({
     outDir: dist,
     emptyOutDir: false,
     target: "es2022",
-    sourcemap: true,
+    sourcemap: !process.env.BILLBOARD_OUTPUT_DIR,
   },
 });

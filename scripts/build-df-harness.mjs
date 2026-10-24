@@ -33,9 +33,21 @@ await build({
   logLevel: 'warning',
 });
 const ortDist = path.join(root, 'node_modules/onnxruntime-web/dist');
-fs.mkdirSync(path.join(dist, 'onnx'), { recursive: true });
-for (const file of fs.readdirSync(ortDist).filter(file => /^ort-wasm-simd-threaded.*\.(wasm|mjs)$/.test(file))) {
-  fs.copyFileSync(path.join(ortDist, file), path.join(dist, 'onnx', file));
+// The bundled ORT backend names its external runtime files. Copy those exact
+// references, not every backend shipped by the dependency (JSEP/JSPI/etc.).
+const ortFiles = new Set(fs.readFileSync(path.join(dist, 'df-toxicity.worker.js'), 'utf8')
+  .match(/ort-wasm-simd-threaded[\w.-]*\.(?:wasm|mjs)\b/g));
+if (![...ortFiles].some(file => file.endsWith('.wasm')) || ![...ortFiles].some(file => file.endsWith('.mjs'))) {
+  throw new Error('Cannot identify ONNX runtime assets; inspect the bundled worker before publishing.');
+}
+const ortOutput = path.join(dist, 'onnx');
+fs.mkdirSync(ortOutput, { recursive: true });
+for (const file of ortFiles) fs.copyFileSync(path.join(ortDist, file), path.join(ortOutput, file));
+// Also retire unused generated backends from previous local builds.
+for (const file of fs.readdirSync(ortOutput)) {
+  if (/^ort-wasm-simd-threaded[\w.-]*\.(wasm|mjs)$/.test(file) && !ortFiles.has(file)) {
+    fs.rmSync(path.join(ortOutput, file));
+  }
 }
 for (const name of ['aztec_bundle.js', 'main.worker.js', 'thread.worker.js']) {
   const sourceFile = path.join(root, 'shared', name);
