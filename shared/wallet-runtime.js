@@ -13,7 +13,8 @@ const CRS_HOSTS = ["https://crs.aztec-cdn.foundation", "https://crs.aztec-labs.c
 
 const SRS_NUM_POINTS = 2 ** 20 + 1;
 
-const GRUMPKIN_NUM_POINTS = 2 ** 16 + 1;
+// Aztec 6 uses the v2 ceremony with complete 2^16-point pinned chunks.
+const GRUMPKIN_NUM_POINTS = 2 ** 16;
 
 const TRANSIENT_RE = /temporary internal error|please retry|timeout|fetch|network|connection|ECONNRESET|socket/i;
 
@@ -98,7 +99,7 @@ async function initCRS(statusId) {
 
   log('  Loading Grumpkin G1 data...', 'info', S);
   const grumpkinEnd = GRUMPKIN_NUM_POINTS * 64 - 1;
-  const grumpkinRes = await fetchCRS('grumpkin_g1.dat', { headers: { Range: 'bytes=0-' + grumpkinEnd } });
+  const grumpkinRes = await fetchCRS('grumpkin_g1_v2.dat', { headers: { Range: 'bytes=0-' + grumpkinEnd } });
   const grumpkinG1Data = new Uint8Array(await grumpkinRes.arrayBuffer());
 
   log('  Loading BN254 SRS into wasm...', 'info', S);

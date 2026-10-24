@@ -27,7 +27,12 @@ export { computeFeeJuiceMessageNullifier, computeFeeJuiceMessageNullifier as com
   getNonNullifiedL1ToL2MessageWitness } from '@aztec-labs/stdlib/messaging';
 export { computePartialAddress } from '@aztec-labs/stdlib/contract';
 export { computeSecretHash, siloNullifier } from '@aztec-labs/stdlib/hash';
-export { createAztecNodeClient, waitForNode, waitForTx } from '@aztec-labs/aztec.js/node';
+import { createAztecNodeClient as createNodeClient } from '@aztec-labs/aztec.js/node';
+export { waitForNode, waitForTx } from '@aztec-labs/aztec.js/node';
+// Public testnet RPC allows at most three calls in a JSON-RPC batch.
+export function createAztecNodeClient(url, options = {}) {
+  return createNodeClient(url, { maxBatchSize: 3, ...options });
+}
 export { getFeeJuiceBalance } from '@aztec-labs/aztec.js/utils';
 export { createAztecNodeDebugClient } from '@aztec-labs/stdlib/interfaces/client';
 import { AztecIndexedDBStore } from '@aztec-labs/kv-store/deprecated/indexeddb';

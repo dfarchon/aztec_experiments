@@ -24,7 +24,8 @@ export async function connect(config) {
   publicRpc(config.l1RpcUrl);
   assert.equal(config.nodeVersion, fs.readFileSync(new URL('.aztec-version', root), 'utf8').trim());
   assert.equal(JSON.parse(fs.readFileSync(new URL('node_modules/@aztec-labs/aztec.js/package.json', root))).version, config.nodeVersion);
-  const node = createAztecNodeClient(config.nodeUrl);
+  // The public testnet RPC accepts at most three calls per JSON-RPC batch.
+  const node = createAztecNodeClient(config.nodeUrl, { maxBatchSize: 3 });
   const provider = new JsonRpcProvider(config.l1RpcUrl, undefined, { cacheTimeout: -1 });
   try {
     const [info, network] = await Promise.all([node.getNodeInfo(), provider.getNetwork()]);

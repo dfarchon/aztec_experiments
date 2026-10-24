@@ -9,6 +9,24 @@ globalThis.self = globalThis;
 vm.runInThisContext(fs.readFileSync(new URL('../shared/aztec_bundle.js', import.meta.url), 'utf8'));
 const a = globalThis.__aztec;
 assert.equal(a.SDK_VERSION, '6.0.0');
+// Exercise the bundled transport: concurrent reads must fit the public RPC
+// limit, while callers can still supply transport options and smaller batches.
+for (const maxBatchSize of [undefined, 2]) {
+  const batches = [];
+  const client = a.createAztecNodeClient('https://rpc.invalid', {
+    ...(maxBatchSize ? { maxBatchSize } : {}),
+    fetch: async (_host, body) => {
+      batches.push(body.length);
+      return {
+        headers: { get: () => null },
+        response: body.map(request => ({ jsonrpc: '2.0', id: request.id, result: 42 })),
+      };
+    },
+  });
+  const results = await Promise.all(Array.from({ length: 7 }, () => client.getBlockNumber()));
+  assert.deepEqual(results.map(Number), Array(7).fill(42));
+  assert.deepEqual(batches, maxBatchSize ? [2, 2, 2, 1] : [3, 3, 1]);
+}
 // Noir initialization must work without a document URL or any runtime fetch.
 // In the old build, wallet sync failed later when the simulator fetched WASM.
 const originalFetch = globalThis.fetch;
@@ -41,6 +59,28 @@ const walletRuntime = fs.readFileSync(new URL('../shared/wallet-runtime.js', imp
 // The product runtime must load without the legacy UI/bridge helpers.
 const productRealm = vm.createContext({ window: { __aztec: a }, log: () => {} });
 vm.runInContext(walletRuntime, productRealm);
+// Match Aztec 6's pinned Grumpkin ceremony and full chunk size. Legacy local
+// CRS files must not shadow the v2 download or request one extra point.
+const crsRequests = [];
+const crsLoads = [];
+const crsRealm = vm.createContext({
+  window: { __aztec: { BarretenbergSync: {
+    initSingleton: async () => {},
+    getSingleton: () => ({
+      srsInitSrs: () => {},
+      srsInitGrumpkinSrs: value => crsLoads.push(value),
+    }),
+  } } },
+  log: () => {},
+  fetch: async (url, options) => {
+    crsRequests.push({ url, range: options.headers?.Range });
+    return { ok: true, arrayBuffer: async () => new ArrayBuffer(0) };
+  },
+});
+vm.runInContext(walletRuntime, crsRealm);
+await crsRealm.initCRS('test');
+assert.deepEqual(crsRequests.at(-1), { url: '/crs/grumpkin_g1_v2.dat', range: 'bytes=0-4194303' });
+assert.equal(crsLoads[0].numPoints, 65536);
 for (const name of ['deriveAccountAddress', 'createAztecWallet', 'ensureAztecSetup']) {
   assert.equal(typeof productRealm[name], 'function');
 }
