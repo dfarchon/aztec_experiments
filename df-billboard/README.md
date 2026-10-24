@@ -20,7 +20,7 @@ React 18 + TypeScript + Vite + React Router。视觉沿用 DFArchon 的黑色、
 | 连接详情（仅开发模式） | RPC、留言板、Sponsored FPC 地址及运行记录；生产构建不显示 |
 
 钱包菜单只列 MetaMask、Azguard、Browser wallet。选择 Browser wallet 后，再选择使用已有账号、创建账号或导入备份。
-证明模式由客户端验证过的部署清单决定，不提供用户切换开关：本地使用 synthetic，公共测试网必须使用真实证明。公共测试网配置路径已加入校验，尚未完成公共部署与端到端验证。
+证明模式由客户端验证过的部署清单决定，不提供用户切换开关：本地使用 synthetic，公共测试网必须使用真实证明。公共测试网合约已部署；2026-10-24 已从本地网页实测 Browser wallet 直发与 MetaMask Sepolia 请求到 Aztec 发帖，两条帖子刷新后均可读取。Azguard 扩展和线上 HTTPS 站点尚未完成该验证。本地网页连接公共测试网无需启动本地链，切换步骤见 [部署说明](DEPLOYMENT.md#use-public-testnet-from-a-local-website)。
 运行日志在 Vite 开发模式显示，生产构建和 preview 不显示；操作进度与失败提示始终保留。
 阅读偏好只读取当前 v5 格式，不再迁移 v2–v4；旧偏好、钱包密钥及待处理交易数据不会被删除。
 

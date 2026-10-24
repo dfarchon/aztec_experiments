@@ -172,6 +172,36 @@ is eligible. Confirm the intended use and account plan before publishing.
 Do not connect an auto-build to the repository expecting it to deploy
 contracts or reconstruct a private journal.
 
+## Use public testnet from a local website
+
+The frontend can run at `http://127.0.0.1:5001/` while both chains are remote.
+After exporting the confirmed public manifest, back up any local-chain manifest
+before replacing it:
+
+```sh
+# Run this backup only while df-local.json still points to your local chain.
+cp -n apps/dist/df-local.json .local/testnet/local-site-manifest.backup.json
+cp .local/testnet/public-manifest.json apps/dist/df-local.json
+npm run build:sdk
+npm run dev:df:site
+```
+
+If the site is already running, rebuild the SDK, run `npm run prepare:df:site`,
+then reload the page instead of starting a second server. No local chain is
+needed. Do not run `dev:df:harness` or `deploy:df:harness` in this mode: those
+commands manage the local chain and replace its deployment configuration.
+
+MetaMask uses Ethereum Sepolia (chain ID 11155111), not local Anvil; users pay
+Sepolia gas for each L1 request. Aztec wallets use Aztec Testnet and Sponsored
+FPC for L2 fees. Browser wallets use real proofs. Local posts and account
+selections are not migrated to the testnet board. The browser RPC client limits
+default batches to three calls for the public endpoint.
+
+To restore the local site, copy the backup to `apps/dist/df-local.json`, restart
+your local chain, and reload. Neither switch deletes wallet storage or pending
+transactions. Never copy the private deployment journal or deployer key into
+`apps/dist`.
+
 ## Before inviting users
 
 Verify both wallet flows on the HTTPS preview, including real proof generation,
