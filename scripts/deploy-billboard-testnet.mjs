@@ -12,6 +12,7 @@ const { values, positionals } = parseArgs({ allowPositionals: true, options: {
   config: { type: 'string', default: path.join(root, 'scripts/testnet/config.json') },
   state: { type: 'string', default: path.join(root, '.local/testnet/deployment.json') },
   'key-file': { type: 'string' }, out: { type: 'string' },
+  target: { type: 'string' },
   broadcast: { type: 'boolean', default: false }, help: { type: 'boolean', default: false },
 } });
 const action = positionals[0] ?? 'plan';
@@ -21,15 +22,18 @@ if (values.help) {
   deploy --broadcast           Start/resume using the private journal
   status                       Inspect confirmed/pending stages; never broadcast
   export --out FILE            Verify on chain, export public manifest only
-  release --out DIRECTORY      Verify, build isolated Vercel prebuilt package
+  release --out DIRECTORY      Verify, build isolated static package
+    --target vercel|netlify    Hosting target (default: vercel)
 Options: --config FILE --state FILE --key-file FILE
 The key file is read ONLY when preparing the first L1 deploy with --broadcast.
-Resume uses recorded transactions. No private keys belong in Vercel.`);
+Resume uses recorded transactions. No private keys belong in the hosting package.`);
 } else {
   assert(positionals.length <= 1 && ['plan', 'deploy', 'status', 'export', 'release'].includes(action), 'Unknown command; use --help');
   assert(action !== 'deploy' || values.broadcast, 'Deployment requires explicit --broadcast; use plan for read-only checks');
   assert(!values.broadcast || action === 'deploy', '--broadcast is only allowed with deploy');
   assert(!values['key-file'] || action === 'deploy', '--key-file is only allowed with deploy');
+  assert(values.target === undefined || action === 'release', '--target is only allowed with release');
+  assert(values.target === undefined || ['vercel', 'netlify'].includes(values.target), 'Release target must be vercel or netlify');
   assert(!['export', 'release'].includes(action) || values.out, 'Export/release requires --out');
   const config = JSON.parse(fs.readFileSync(values.config, 'utf8'));
   const context = await connect(config);
@@ -71,7 +75,7 @@ Resume uses recorded transactions. No private keys belong in Vercel.`);
           atomicJson(path.resolve(values.out), manifest);
           console.log(`Public manifest: ${path.resolve(values.out)}`);
         } else {
-          await buildRelease(manifest, path.resolve(values.out));
+          await buildRelease(manifest, path.resolve(values.out), values.target);
         }
       }
     }

@@ -1,7 +1,7 @@
 # Public testnet deployment
 
-The website is static on Vercel. Contracts are deployed from your computer, not
-from Vercel. The two contracts are **BillboardInbox on Ethereum Sepolia**, then
+The website is static on Vercel or Netlify. Contracts are deployed from your computer,
+not from the hosting provider. The two contracts are **BillboardInbox on Ethereum Sepolia**, then
 **DFBillboard on Aztec Testnet**. This does not deploy the Aztec protocol.
 
 ## 1. Build and inspect (no transactions)
@@ -39,7 +39,7 @@ Use a dedicated Sepolia account funded with test ETH for L1 deployment gas. In a
 local editor, create `.local/testnet/deployer.json` containing a JSON object with
 one field, `l1PrivateKey`, holding that account's private key. Set permissions to
 `600`. Do not use a mainnet-funded wallet, paste keys into commands, commit this
-file, or add it to Vercel environment variables.
+file, or add it to hosting environment variables.
 
 **The following command sends public testnet transactions:**
 
@@ -171,6 +171,46 @@ meeting its upload limit does not establish that a team's commercial deployment
 is eligible. Confirm the intended use and account plan before publishing.
 Do not connect an auto-build to the repository expecting it to deploy
 contracts or reconstruct a private journal.
+
+## 5. Generate a Netlify package
+
+Use the same confirmed deployment journal and artifacts:
+
+```sh
+npm run deploy:df:testnet -- release --target netlify --out .local/releases/netlify-v1
+npm run test:df:release
+```
+
+The release command verifies the existing contracts on chain and builds locally;
+it does not deploy contracts, log in to Netlify, or upload anything. The tests
+build both hosting targets with offline fixtures and delete those fixture packages.
+Do not publish a fixture package.
+
+The publish directory is `.local/releases/netlify-v1/public/`. It contains the
+same static runtime assets and public manifest as Vercel, plus Netlify's
+[`_headers`](https://docs.netlify.com/manage/routing/headers/) and
+[`_redirects`](https://docs.netlify.com/manage/routing/redirects/overview/) files.
+Headers apply to HTML, JavaScript and workers. Only the known legacy page routes
+rewrite to `index.html`; missing assets keep Netlify's default 404 response.
+No catch-all SPA rewrite or server functions are needed.
+
+When ready to publish, use a dedicated testnet Netlify project. From the generated
+release directory, link that project and upload **only `public/`**, skipping builds:
+
+```sh
+cd .local/releases/netlify-v1
+netlify link
+netlify deploy --no-build --dir public
+# After checking the draft URL in a browser:
+netlify deploy --no-build --dir public --prod
+```
+
+These are manual publishing commands; the packaging script never runs them.
+See [Netlify deploy options](https://github.com/netlify/cli/blob/main/docs/commands/deploy.md).
+This workflow uses a locally built static upload, not a Git-connected cloud build.
+The Vercel upload-budget check is specific to Vercel; offline Netlify packaging
+does not validate account limits or replace testing on an actual HTTPS deployment.
+After publishing, check wallet connection, reading, posting, and Worker loading.
 
 ## Use public testnet from a local website
 
