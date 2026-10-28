@@ -412,13 +412,16 @@ export function createBillboardController(deps = {}): BillboardController {
       patch({ walletMode: savedAccounts.length ? "local" : "create" });
     window.RPC_CONFIG = { nodeUrl: deployment.nodeUrl };
     publicNode = R().createAztecNodeClient(deployment.nodeUrl);
-    await checkChain();
-    readLayout = await (deps.loadReadLayout || loadReadLayout)(
-      deployment.boardArtifactHash
-    );
-    const instance = await publicNode.getContract(
-      R().AztecAddress.fromStringUnsafe(deployment.board)
-    );
+    const boardAddress = R().AztecAddress.fromStringUnsafe(deployment.board);
+    const checks = await Promise.allSettled([
+      checkChain(),
+      (deps.loadReadLayout || loadReadLayout)(deployment.boardArtifactHash),
+      publicNode.getContract(boardAddress),
+    ]);
+    // Drain all checks before allowing a retry; none may enable reads alone.
+    for (const result of checks)
+      if (result.status === "rejected") throw result.reason;
+    const [, layout, instance] = checks.map((result) => result.value);
     if (
       !instance ||
       instance.currentContractClassId.toString() !== deployment.boardClassId
@@ -426,6 +429,7 @@ export function createBillboardController(deps = {}): BillboardController {
       throw new Error(
         "Billboard deployment or contract version mismatch. Run npm run deploy:df:harness again."
       );
+    readLayout = layout;
     patch({ canRead: true });
     patch({
       request: {
@@ -451,10 +455,14 @@ export function createBillboardController(deps = {}): BillboardController {
   async function checkChain() {
     const node = state.aztecNode || publicNode;
     const info = await node.getNodeInfo();
-    const l1 = await node.getL1ContractAddresses();
     const env = environment(deployment.environment);
     validateRpc(deployment.nodeUrl, env);
-    validateChain(env, deployment, info, l1.rollupAddress.toString());
+    validateChain(
+      env,
+      deployment,
+      info,
+      info.l1ContractAddresses.rollupAddress.toString()
+    );
     return info;
   }
 

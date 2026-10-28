@@ -179,7 +179,62 @@ test("storage reads use batches of three, bound concurrency and restore response
   );
 });
 
-test("failed storage waves drain in-flight requests and do not start a second wave", async (t) => {
+test("a slow storage batch does not block queued batches or reorder fields", async (t) => {
+  const pending = [];
+  let active = 0,
+    peak = 0;
+  t.mock.method(globalThis, "fetch", (_url, options) => {
+    const calls = JSON.parse(options.body);
+    active++;
+    peak = Math.max(peak, active);
+    return new Promise((resolve) =>
+      pending.push(() =>
+        resolve({
+          ok: true,
+          json: async () =>
+            calls
+              .map((call) => ({ id: call.id, result: call.params[2] }))
+              .reverse(),
+        })
+      )
+    ).finally(() => active--);
+  });
+  const slots = Array.from(
+    { length: 18 },
+    (_, i) => new PublicField(BigInt(i))
+  );
+  const result = createPublicNode("https://rpc.example").getPublicStorageMany(
+    42,
+    `0x${"1".repeat(64)}`,
+    slots
+  );
+  assert.equal(pending.length, 3);
+  for (const [index, expectedRequests] of [
+    [2, 4],
+    [1, 5],
+    [3, 6],
+  ]) {
+    pending[index]();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(
+      pending.length,
+      expectedRequests,
+      "finished requests refill while the first batch remains pending"
+    );
+    assert.equal(active, 3);
+  }
+  pending[5]();
+  pending[4]();
+  pending[0]();
+  assert.deepEqual(
+    (await result).map((field) => field.toBigInt()),
+    slots.map((slot) => slot.toBigInt())
+  );
+  assert.equal(peak, 3);
+  assert.equal(active, 0);
+});
+
+test("failed storage batches stop queued work and drain in-flight requests", async (t) => {
   const pending = [];
   t.mock.method(globalThis, "fetch", (_url, options) => {
     const calls = JSON.parse(options.body);
@@ -211,20 +266,27 @@ test("failed storage waves drain in-flight requests and do not start a second wa
     });
   assert.equal(pending.length, 3);
   pending[0](true);
-  pending[1]();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(
     settled,
     false,
-    "batch failure waits for all requests in its wave"
+    "batch failure waits for all in-flight requests"
   );
   assert.equal(pending.length, 3);
+  pending[1]();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(
+    pending.length,
+    3,
+    "successful in-flight reads do not refill after an error"
+  );
+  assert.equal(settled, false);
   pending[2]();
   await failure;
   assert.equal(
     pending.length,
     3,
-    "failed wave is neither retried nor followed by another wave"
+    "failed batches are neither retried nor followed by queued work"
   );
 });
 

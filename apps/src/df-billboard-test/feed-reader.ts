@@ -36,7 +36,7 @@ export interface FeedCursor {
   before: number;
 }
 type FeedProgress = (posts: PostData[], total: number) => void;
-async function mapLimited<T, R>(
+export async function mapLimited<T, R>(
   items: T[],
   read: (item: T) => Promise<R>,
   concurrency = RPC_CONCURRENCY

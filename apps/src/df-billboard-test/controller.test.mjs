@@ -116,10 +116,10 @@ function fixture(t, overrides = {}) {
     rollupVersion: 1,
     nodeVersion: "6.0.0",
     realProofs: false,
+    l1ContractAddresses: { rollupAddress: "rollup" },
   };
   const node = {
     getNodeInfo: async () => info,
-    getL1ContractAddresses: async () => ({ rollupAddress: "rollup" }),
     getContract: async (address) => ({
       address,
       currentContractClassId: "board-class",
@@ -416,6 +416,123 @@ test("initialization is idempotent, subscribable and does not publish test keys"
   assert.equal(controller.getSnapshot().aiHints, false);
   assert.equal(controller.getSnapshot().aiConsentOpen, true);
   controller.setAiHints(false);
+});
+
+test("startup checks run concurrently and all must finish before reading posts", async (t) => {
+  const started = [];
+  const pending = Object.fromEntries(
+    ["node", "layout", "contract"].map((name) => [
+      name,
+      Promise.withResolvers(),
+    ])
+  );
+  const { controller, node, sdk, calls } = fixture(t, {
+    loadReadLayout: async () => {
+      started.push("layout");
+      await pending.layout.promise;
+      return {
+        post_count: { slot: new sdk.Fr(2) },
+        post_lengths: { slot: new sdk.Fr(3) },
+        post_data: { slot: new sdk.Fr(4) },
+      };
+    },
+  });
+  for (const [name, method] of [
+    ["node", "getNodeInfo"],
+    ["contract", "getContract"],
+  ]) {
+    const read = node[method];
+    t.mock.method(node, method, async (...args) => {
+      started.push(name);
+      await pending[name].promise;
+      return read(...args);
+    });
+  }
+  const initialized = controller.initialize();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(started.sort(), ["contract", "layout", "node"]);
+  pending.node.resolve();
+  pending.contract.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(controller.getSnapshot().canRead, false);
+  assert.equal(
+    calls.some(([name]) => name === "read"),
+    false
+  );
+  pending.layout.resolve();
+  await initialized;
+  assert.equal(controller.getSnapshot().feedLoaded, true);
+});
+
+test("failed startup drains other checks before retry and never publishes late results", async (t) => {
+  const pending = Promise.withResolvers();
+  let failLayout = true;
+  const { controller, node, sdk, calls } = fixture(t, {
+    loadReadLayout: async () => {
+      if (failLayout) throw Error("Read configuration unavailable");
+      return {
+        post_count: { slot: new sdk.Fr(2) },
+        post_lengths: { slot: new sdk.Fr(3) },
+        post_data: { slot: new sdk.Fr(4) },
+      };
+    },
+  });
+  const readContract = node.getContract;
+  t.mock.method(node, "getContract", async (...args) => {
+    await pending.promise;
+    return readContract(...args);
+  });
+  let settled = false;
+  const failed = assert
+    .rejects(controller.initialize(), /Read configuration unavailable/)
+    .then(() => {
+      settled = true;
+    });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(settled, false);
+  assert.equal(controller.getSnapshot().canRead, false);
+  pending.resolve();
+  await failed;
+  assert.equal(
+    calls.some(([name]) => name === "read"),
+    false
+  );
+  failLayout = false;
+  await controller.initialize();
+  assert.equal(controller.getSnapshot().feedLoaded, true);
+  assert.equal(controller.getSnapshot().actionError, null);
+});
+
+test("startup still rejects wrong rollup and contract class before reading storage", async (t) => {
+  for (const mismatch of ["rollup", "class"]) {
+    await t.test(mismatch, async (t) => {
+      const { controller, info, deployment, calls } = fixture(t);
+      if (mismatch === "rollup")
+        info.l1ContractAddresses.rollupAddress = "other";
+      else deployment.boardClassId = "other";
+      await assert.rejects(controller.initialize(), /mismatch|does not match/);
+      assert.equal(controller.getSnapshot().canRead, false);
+      assert.equal(controller.getSnapshot().posts.length, 0);
+      assert.equal(
+        calls.some(([name]) => name === "read"),
+        false
+      );
+    });
+  }
+});
+
+test("invalid board addresses fail before launching startup checks", async (t) => {
+  const layout = t.mock.fn();
+  const { controller, sdk, node } = fixture(t, { loadReadLayout: layout });
+  const info = t.mock.method(node, "getNodeInfo");
+  const contract = t.mock.method(node, "getContract");
+  t.mock.method(sdk.AztecAddress, "fromStringUnsafe", () => {
+    throw Error("Invalid board address");
+  });
+  await assert.rejects(controller.initialize(), /Invalid board address/);
+  assert.equal(layout.mock.callCount(), 0);
+  assert.equal(info.mock.callCount(), 0);
+  assert.equal(contract.mock.callCount(), 0);
 });
 
 test("browser connection saves credentials once and reuses the signing-key conversion", async (t) => {

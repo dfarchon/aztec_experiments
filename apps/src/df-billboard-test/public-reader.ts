@@ -1,6 +1,6 @@
 import { poseidon2Hash } from "@zkpassport/poseidon2";
 
-import type { Field, Layout } from "./feed-reader";
+import { type Field, type Layout, mapLimited } from "./feed-reader.ts";
 
 const FIELD_MODULUS =
   21888242871839275222246405745257275088548364400416034343698204186575808495617n;
@@ -96,7 +96,6 @@ export function createPublicNode(url: string) {
   }
   return {
     getNodeInfo: () => rpc("getNodeInfo"),
-    getL1ContractAddresses: () => rpc("getL1ContractAddresses"),
     getContract: (value: { toString(): string }) =>
       rpc("getContract", [address(value.toString())]),
     getBlockNumber: async () => {
@@ -125,22 +124,18 @@ export function createPublicNode(url: string) {
       if (slots.length > 18) throw new Error("Storage batch exceeds 18 slots");
       if (!slots.length) return [];
       const contract = address(value.toString());
-      const fields: PublicField[] = [];
-      // The public RPC accepts at most three calls per HTTP batch. Drain each
-      // wave before continuing or throwing, keeping at most three requests live.
-      for (let offset = 0; offset < slots.length; offset += 9) {
-        const wave = slots.slice(offset, offset + 9);
-        const results = await Promise.allSettled(
-          Array.from({ length: Math.ceil(wave.length / 3) }, (_, index) =>
-            storageBatch(block, contract, wave.slice(index * 3, index * 3 + 3))
-          )
-        );
-        for (const result of results) {
-          if (result.status === "rejected") throw result.reason;
-          fields.push(...result.value);
-        }
-      }
-      return fields;
+      // The public RPC accepts at most three calls per HTTP batch.
+      const batches = Array.from(
+        { length: Math.ceil(slots.length / 3) },
+        (_, i) => slots.slice(i * 3, i * 3 + 3)
+      );
+      return (
+        await mapLimited(
+          batches,
+          (batch) => storageBatch(block, contract, batch),
+          3
+        )
+      ).flat();
     },
   };
 }
