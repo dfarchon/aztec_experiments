@@ -197,6 +197,34 @@ function feedFixture(total) {
   };
 }
 
+function controlledBatchFixture(total) {
+  const f = feedFixture(total),
+    batches = [],
+    read = f.node.getPublicStorageAt;
+  let active = 0,
+    peak = 0;
+  f.node.getPublicStorageMany = (block, address, slots) => {
+    active++;
+    peak = Math.max(peak, active);
+    return new Promise((resolve, reject) => {
+      batches.push({
+        id: Number(slots[0].split("/")[1]),
+        block,
+        slots,
+        resolve: async (alter = (values) => values) =>
+          resolve(
+            alter(
+              await Promise.all(slots.map((slot) => read(block, address, slot)))
+            )
+          ),
+        reject,
+      });
+    }).finally(() => active--);
+  };
+  return { ...f, batches, active: () => active, peak: () => peak };
+}
+const flushFeedReads = () => new Promise((resolve) => setImmediate(resolve));
+
 test("feed loads ten recent posts, uses one snapshot and retries without advancing a cursor", async () => {
   const f = feedFixture(25);
   const first = await f.read();
@@ -289,5 +317,187 @@ test("feed cache is bounded and does not cross node instances", async () => {
     f.reads.length - before,
     181,
     "different node must re-read chain state"
+  );
+});
+
+test("feed batches read newest first and publish only complete prefixes before the full page", async () => {
+  const f = controlledBatchFixture(4),
+    progress = [];
+  let settled = false;
+  const result = readPostPage(
+    f.sdk,
+    f.node,
+    "board",
+    f.layout,
+    undefined,
+    undefined,
+    (posts, total) => {
+      progress.push({ ids: posts.map((post) => post.id), total });
+    }
+  ).then((page) => {
+    settled = true;
+    return page;
+  });
+  await flushFeedReads();
+  assert.deepEqual(
+    f.batches.map((batch) => batch.id),
+    [3, 2]
+  );
+  await f.batches[1].resolve();
+  await flushFeedReads();
+  assert.deepEqual(
+    progress,
+    [],
+    "older completed posts wait for the newest post"
+  );
+  assert.deepEqual(
+    f.batches.map((batch) => batch.id),
+    [3, 2, 1]
+  );
+  await f.batches[0].resolve();
+  await flushFeedReads();
+  assert.deepEqual(progress, [{ ids: [2, 3], total: 4 }]);
+  assert.equal(
+    settled,
+    false,
+    "first posts are available while the page is still loading"
+  );
+  await f.batches[2].resolve();
+  await f.batches[3].resolve();
+  const page = await result;
+  assert.deepEqual(
+    progress.map(({ ids }) => ids),
+    [
+      [2, 3],
+      [1, 2, 3],
+      [0, 1, 2, 3],
+    ]
+  );
+  assert.deepEqual(
+    page.posts.map((post) => post.id),
+    [0, 1, 2, 3]
+  );
+  assert.deepEqual(page.cursor, { block: 42, total: 4, before: 0 });
+  assert.equal(f.peak(), 2);
+  assert.equal(f.active(), 0);
+  for (const { id, block, slots } of f.batches) {
+    assert.equal(block, 42);
+    assert.deepEqual(slots, [
+      `length/${id}`,
+      ...Array.from({ length: 17 }, (_, i) => `data/${id * 17 + i}`),
+    ]);
+  }
+});
+
+test("failed batches drain without late progress and retry the same cursor without duplicate posts", async () => {
+  const f = controlledBatchFixture(15),
+    reader = createFeedReader(),
+    cursor = { block: 42, total: 15, before: 5 },
+    progress = [];
+  const read = () =>
+    reader(f.sdk, f.node, "board", f.layout, cursor, (posts) =>
+      progress.push(posts.map((post) => post.id))
+    );
+  let settled = false;
+  const failure = assert.rejects(read(), /batch failed/).then(() => {
+    settled = true;
+  });
+  await flushFeedReads();
+  await f.batches[0].resolve();
+  await flushFeedReads();
+  assert.deepEqual(progress, [[4]]);
+  assert.deepEqual(
+    f.batches.map((batch) => batch.id),
+    [4, 3, 2]
+  );
+  f.batches[2].reject(Error("batch failed"));
+  await flushFeedReads();
+  assert.equal(settled, false, "failure waits for the other in-flight batch");
+  assert.equal(f.active(), 1);
+  await f.batches[1].resolve();
+  await failure;
+  assert.equal(f.active(), 0);
+  assert.deepEqual(
+    progress,
+    [[4]],
+    "late successful reads do not publish after an error"
+  );
+  assert.deepEqual(cursor, { block: 42, total: 15, before: 5 });
+  const retry = read();
+  await flushFeedReads();
+  assert.deepEqual(
+    progress.at(-1),
+    [3, 4],
+    "retry immediately publishes validated cached posts"
+  );
+  assert.deepEqual(
+    f.batches.slice(3).map((batch) => batch.id),
+    [2, 1]
+  );
+  await f.batches[3].resolve();
+  await flushFeedReads();
+  await f.batches[4].resolve();
+  await f.batches[5].resolve();
+  const page = await retry;
+  assert.deepEqual(
+    page.posts.map((post) => post.id),
+    [0, 1, 2, 3, 4]
+  );
+  assert.equal(page.cursor.before, 0);
+  assert.equal(f.peak(), 2);
+  assert.deepEqual(
+    f.batches.map((batch) => batch.id),
+    [4, 3, 2, 2, 1, 0]
+  );
+});
+
+test("batched posts with nonzero message padding are never displayed as valid text", async () => {
+  const f = controlledBatchFixture(1),
+    progress = [];
+  const result = readPostPage(
+    f.sdk,
+    f.node,
+    "board",
+    f.layout,
+    undefined,
+    undefined,
+    (posts) => progress.push(posts)
+  );
+  await flushFeedReads();
+  await f.batches[0].resolve((values) => [
+    ...values.slice(0, -1),
+    new f.sdk.Fr(1n),
+  ]);
+  const { posts } = await result;
+  assert.deepEqual(posts, [{ id: 0, decodeError: true }]);
+  assert.deepEqual(progress, [posts]);
+});
+
+test("completing a partially cached page returns posts before old cache entries are evicted", async () => {
+  const f = feedFixture(10),
+    cache = new Map(
+      Array.from({ length: 100 }, (_, index) => {
+        const id = index + 9;
+        return [`board:42:${id}`, { id, text: "A" }];
+      })
+    );
+  const { posts } = await readPostPage(
+    f.sdk,
+    f.node,
+    "board",
+    f.layout,
+    undefined,
+    cache
+  );
+  assert.deepEqual(
+    posts.map((post) => post.id),
+    Array.from({ length: 10 }, (_, id) => id)
+  );
+  assert.ok(posts.every((post) => post.text === "A"));
+  assert.equal(cache.size, 100);
+  assert.equal(
+    cache.has("board:42:9"),
+    false,
+    "eviction does not erase the returned page"
   );
 });

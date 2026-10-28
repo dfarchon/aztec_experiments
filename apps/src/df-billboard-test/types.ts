@@ -72,6 +72,7 @@ export interface BillboardView extends EditableFields {
   logs: { id: number; message: string; type: string; time: string }[];
   posts: PostData[];
   feedLoaded: boolean;
+  feedLoading: boolean;
   totalPosts: number;
   hasOlderPosts: boolean;
   feedRevision: number;

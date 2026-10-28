@@ -13,6 +13,11 @@ export const MAP_SLOT_SEPARATOR = 4015149901n;
 export class PublicField implements Field {
   private value: bigint;
   constructor(value: string | bigint) {
+    if (
+      (typeof value !== "string" && typeof value !== "bigint") ||
+      (typeof value === "string" && !/^(?:0x[0-9a-f]+|[0-9]+)$/i.test(value))
+    )
+      throw new Error("Invalid public storage field");
     this.value = BigInt(value);
     if (this.value < 0n || this.value >= FIELD_MODULUS)
       throw new Error("Invalid public storage field");
@@ -42,21 +47,52 @@ function address(value: string) {
 
 export function createPublicNode(url: string) {
   let id = 0;
-  async function rpc(method: string, params: unknown[] = []) {
-    const requestId = ++id;
-    const result = await fetchPublicJson(url, {
+  const send = (body: unknown) =>
+    fetchPublicJson(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: requestId,
-        method: `node_${method}`,
-        params,
-      }),
+      body: JSON.stringify(body),
     });
-    if (result.id !== requestId || result.error || !("result" in result))
-      throw new Error(result.error?.message || "Invalid board RPC response");
+  async function rpc(method: string, params: unknown[] = []) {
+    const requestId = ++id;
+    const result = await send({
+      jsonrpc: "2.0",
+      id: requestId,
+      method: `node_${method}`,
+      params,
+    });
+    if (
+      !result ||
+      result.id !== requestId ||
+      result.error ||
+      !("result" in result)
+    )
+      throw new Error(result?.error?.message || "Invalid board RPC response");
     return result.result;
+  }
+  async function storageBatch(block: number, contract: string, slots: Field[]) {
+    const calls = slots.map((slot) => ({
+      jsonrpc: "2.0",
+      id: ++id,
+      method: "node_getPublicStorageAt",
+      params: [block, contract, slot.toString()],
+    }));
+    const results = await send(calls);
+    if (!Array.isArray(results) || results.length !== calls.length)
+      throw new Error("Incomplete board RPC batch");
+    const pending = new Set(calls.map((call) => call.id));
+    const fields = new Map<number, PublicField>();
+    for (const result of results) {
+      if (
+        !result ||
+        !pending.delete(result.id) ||
+        result.error ||
+        !("result" in result)
+      )
+        throw new Error(result?.error?.message || "Invalid board RPC batch");
+      fields.set(result.id, new PublicField(result.result));
+    }
+    return calls.map((call) => fields.get(call.id)!);
   }
   return {
     getNodeInfo: () => rpc("getNodeInfo"),
@@ -81,6 +117,31 @@ export function createPublicNode(url: string) {
           slot.toString(),
         ])
       ),
+    getPublicStorageMany: async (
+      block: number,
+      value: { toString(): string },
+      slots: Field[]
+    ): Promise<PublicField[]> => {
+      if (slots.length > 18) throw new Error("Storage batch exceeds 18 slots");
+      if (!slots.length) return [];
+      const contract = address(value.toString());
+      const fields: PublicField[] = [];
+      // The public RPC accepts at most three calls per HTTP batch. Drain each
+      // wave before continuing or throwing, keeping at most three requests live.
+      for (let offset = 0; offset < slots.length; offset += 9) {
+        const wave = slots.slice(offset, offset + 9);
+        const results = await Promise.allSettled(
+          Array.from({ length: Math.ceil(wave.length / 3) }, (_, index) =>
+            storageBatch(block, contract, wave.slice(index * 3, index * 3 + 3))
+          )
+        );
+        for (const result of results) {
+          if (result.status === "rejected") throw result.reason;
+          fields.push(...result.value);
+        }
+      }
+      return fields;
+    },
   };
 }
 

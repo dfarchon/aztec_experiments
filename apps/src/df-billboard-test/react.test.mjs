@@ -34,6 +34,29 @@ const { App, Feed, pageNumbers, ReadingSettings, Select } = module.exports;
 const renderToStaticMarkup = (element) =>
   renderMarkup(createElement(StaticRouter, { location: "/" }, element));
 
+test("a partially loaded feed shows posts and progress without an empty overlay", () => {
+  const controller = createBillboardController();
+  const view = {
+    ...controller.getSnapshot(),
+    posts: [{ id: 24, text: "First completed post" }],
+    canRead: true,
+    feedLoading: true,
+    totalPosts: 25,
+  };
+  const html = renderToStaticMarkup(createElement(Feed, { view, controller }));
+  assert.match(html, /aria-busy="true"/);
+  assert.match(html, /data-post-id="24"/);
+  assert.match(html, /First completed post/);
+  assert.match(html, /Loading posts… 1 \/ 25 loaded/);
+  assert.match(html, /1 \/ 25 loaded · Loading…/);
+  assert.match(html, /id="refresh"[^>]*disabled/);
+  assert.doesNotMatch(
+    html,
+    /class="empty-state"|No posts yet|Load older posts/
+  );
+  controller.dispose();
+});
+
 test("older posts remain reachable when every loaded post is filtered", () => {
   const controller = createBillboardController();
   const view = {

@@ -83,7 +83,7 @@ export function Feed({ view, controller }: ViewProps) {
           <h1>
             {filteredView ? "Filtered posts" : "Public board"}
             <span className="count-badge">
-              {view.feedLoaded
+              {view.feedLoaded || posts.length > 0
                 ? filteredView
                   ? filteredCount
                   : posts.length - filteredCount
@@ -128,7 +128,7 @@ export function Feed({ view, controller }: ViewProps) {
               className="icon-button"
               aria-label="Refresh posts"
               title="Refresh posts"
-              disabled={view.busy || !view.canRead}
+              disabled={view.busy || view.feedLoading || !view.canRead}
               onClick={controller.refresh}
             >
               <Icon name="refresh" />
@@ -168,6 +168,7 @@ export function Feed({ view, controller }: ViewProps) {
         tabIndex={0}
         role="region"
         aria-label="Posts"
+        aria-busy={view.feedLoading}
       >
         <div
           id="filterStatus"
@@ -175,9 +176,11 @@ export function Feed({ view, controller }: ViewProps) {
           role="status"
           aria-live="polite"
         >
-          {view.feedLoaded
-            ? `${posts.length} loaded posts · ${filteredCount} filtered · Page ${current} of ${totalPages}`
-            : "Waiting to load public posts"}
+          {view.feedLoading
+            ? `Loading posts… ${posts.length} / ${view.totalPosts} loaded`
+            : view.feedLoaded
+              ? `${posts.length} loaded posts · ${filteredCount} filtered · Page ${current} of ${totalPages}`
+              : "Waiting to load public posts"}
         </div>
         {view.feedLoaded && matching.length === 0 && (
           <div className="empty-state">
@@ -202,7 +205,7 @@ export function Feed({ view, controller }: ViewProps) {
             )}
           </div>
         )}
-        {!view.feedLoaded && (
+        {!view.feedLoaded && posts.length === 0 && (
           <div className="empty-state" role="status">
             <p>
               {view.canRead ? "Loading posts…" : "Connecting to the board…"}
@@ -228,53 +231,55 @@ export function Feed({ view, controller }: ViewProps) {
           ))}
         </ol>
       </div>
-      {view.feedLoaded && (matching.length > 0 || view.hasOlderPosts) && (
-        <div className="feed-footer">
-          <span className="page-range">
-            {posts.length} / {view.totalPosts} loaded
-            {matching.length > 0 &&
-              ` · ${offset + 1}–${Math.min(offset + PAGE_SIZE, matching.length)} shown`}
-          </span>
-          {view.hasOlderPosts && current === totalPages && (
-            <button
-              disabled={view.busy}
-              onClick={() => void controller.loadOlder()}
-            >
-              Load older posts
-            </button>
-          )}
-          <nav className="feed-pagination" aria-label="Post pagination">
-            <button
-              disabled={current === 1}
-              onClick={() => navigate(current - 1)}
-              aria-label="Previous page"
-            >
-              ←
-            </button>
-            {numbers.map((number, index) => (
-              <span className="page-slot" key={number}>
-                {index > 0 && number - numbers[index - 1] > 1 && (
-                  <span className="page-gap">…</span>
-                )}
-                <button
-                  aria-label={`Page ${number}`}
-                  aria-current={number === current ? "page" : undefined}
-                  onClick={() => navigate(number)}
-                >
-                  {number}
-                </button>
-              </span>
-            ))}
-            <button
-              disabled={current === totalPages}
-              onClick={() => navigate(current + 1)}
-              aria-label="Next page"
-            >
-              →
-            </button>
-          </nav>
-        </div>
-      )}
+      {(view.feedLoaded || posts.length > 0) &&
+        (matching.length > 0 || view.hasOlderPosts) && (
+          <div className="feed-footer">
+            <span className="page-range">
+              {posts.length} / {view.totalPosts} loaded
+              {view.feedLoading && " · Loading…"}
+              {matching.length > 0 &&
+                ` · ${offset + 1}–${Math.min(offset + PAGE_SIZE, matching.length)} shown`}
+            </span>
+            {view.hasOlderPosts && current === totalPages && (
+              <button
+                disabled={view.busy || view.feedLoading}
+                onClick={() => void controller.loadOlder()}
+              >
+                Load older posts
+              </button>
+            )}
+            <nav className="feed-pagination" aria-label="Post pagination">
+              <button
+                disabled={current === 1}
+                onClick={() => navigate(current - 1)}
+                aria-label="Previous page"
+              >
+                ←
+              </button>
+              {numbers.map((number, index) => (
+                <span className="page-slot" key={number}>
+                  {index > 0 && number - numbers[index - 1] > 1 && (
+                    <span className="page-gap">…</span>
+                  )}
+                  <button
+                    aria-label={`Page ${number}`}
+                    aria-current={number === current ? "page" : undefined}
+                    onClick={() => navigate(number)}
+                  >
+                    {number}
+                  </button>
+                </span>
+              ))}
+              <button
+                disabled={current === totalPages}
+                onClick={() => navigate(current + 1)}
+                aria-label="Next page"
+              >
+                →
+              </button>
+            </nav>
+          </div>
+        )}
     </section>
   );
 }

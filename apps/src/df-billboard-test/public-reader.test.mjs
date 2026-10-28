@@ -116,6 +116,178 @@ test("read layout is bound to the deployed artifact", async (t) => {
   );
 });
 
+test("storage reads use batches of three, bound concurrency and restore response order", async (t) => {
+  const requests = [];
+  let active = 0,
+    peak = 0;
+  t.mock.method(globalThis, "fetch", async (_url, options) => {
+    assert.ok(options.signal instanceof AbortSignal);
+    const body = JSON.parse(options.body);
+    requests.push(body);
+    active++;
+    peak = Math.max(peak, active);
+    await new Promise((resolve) => setImmediate(resolve));
+    active--;
+    return {
+      ok: true,
+      json: async () =>
+        Array.isArray(body)
+          ? body
+              .map((call) => ({ id: call.id, result: call.params[2] }))
+              .reverse()
+          : { id: body.id, result: 42 },
+    };
+  });
+  const node = createPublicNode("https://rpc.example");
+  const board = `0x${"1".repeat(64)}`;
+  const slots = Array.from(
+    { length: 18 },
+    (_, index) => new PublicField(BigInt(index))
+  );
+  assert.equal(await node.getBlockNumber(), 42);
+  const values = await node.getPublicStorageMany(42, board, slots);
+  assert.equal(
+    requests.length,
+    7,
+    "18 fields use six HTTP batches after the block read"
+  );
+  assert.ok(requests.slice(1).every((request) => request.length === 3));
+  assert.equal(peak, 3);
+  assert.equal(active, 0);
+  const calls = requests.slice(1).flat();
+  assert.deepEqual(
+    values.map((value) => value.toBigInt()),
+    slots.map((slot) => slot.toBigInt())
+  );
+  assert.equal(
+    new Set([requests[0].id, ...calls.map((call) => call.id)]).size,
+    19
+  );
+  for (const [index, call] of calls.entries()) {
+    assert.equal(call.method, "node_getPublicStorageAt");
+    assert.deepEqual(call.params, [42, board, slots[index].toString()]);
+  }
+  assert.deepEqual(await node.getPublicStorageMany(42, board, []), []);
+  await assert.rejects(
+    node.getPublicStorageMany(42, board, [...slots, slots[0]]),
+    /18 slots/
+  );
+  assert.equal(
+    requests.length,
+    7,
+    "empty and oversized batches do not make requests"
+  );
+});
+
+test("failed storage waves drain in-flight requests and do not start a second wave", async (t) => {
+  const pending = [];
+  t.mock.method(globalThis, "fetch", (_url, options) => {
+    const calls = JSON.parse(options.body);
+    return new Promise((resolve) =>
+      pending.push((missing = false) =>
+        resolve({
+          ok: true,
+          json: async () =>
+            calls
+              .slice(missing ? 1 : 0)
+              .map((call) => ({ id: call.id, result: "0x01" })),
+        })
+      )
+    );
+  });
+  const node = createPublicNode("https://rpc.example");
+  let settled = false;
+  const failure = assert
+    .rejects(
+      node.getPublicStorageMany(
+        42,
+        `0x${"1".repeat(64)}`,
+        Array.from({ length: 18 }, (_, i) => new PublicField(BigInt(i)))
+      ),
+      /Incomplete board RPC batch/
+    )
+    .then(() => {
+      settled = true;
+    });
+  assert.equal(pending.length, 3);
+  pending[0](true);
+  pending[1]();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(
+    settled,
+    false,
+    "batch failure waits for all requests in its wave"
+  );
+  assert.equal(pending.length, 3);
+  pending[2]();
+  await failure;
+  assert.equal(
+    pending.length,
+    3,
+    "failed wave is neither retried nor followed by another wave"
+  );
+});
+
+test("storage batches reject incomplete, ambiguous, and failed responses without retrying", async (t) => {
+  let alter = (results) => results;
+  let requests = 0;
+  t.mock.method(globalThis, "fetch", async (_url, options) => {
+    requests++;
+    const calls = JSON.parse(options.body);
+    return {
+      ok: true,
+      json: async () =>
+        alter(calls.map((call) => ({ id: call.id, result: "0x01" }))),
+    };
+  });
+  const node = createPublicNode("https://rpc.example");
+  const board = `0x${"1".repeat(64)}`;
+  const slots = [new PublicField(1n), new PublicField(2n)];
+  const invalidResponses = [
+    (results) => results[0],
+    (results) => results.slice(1),
+    (results) => [results[0], results[0]],
+    (results) => [results[0], { ...results[1], id: -1 }],
+    (results) => [
+      results[0],
+      { id: results[1].id, error: { message: "Node unavailable" } },
+    ],
+    (results) => [results[0], { id: results[1].id }],
+  ];
+  for (alter of invalidResponses)
+    await assert.rejects(node.getPublicStorageMany(42, board, slots));
+  assert.equal(
+    requests,
+    invalidResponses.length,
+    "failed batches are not retried or split into singleton calls"
+  );
+});
+
+test("storage batches reject malformed field values", async (t) => {
+  let value;
+  t.mock.method(globalThis, "fetch", async (_url, options) => ({
+    ok: true,
+    json: async () =>
+      JSON.parse(options.body).map((call) => ({ id: call.id, result: value })),
+  }));
+  const node = createPublicNode("https://rpc.example");
+  for (value of [
+    null,
+    true,
+    1,
+    "",
+    " ",
+    "invalid",
+    "-1",
+    `0x${(1n << 254n).toString(16)}`,
+  ])
+    await assert.rejects(
+      node.getPublicStorageMany(42, `0x${"1".repeat(64)}`, [
+        new PublicField(1n),
+      ])
+    );
+});
+
 test("initial controller graph excludes wallet modules and stays below 150 KB", async () => {
   const { build } = await import("esbuild");
   const result = await build({

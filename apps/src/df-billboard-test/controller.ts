@@ -80,6 +80,7 @@ export function createBillboardController(deps = {}): BillboardController {
     logs: [],
     posts: [],
     feedLoaded: false,
+    feedLoading: false,
     totalPosts: 0,
     hasOlderPosts: false,
     feedRevision: 0,
@@ -127,6 +128,7 @@ export function createBillboardController(deps = {}): BillboardController {
   let readLayout;
   let publicNode;
   let feedCursor;
+  let feedReading;
   const readPostPage = createFeedReader();
   let requestPosting;
   let providers = [];
@@ -137,7 +139,7 @@ export function createBillboardController(deps = {}): BillboardController {
     getView: () => view,
     getPosts: () => state.posts,
     getDeployment: () => deployment,
-    isBusy: () => busy,
+    isBusy: () => busy || view.feedLoading,
     patch,
     savePreferences,
     publishPosts,
@@ -960,30 +962,50 @@ export function createBillboardController(deps = {}): BillboardController {
     });
   }
 
-  async function readFeed(older, reportProgress = true) {
+  function readFeed(older, reportProgress = true) {
+    return (feedReading ||= loadFeed(older, reportProgress).finally(() => {
+      feedReading = undefined;
+    }));
+  }
+
+  async function loadFeed(older, reportProgress) {
     pauseAiHints();
     if (!publicNode || !readLayout)
       throw new Error("Billboard is not initialized");
     if (older && (!feedCursor || feedCursor.before === 0)) return;
     if (reportProgress)
       showProgress(older ? "Loading older posts…" : "Loading recent posts…");
-    const result = await readPostPage(
-      R(),
-      publicNode,
-      deployment.board,
-      readLayout,
-      older ? feedCursor : undefined
-    );
-    feedCursor = result.cursor;
-    state.posts = classifyRulePosts(
-      older ? [...result.posts, ...state.posts] : result.posts
-    );
-    publishPosts({
-      feedLoaded: true,
-      totalPosts: feedCursor.total,
-      hasOlderPosts: feedCursor.before > 0,
-      feedRevision: view.feedRevision + (older ? 0 : 1),
-    });
+    patch({ feedLoading: true });
+    try {
+      const result = await readPostPage(
+        R(),
+        publicNode,
+        deployment.board,
+        readLayout,
+        older ? feedCursor : undefined,
+        // Keep a previously loaded snapshot intact during refresh/pagination.
+        !view.feedLoaded
+          ? (posts, total) => {
+              if (disposed) return;
+              state.posts = classifyRulePosts(posts);
+              publishPosts({ totalPosts: total });
+            }
+          : undefined
+      );
+      if (disposed) return;
+      feedCursor = result.cursor;
+      state.posts = classifyRulePosts(
+        older ? [...result.posts, ...state.posts] : result.posts
+      );
+      publishPosts({
+        feedLoaded: true,
+        totalPosts: feedCursor.total,
+        hasOlderPosts: feedCursor.before > 0,
+        feedRevision: view.feedRevision + (older ? 0 : 1),
+      });
+    } finally {
+      patch({ feedLoading: false });
+    }
     if (view.aiHints) void runAiHints();
     log(
       `Loaded ${state.posts.length} of ${feedCursor.total} public posts`,

@@ -568,6 +568,148 @@ test("public feed loads without a wallet and uses one block snapshot", async (t)
   assert.equal(controller.getSnapshot().posts.length, 3);
 });
 
+test("initial posts appear before the page finishes and concurrent refresh shares the read", async (t) => {
+  const { controller, node, calls } = fixture(t);
+  const remaining = Promise.withResolvers();
+  const firstPost = Promise.withResolvers();
+  const batches = [];
+  node.getPublicStorageMany = async (block, contract, slots) => {
+    const id = Number(slots[0].toString().split(":")[1]);
+    batches.push(id);
+    if (id !== 2) await remaining.promise;
+    return Promise.all(
+      slots.map((slot) => node.getPublicStorageAt(block, contract, slot))
+    );
+  };
+  t.after(remaining.resolve);
+  t.after(
+    controller.subscribe(() => {
+      if (controller.getSnapshot().posts.length === 1) firstPost.resolve();
+    })
+  );
+  const initial = controller.initialize();
+  await firstPost.promise;
+  const partial = controller.getSnapshot();
+  assert.equal(partial.feedLoading, true);
+  assert.equal(partial.feedLoaded, false);
+  assert.equal(partial.totalPosts, 3);
+  assert.deepEqual(
+    partial.posts.map((post) => post.id),
+    [2]
+  );
+  assert.equal(partial.posts[0].text, "<img src=x>");
+  assert.equal(partial.feedRevision, 0);
+  controller.confirmAiHints();
+  assert.equal(controller.getSnapshot().aiHints, false);
+  await controller.clearAiCache();
+  assert.deepEqual(controller.getSnapshot().posts, partial.posts);
+  const refresh = controller.refresh();
+  remaining.resolve();
+  await Promise.all([initial, refresh]);
+  assert.equal(
+    calls.filter(([name, , , slot]) => name === "read" && slot === "2").length,
+    1,
+    "initialization and refresh share one count and block snapshot"
+  );
+  assert.deepEqual(batches.sort(), [0, 1, 2]);
+  assert.equal(controller.getSnapshot().feedLoading, false);
+  assert.equal(controller.getSnapshot().feedLoaded, true);
+  assert.equal(controller.getSnapshot().feedRevision, 1);
+  assert.deepEqual(
+    controller.getSnapshot().posts.map((post) => post.id),
+    [0, 1, 2]
+  );
+});
+
+test("an interrupted initial page keeps its completed prefix and retries without advancing pagination", async (t) => {
+  const { controller, node, posts } = fixture(t);
+  posts.push(...Array.from({ length: 22 }, (_, i) => pack(`post ${i}`)));
+  const remaining = Promise.withResolvers();
+  const firstPost = Promise.withResolvers();
+  let fail = true;
+  node.getPublicStorageMany = async (block, contract, slots) => {
+    const id = Number(slots[0].toString().split(":")[1]);
+    if (fail && id !== 24) {
+      await remaining.promise;
+      if (id === 23) throw Error("batch interrupted");
+    }
+    return Promise.all(
+      slots.map((slot) => node.getPublicStorageAt(block, contract, slot))
+    );
+  };
+  t.after(remaining.resolve);
+  t.after(
+    controller.subscribe(() => {
+      if (controller.getSnapshot().posts.length === 1) firstPost.resolve();
+    })
+  );
+  const failed = assert.rejects(controller.initialize(), /batch interrupted/);
+  await firstPost.promise;
+  remaining.resolve();
+  await failed;
+  assert.deepEqual(
+    controller.getSnapshot().posts.map((post) => post.id),
+    [24]
+  );
+  assert.equal(controller.getSnapshot().feedLoaded, false);
+  assert.equal(controller.getSnapshot().feedLoading, false);
+  assert.equal(controller.getSnapshot().feedRevision, 0);
+  assert.equal(controller.getSnapshot().hasOlderPosts, false);
+  fail = false;
+  posts.push(pack("new snapshot"));
+  node.getBlockNumber = async () => 43;
+  await controller.initialize();
+  assert.equal(controller.getSnapshot().actionError, null);
+  assert.equal(controller.getSnapshot().totalPosts, 26);
+  assert.equal(controller.getSnapshot().posts.length, 10);
+  assert.equal(controller.getSnapshot().posts[0].id, 16);
+  assert.equal(controller.getSnapshot().posts.at(-1).text, "new snapshot");
+  await controller.loadOlder();
+  await controller.loadOlder();
+  assert.deepEqual(
+    controller.getSnapshot().posts.map((post) => post.id),
+    Array.from({ length: 26 }, (_, id) => id)
+  );
+  assert.equal(controller.getSnapshot().hasOlderPosts, false);
+});
+
+test("partly completed refresh and older-page reads retain the committed feed on failure", async (t) => {
+  for (const operation of ["refresh", "loadOlder"]) {
+    await t.test(operation, async (t) => {
+      const { controller, node, posts } = fixture(t);
+      posts.push(...Array.from({ length: 22 }, (_, i) => pack(`post ${i}`)));
+      await controller.initialize();
+      const before = controller.getSnapshot();
+      if (operation === "refresh") {
+        posts.push(pack("not committed"));
+        node.getBlockNumber = async () => 43;
+      }
+      let completed = 0;
+      node.getPublicStorageMany = async (block, contract, slots) => {
+        const id = Number(slots[0].toString().split(":")[1]);
+        if (id !== (operation === "refresh" ? 25 : 14)) {
+          await new Promise(setImmediate);
+          throw Error("batch interrupted");
+        }
+        const values = await Promise.all(
+          slots.map((slot) => node.getPublicStorageAt(block, contract, slot))
+        );
+        completed++;
+        return values;
+      };
+      await controller[operation]();
+      const after = controller.getSnapshot();
+      assert.equal(completed, 1);
+      assert.deepEqual(after.posts, before.posts);
+      assert.equal(after.totalPosts, before.totalPosts);
+      assert.equal(after.feedRevision, before.feedRevision);
+      assert.equal(after.hasOlderPosts, before.hasOlderPosts);
+      assert.equal(after.feedLoading, false);
+      assert.match(after.actionError.message, /batch interrupted/);
+    });
+  }
+});
+
 test("wallet connects directly to sponsored posting without DF state or a deposit", async (t) => {
   const { controller, calls } = fixture(t);
   await controller.initialize();
