@@ -684,7 +684,7 @@ test("AI folds only analyzed risk hits while pending and clean posts remain visi
   assert.match(disabled, /data-post-id="0"/);
 });
 
-test("action failure is retained in an expandable alert and escapes raw error details", () => {
+test("action failure uses a compact copyable toast and escapes raw error text", () => {
   const base = createBillboardController();
   const view = {
     ...base.getSnapshot(),
@@ -698,7 +698,39 @@ test("action failure is retained in an expandable alert and escapes raw error de
   const html = renderToStaticMarkup(createElement(App, { controller }));
   assert.match(html, /role="alert"/);
   assert.match(html, /Anonymous posting failed/);
-  assert.match(html, /View details/);
+  assert.doesNotMatch(
+    html.slice(html.indexOf('class="toast-viewport"')),
+    /View details|<details|Check chain time/
+  );
+  assert.match(html, /aria-label="Copy full error"/);
   assert.match(html, /Timestamp too old &lt;script&gt;/);
+  assert.ok(html.indexOf("</main>") < html.indexOf('class="toast-viewport"'));
+  assert.match(html, /aria-label="Dismiss notification"/);
+  assert.doesNotMatch(html, /class="action-error"|>Retry<|<script>/);
+  base.dispose();
+});
+
+test("load errors stay copyable without retry or duplicate failed progress", () => {
+  const base = createBillboardController();
+  const view = {
+    ...base.getSnapshot(),
+    actionError: {
+      label: "Load Billboard",
+      message: "HTTP 408",
+      guidance: "Try again",
+    },
+    progress: { label: "Load failed", count: "Failed", total: 1, failed: true },
+  };
+  const html = renderToStaticMarkup(
+    createElement(App, {
+      controller: { ...base, getSnapshot: () => view },
+    })
+  );
+  assert.equal((html.match(/role="alert"/g) || []).length, 1);
+  assert.doesNotMatch(html, /Retry|Retrying/);
+  assert.match(html, /aria-label="Copy full error"/);
+  assert.match(html, /HTTP 408/);
+  assert.match(html, /id="operationProgress"[^>]*hidden/);
+  assert.doesNotMatch(html, /Load failed/);
   base.dispose();
 });

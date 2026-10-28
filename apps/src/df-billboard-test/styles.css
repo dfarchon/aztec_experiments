@@ -671,33 +671,6 @@ textarea::placeholder {
   left: 0;
   right: auto;
 }
-.action-error {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 14px;
-  color: var(--danger);
-  border: 1px solid var(--danger);
-  padding: 10px 14px;
-  margin-bottom: 16px;
-  font-size: 13px;
-}
-.action-error details {
-  min-width: 0;
-  flex: 1;
-}
-.action-error details p {
-  margin-top: 10px;
-  color: var(--text);
-}
-.action-error pre {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font-family: inherit;
-  font-size: 11px;
-  max-height: 240px;
-  overflow: auto;
-}
 .debug-card {
   padding: 0;
   border-width: 1px 0 0;
@@ -745,18 +718,69 @@ textarea::placeholder {
 .status.working {
   color: var(--accent);
 }
-.operation-progress {
+.toast-viewport {
   position: fixed;
   right: max(20px, env(safe-area-inset-right));
-  bottom: max(20px, env(safe-area-inset-bottom));
+  /* Keep actions clear of the hosting badge in the bottom corner. */
+  bottom: max(76px, env(safe-area-inset-bottom));
   z-index: 40;
   width: min(360px, calc(100% - 40px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: calc(100dvh - var(--composer-clearance, 20px) - 20px);
+  overflow: auto;
+  pointer-events: none;
+}
+.toast {
+  flex: none;
   padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
   box-shadow: 0 8px 32px rgb(0 0 0 / 45%);
-  pointer-events: none;
+  pointer-events: auto;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.toast-error {
+  border-color: var(--danger);
+}
+.toast-heading,
+.toast-message-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.toast-heading {
+  color: var(--danger);
+}
+.toast-title,
+.toast-message {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.toast-icon {
+  flex: none;
+  padding: 4px;
+  min-width: 28px;
+  min-height: 28px;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+.toast-message-row {
+  margin-top: 4px;
+}
+.toast-message {
+  margin: 0;
 }
 .operation-progress-text {
   display: flex;
@@ -941,11 +965,6 @@ textarea::placeholder {
   display: flex;
   flex: 1;
   min-height: 0;
-}
-.is-board > .action-error {
-  flex: none;
-  max-height: 35%;
-  overflow: auto;
 }
 .product-main:focus {
   outline: none;
@@ -1303,7 +1322,7 @@ textarea::placeholder {
   }
 }
 @media (max-width: 760px), (max-height: 500px), (pointer: coarse) {
-  .operation-progress {
+  .toast-viewport {
     right: max(12px, env(safe-area-inset-right));
     bottom: var(--composer-clearance, 160px);
     width: min(360px, calc(100% - 24px));
@@ -1311,7 +1330,8 @@ textarea::placeholder {
   .feed-toolbar button,
   .feed-pagination button,
   .hint-trigger,
-  #walletClose {
+  #walletClose,
+  .toast-icon {
     min-width: 44px;
     min-height: 44px;
   }

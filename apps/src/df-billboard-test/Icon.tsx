@@ -1,4 +1,6 @@
 const paths = {
+  copy: "M9 9h11v11H9zM15 5V3H3v12h2",
+  check: "m5 12 4 4L19 6",
   activity: "M4 12h4l3-7 4 14 2-7h3",
   arrow: "M5 12h14m-6-6 6 6-6 6",
   search: "m20 20-5-5M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0",

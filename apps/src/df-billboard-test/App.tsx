@@ -6,62 +6,11 @@ import { Brand } from "./Brand";
 import { Feed } from "./Feed";
 import { Hint } from "./Hint";
 import { Icon } from "./Icon";
+import { NotificationToasts } from "./NotificationToasts";
 import { ReadingSettings } from "./ReadingSettings";
 import { RequestRecovery } from "./RequestRecovery";
-import type {
-  BillboardController,
-  BillboardView,
-  Progress as ProgressData,
-} from "./types";
+import type { BillboardController, BillboardView } from "./types";
 import { WalletPanel } from "./WalletPanel";
-
-function Progress({ progress }: { progress: ProgressData | null }) {
-  const toastRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const toast = toastRef.current;
-    const composer = toast
-      ?.closest(".billboard-app")
-      ?.querySelector(".compose-card");
-    if (!toast || !composer) return;
-    // On small screens, keep the toast above the composer, including fee notices.
-    const update = () => {
-      toast.style.setProperty(
-        "--composer-clearance",
-        `${Math.max(12, window.innerHeight - composer.getBoundingClientRect().top + 12)}px`
-      );
-    };
-    const observer = new ResizeObserver(update);
-    observer.observe(composer);
-    window.addEventListener("resize", update);
-    update();
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", update);
-    };
-  }, []);
-  return (
-    <div
-      id="operationProgress"
-      ref={toastRef}
-      className={`operation-progress${progress?.failed ? " failed" : ""}`}
-      role="status"
-      aria-live="polite"
-      aria-atomic="true"
-      hidden={!progress}
-    >
-      <div className="operation-progress-text">
-        <span id="operationLabel">{progress?.label}</span>
-        <span id="operationCount">{progress?.count}</span>
-      </div>
-      <progress
-        id="operationBar"
-        max={progress?.total || 1}
-        value={progress?.value}
-        aria-label="Current operation progress"
-      />
-    </div>
-  );
-}
 
 function DebugPanel({ view }: { view: BillboardView }) {
   const logRef = useRef<HTMLDivElement>(null);
@@ -199,23 +148,6 @@ export function App({
               )}
               <h1>{title}</h1>
             </div>
-            {view.actionError && (
-              <section className="action-error" role="alert">
-                <span>⚠ {view.actionError.label} failed</span>
-                {view.actionError.label === "Load Billboard" && (
-                  <button
-                    onClick={() => void controller.initialize().catch(() => {})}
-                  >
-                    Retry
-                  </button>
-                )}
-                <details>
-                  <summary>View details</summary>
-                  <p>{view.actionError.guidance}</p>
-                  <pre>{view.actionError.message}</pre>
-                </details>
-              </section>
-            )}
             <div className="board-page" hidden={section !== "board"}>
               <Feed view={view} controller={controller} />
             </div>
@@ -350,7 +282,7 @@ export function App({
           About ↗
         </a>
       </footer>
-      <Progress progress={view.progress} />
+      <NotificationToasts view={view} />
     </div>
   );
 }
