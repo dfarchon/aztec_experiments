@@ -62,6 +62,20 @@ function localRuntimeAssets(): Plugin {
     configurePreviewServer(server) {
       server.middlewares.use(isolationHeaders);
       server.middlewares.use(redirect);
+      server.middlewares.use((request, response, next) => {
+        const pathname = new URL(request.url || "/", "http://localhost")
+          .pathname;
+        // Missing CRS must fall back to the CDN, not the SPA HTML response.
+        if (
+          /^\/crs\/[\w.-]+$/.test(pathname) &&
+          !existsSync(path.join(dist, pathname.slice(1)))
+        ) {
+          response.writeHead(404);
+          response.end();
+          return;
+        }
+        next();
+      });
     },
     configureServer(server) {
       server.middlewares.use(isolationHeaders);

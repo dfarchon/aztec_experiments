@@ -20,6 +20,7 @@ for (const hook of ["configureServer", "configurePreviewServer"]) {
       "/onnx/ort-wasm-simd-threaded.asyncify.mjs",
       "/onnx/ort-wasm-simd-threaded.asyncify.wasm",
       "/df-missing-runtime-for-test.js",
+      "/crs/missing-regression.dat",
       "/billboard-readme.md",
       "/df-billboard-test.html",
     ]) {
@@ -56,6 +57,10 @@ for (const hook of ["configureServer", "configurePreviewServer"]) {
       );
       if (url === "/df-billboard-test.html") {
         assert.equal(response.status, 302);
+        assert.equal(response.ended, true);
+      }
+      if (url === "/crs/missing-regression.dat") {
+        assert.equal(response.status, 404);
         assert.equal(response.ended, true);
       }
     }
