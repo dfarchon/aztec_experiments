@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { loadContractArtifact } from '@aztec-labs/aztec.js/abi';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const dist = process.env.BILLBOARD_OUTPUT_DIR ? path.resolve(process.env.BILLBOARD_OUTPUT_DIR) : path.join(root, 'apps/dist');
@@ -21,6 +22,12 @@ if (!expected || digest(boardArtifact) === expected) {
 } else if (!fs.existsSync(publishedArtifact) || digest(publishedArtifact) !== expected) {
   throw new Error('Compiled board differs from the local deployment; redeploy the harness before preparing its assets.');
 }
+// Public reads need only storage slots, not the 2+ MB proving artifact.
+const { storageLayout } = loadContractArtifact(JSON.parse(fs.readFileSync(publishedArtifact, 'utf8')));
+fs.writeFileSync(path.join(dist, 'df-read-config.json'), JSON.stringify({
+  boardArtifactHash: digest(publishedArtifact),
+  storageLayout: Object.fromEntries(['post_count', 'post_lengths', 'post_data'].map(key => [key, storageLayout[key]])),
+}) + '\n');
 fs.copyFileSync(fileURLToPath(import.meta.resolve('@aztec-labs/noir-contracts.js/artifacts/sponsored_fpc_contract-SponsoredFPC')),
   path.join(dist, 'df-sponsor-artifact.json'));
 await build({

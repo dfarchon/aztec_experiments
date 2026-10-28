@@ -7,15 +7,23 @@ export function loadAztecRuntime(): Promise<void> {
       if (loaded.has(src)) continue;
       await new Promise<void>((resolve, reject) => {
         const script = document.createElement("script");
+        const fail = (message: string) => {
+          clearTimeout(timer);
+          script.onload = script.onerror = null;
+          script.remove();
+          reject(new Error(message));
+        };
+        const timer = setTimeout(
+          () => fail(`Loading ${src} timed out. Please retry.`),
+          120_000
+        );
         script.src = src;
         script.onload = () => {
+          clearTimeout(timer);
           loaded.add(src);
           resolve();
         };
-        script.onerror = () => {
-          script.remove();
-          reject(new Error(`Unable to load ${src}`));
-        };
+        script.onerror = () => fail(`Unable to load ${src}`);
         document.head.append(script);
       });
     }

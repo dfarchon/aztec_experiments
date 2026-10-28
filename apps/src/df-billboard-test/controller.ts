@@ -14,7 +14,6 @@ import {
 import { AI_MODEL_VERSION } from "./ai-config.ts";
 import { createFeedReader } from "./feed-reader.ts";
 import { parseKeywords } from "./keywords.ts";
-import { createMetaMaskPosting, emptyRequestView } from "./metamask-posting.ts";
 import { classifyRulePosts } from "./moderation.ts";
 import {
   environment,
@@ -22,7 +21,14 @@ import {
   validateChain,
   validateRpc,
 } from "./network.ts";
+import {
+  fetchPublicJson,
+  loadReadLayout,
+  publicReadSDK,
+} from "./public-reader.ts";
 import { createReadingController } from "./reading.ts";
+import { emptyRequestView } from "./request-view.ts";
+import { loadAztecRuntime } from "./runtime-assets.ts";
 import type { BillboardController } from "./types";
 import { withWalletLock } from "./wallet-lock.ts";
 
@@ -30,6 +36,9 @@ import { withWalletLock } from "./wallet-lock.ts";
 // to immutable public snapshots; secret keys and SDK objects stay private here.
 export function createBillboardController(deps = {}): BillboardController {
   const A = deps.sdk || (() => window.__aztec);
+  const R = deps.readSdk || deps.sdk || (() => publicReadSDK);
+  let walletRuntime;
+  let walletModeSelected = false;
   const deriveAccountAddress =
     deps.deriveAccountAddress ||
     ((...args) => window.deriveAccountAddress(...args));
@@ -115,6 +124,7 @@ export function createBillboardController(deps = {}): BillboardController {
   let deployment;
   let contracts;
   let boardArtifact;
+  let readLayout;
   let publicNode;
   let feedCursor;
   const readPostPage = createFeedReader();
@@ -374,12 +384,7 @@ export function createBillboardController(deps = {}): BillboardController {
     } catch {
       /* Unavailable or malformed storage must not block wallet setup. */
     }
-    const response = await fetch("/df-local.json", { cache: "no-store" });
-    if (!response.ok)
-      throw new Error(
-        "No local deployment found. Run npm run deploy:df:harness first."
-      );
-    deployment = await response.json();
+    deployment = await fetchPublicJson("/df-local.json", { cache: "no-store" });
     const env = environment(deployment.environment);
     validateRpc(deployment.nodeUrl, env);
     if (env === "local") validateRpc(location.origin, env);
@@ -400,15 +405,17 @@ export function createBillboardController(deps = {}): BillboardController {
         "Local deployment is missing Sponsored FPC. Run npm run deploy:df:harness again."
       );
     patch({ deployment });
-    patch({
-      walletMode: publishLocalAccounts().length ? "local" : "create",
-    });
+    const savedAccounts = publishLocalAccounts();
+    if (!walletModeSelected)
+      patch({ walletMode: savedAccounts.length ? "local" : "create" });
     window.RPC_CONFIG = { nodeUrl: deployment.nodeUrl };
-    publicNode = A().createAztecNodeClient(deployment.nodeUrl);
+    publicNode = R().createAztecNodeClient(deployment.nodeUrl);
     await checkChain();
-    boardArtifact = await readArtifact("board");
+    readLayout = await (deps.loadReadLayout || loadReadLayout)(
+      deployment.boardArtifactHash
+    );
     const instance = await publicNode.getContract(
-      A().AztecAddress.fromStringUnsafe(deployment.board)
+      R().AztecAddress.fromStringUnsafe(deployment.board)
     );
     if (
       !instance ||
@@ -418,33 +425,25 @@ export function createBillboardController(deps = {}): BillboardController {
         "Billboard deployment or contract version mismatch. Run npm run deploy:df:harness again."
       );
     patch({ canRead: true });
-    if (deployment.l1Request) {
-      const config = {
-        kind:
-          env === "local"
-            ? "local-sponsored-l1-post"
-            : "testnet-sponsored-l1-post",
-        nodeUrl: deployment.nodeUrl,
-        rollupAddress: deployment.rollupAddress,
-        rollupVersion: String(deployment.rollupVersion),
-        board: deployment.board,
-        sponsoredFpc: deployment.sponsoredFpc,
-        sponsorSalt: deployment.sponsorSalt,
-        l1: deployment.l1Request,
-      };
-      requestPosting = (deps.createMetaMaskPosting || createMetaMaskPosting)(
-        config,
-        A(),
-        (request) => {
-          patch({ request });
-          publishSession();
-        },
-        showProgress
-      );
-      patch({ request: { ...emptyRequestView, available: true } });
-    }
+    patch({
+      request: {
+        ...emptyRequestView,
+        available: Boolean(deployment.l1Request),
+      },
+    });
     await refresh(false);
     publishSession();
+  }
+
+  async function prepareWallet() {
+    await initializeOnce();
+    return (walletRuntime ||= (async () => {
+      showProgress("Loading wallet tools…");
+      await (deps.loadWalletRuntime || loadAztecRuntime)();
+    })().catch((error) => {
+      walletRuntime = undefined;
+      throw error;
+    }));
   }
 
   async function checkChain() {
@@ -583,6 +582,7 @@ export function createBillboardController(deps = {}): BillboardController {
   }
 
   async function scanWallets() {
+    await prepareWallet();
     showProgress("Scanning for Aztec extension wallets…");
     patch({
       extensionStatus:
@@ -796,7 +796,37 @@ export function createBillboardController(deps = {}): BillboardController {
   }
 
   async function connect() {
+    await prepareWallet();
+    if (view.walletMode !== "metamask")
+      boardArtifact ||= await readArtifact("board");
     if (view.walletMode === "metamask") {
+      if (!requestPosting && deployment.l1Request) {
+        const config = {
+          kind:
+            environment(deployment.environment) === "local"
+              ? "local-sponsored-l1-post"
+              : "testnet-sponsored-l1-post",
+          nodeUrl: deployment.nodeUrl,
+          rollupAddress: deployment.rollupAddress,
+          rollupVersion: String(deployment.rollupVersion),
+          board: deployment.board,
+          sponsoredFpc: deployment.sponsoredFpc,
+          sponsorSalt: deployment.sponsorSalt,
+          l1: deployment.l1Request,
+        };
+        requestPosting = (
+          deps.createMetaMaskPosting ||
+          (await import("./metamask-posting.ts")).createMetaMaskPosting
+        )(
+          config,
+          A(),
+          (request) => {
+            patch({ request });
+            publishSession();
+          },
+          showProgress
+        );
+      }
       if (!requestPosting)
         throw new Error(
           "This board has no L1 entry. Deploy a board with MetaMask support first."
@@ -932,16 +962,16 @@ export function createBillboardController(deps = {}): BillboardController {
 
   async function readFeed(older, reportProgress = true) {
     pauseAiHints();
-    if (!publicNode || !boardArtifact)
+    if (!publicNode || !readLayout)
       throw new Error("Billboard is not initialized");
     if (older && (!feedCursor || feedCursor.before === 0)) return;
     if (reportProgress)
       showProgress(older ? "Loading older posts…" : "Loading recent posts…");
     const result = await readPostPage(
-      A(),
+      R(),
       publicNode,
       deployment.board,
-      boardArtifact.storageLayout,
+      readLayout,
       older ? feedCursor : undefined
     );
     feedCursor = result.cursor;
@@ -996,6 +1026,7 @@ export function createBillboardController(deps = {}): BillboardController {
       !["local", "create", "import", "extension", "metamask"].includes(value)
     )
       return;
+    if (name === "walletMode") walletModeSelected = true;
     patch({ [name]: value });
     if (readingFields.includes(name)) savePreferences();
     if (name === "walletMode" || name === "provider") publishSession();
@@ -1025,18 +1056,25 @@ export function createBillboardController(deps = {}): BillboardController {
       contents: JSON.stringify(payload, null, 2),
     };
   }
+  function initializeOnce() {
+    return (initializing ||= initialize()
+      .then(() => {
+        if (view.actionError?.label === "Load Billboard")
+          patch({ actionError: null });
+      })
+      .catch((error) => {
+        initializing = undefined;
+        fail(error, "Load Billboard");
+        throw error;
+      }));
+  }
   return {
     subscribe: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
     getSnapshot: () => view,
-    initialize: () =>
-      (initializing ||= initialize().catch((error) => {
-        initializing = undefined;
-        fail(error, "Load Billboard");
-        throw error;
-      })),
+    initialize: initializeOnce,
     log,
     setField,
     setWalletPanel,

@@ -202,6 +202,13 @@ export function App({
             {view.actionError && (
               <section className="action-error" role="alert">
                 <span>⚠ {view.actionError.label} failed</span>
+                {view.actionError.label === "Load Billboard" && (
+                  <button
+                    onClick={() => void controller.initialize().catch(() => {})}
+                  >
+                    Retry
+                  </button>
+                )}
                 <details>
                   <summary>View details</summary>
                   <p>{view.actionError.guidance}</p>

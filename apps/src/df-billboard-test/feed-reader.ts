@@ -1,18 +1,32 @@
 import { decodeDFMessage } from "../../../shared/df-billboard.mjs";
-import type { RequestSDK } from "./l1-request-core";
 import type { PostData } from "./types";
 
 export const POST_PAGE_SIZE = 10;
 const RPC_CONCURRENCY = 8;
 const CACHE_POSTS = 100;
-type Node = ReturnType<RequestSDK["createAztecNodeClient"]>;
-type Field = InstanceType<RequestSDK["Fr"]>;
-type Layout = Record<
+export interface Field {
+  toBigInt(): bigint;
+  toString(): string;
+}
+export interface FeedSDK {
+  Fr: new (value: bigint) => Field;
+  AztecAddress: { fromStringUnsafe(value: string): { toString(): string } };
+  deriveStorageSlotInMap(slot: Field, key: Field): Promise<Field>;
+}
+export interface FeedNode {
+  getBlockNumber(): Promise<number>;
+  getPublicStorageAt(
+    block: number,
+    address: { toString(): string },
+    slot: Field
+  ): Promise<Field>;
+}
+export type Layout = Record<
   "post_count" | "post_lengths" | "post_data",
   { slot: Field }
 >;
 export interface FeedCursor {
-  block: Awaited<ReturnType<Node["getBlockNumber"]>>;
+  block: number;
   total: number;
   before: number;
 }
@@ -47,10 +61,10 @@ async function mapLimited<T, R>(
 
 export function createFeedReader() {
   const cache = new Map<string, PostData>();
-  let previousNode: Node | undefined;
+  let previousNode: FeedNode | undefined;
   return (
-    sdk: RequestSDK,
-    node: Node,
+    sdk: FeedSDK,
+    node: FeedNode,
     board: string,
     layout: Layout,
     cursor?: FeedCursor
@@ -65,8 +79,8 @@ export function createFeedReader() {
 // All pages use the same snapshot. The caller only commits the returned cursor
 // after a successful read, so failed pages can be retried without gaps.
 export async function readPostPage(
-  sdk: RequestSDK,
-  node: Node,
+  sdk: FeedSDK,
+  node: FeedNode,
   board: string,
   layout: Layout,
   cursor?: FeedCursor,

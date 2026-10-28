@@ -203,6 +203,14 @@ function fixture(t, overrides = {}) {
     },
   };
   const controller = createBillboardController({
+    loadWalletRuntime: async () => {
+      calls.push(["loadWalletRuntime"]);
+    },
+    loadReadLayout: async () => ({
+      post_count: { slot: new Fr(2) },
+      post_lengths: { slot: new Fr(3) },
+      post_data: { slot: new Fr(4) },
+    }),
     ...overrides,
     sdk: () => sdk,
     deriveAccountAddress: async () => ({ address }),
@@ -275,15 +283,25 @@ test("MetaMask and Aztec use one board, one feed and the same composer", async (
   deployment.rollupVersion = "1";
   deployment.l1Request = { entry: "entry", rpcUrl: "http://127.0.0.1:5954" };
   await controller.initialize();
-  assert.equal(config.board, deployment.board);
-  assert.equal(config.l1, deployment.l1Request);
+  assert.equal(
+    config,
+    undefined,
+    "MetaMask module stays unloaded while reading"
+  );
   assert.equal(
     calls.some((call) => call[1] === "/df-l1-post-lab.json"),
     false
   );
   controller.setField("walletMode", "metamask");
   await controller.connect();
+  assert.equal(config.board, deployment.board);
+  assert.equal(config.l1, deployment.l1Request);
   assert.equal(controller.getSnapshot().address, "0xpayer");
+  assert.equal(
+    calls.some((call) => call[1] === "/df-board-artifact.json"),
+    false,
+    "MetaMask owns its artifacts; the controller must not fetch a second copy"
+  );
   controller.setField("message", "one shared board");
   controller.setField("publishToL1", true);
   assert.equal("publishToL1" in controller.getSnapshot(), false);
@@ -304,6 +322,10 @@ test("MetaMask and Aztec use one board, one feed and the same composer", async (
   await controller.connect();
   assert.equal(controller.getSnapshot().address, address);
   assert.equal(controller.getSnapshot().canPost, true);
+  assert.equal(
+    calls.filter((call) => call[1] === "/df-board-artifact.json").length,
+    1
+  );
 });
 
 test("pending MetaMask posts survive wallet switching and resume without another payment", async (t) => {
@@ -1088,4 +1110,116 @@ test("model failures preserve posts, rules and keywords; late cancelled results 
   assert.equal(controller.getSnapshot().keywordEnabled, true);
   assert.equal(controller.getSnapshot().rulesEnabled, false);
   assert.equal(controller.getSnapshot().posts[0].aiAnalyzed, undefined);
+});
+
+test("reading and pagination do not load wallet code; wallet failures remain retryable", async (t) => {
+  let loads = 0;
+  const { controller, calls, deployment } = fixture(t, {
+    loadWalletRuntime: async () => {
+      if (++loads === 1) throw Error("wallet download failed");
+    },
+    createMetaMaskPosting: () => {
+      throw Error("Browser wallet must not load the MetaMask adapter");
+    },
+  });
+  deployment.l1Request = {};
+  await controller.initialize();
+  await controller.refresh();
+  await controller.loadOlder();
+  assert.equal(loads, 0);
+  assert.equal(
+    calls.some((call) => call[1] === "/df-board-artifact.json"),
+    false
+  );
+  assert.equal(controller.getSnapshot().posts.length, 3);
+  await controller.connect();
+  assert.equal(controller.getSnapshot().connected, false);
+  assert.match(
+    controller.getSnapshot().actionError.message,
+    /wallet download failed/
+  );
+  await controller.refresh();
+  assert.equal(controller.getSnapshot().posts.length, 3);
+  await controller.connect();
+  assert.equal(loads, 2);
+  assert.equal(controller.getSnapshot().connected, true);
+  await controller.disconnect();
+  await controller.connect();
+  assert.equal(loads, 2, "successful wallet runtime is reused");
+  assert.equal(
+    calls.filter((call) => call[1] === "/df-board-artifact.json").length,
+    1,
+    "the Aztec connection reuses its artifact"
+  );
+});
+
+test("a wallet selection made while the manifest loads is preserved", async (t) => {
+  for (const mode of ["extension", "create", "import"]) {
+    await t.test(mode, async (t) => {
+      const { controller } = fixture(t);
+      const fetch = globalThis.fetch;
+      const pending = Promise.withResolvers();
+      t.mock.method(globalThis, "fetch", async (...args) => {
+        if (args[0] === "/df-local.json") await pending.promise;
+        return fetch(...args);
+      });
+      const initialized = controller.initialize();
+      controller.setField("walletMode", mode);
+      pending.resolve();
+      await initialized;
+      assert.equal(controller.getSnapshot().savedAccounts.length, 1);
+      assert.equal(controller.getSnapshot().walletMode, mode);
+    });
+  }
+});
+
+test("MetaMask adapter initialization retries without reloading the shared runtime", async (t) => {
+  let attempts = 0;
+  const { controller, calls, deployment } = fixture(t, {
+    createMetaMaskPosting: (_config, _sdk, emit) => {
+      if (++attempts === 1) throw Error("MetaMask chunk unavailable");
+      return {
+        connect: async () =>
+          emit({ available: true, payer: "0xpayer", jobs: [] }),
+        dispose() {},
+      };
+    },
+  });
+  deployment.l1Request = {};
+  await controller.initialize();
+  controller.setField("walletMode", "metamask");
+  await controller.connect();
+  assert.equal(controller.getSnapshot().connected, false);
+  assert.match(
+    controller.getSnapshot().actionError.message,
+    /chunk unavailable/
+  );
+  await controller.connect();
+  assert.equal(controller.getSnapshot().connected, true);
+  assert.equal(attempts, 2);
+  assert.equal(
+    calls.filter((call) => call[0] === "loadWalletRuntime").length,
+    1
+  );
+});
+
+test("initial read failure keeps the board available and can retry without wallet downloads", async (t) => {
+  let reads = 0,
+    wallets = 0;
+  const { controller } = fixture(t, {
+    loadReadLayout: async () => {
+      reads++;
+      throw Error("Read configuration timeout");
+    },
+    loadWalletRuntime: async () => {
+      wallets++;
+    },
+  });
+  await assert.rejects(controller.initialize(), /timeout/);
+  assert.equal(controller.getSnapshot().busy, false);
+  assert.equal(controller.getSnapshot().feedLoaded, false);
+  assert.equal(controller.getSnapshot().actionError.label, "Load Billboard");
+  await assert.rejects(controller.initialize(), /timeout/);
+  assert.equal(reads, 2);
+  assert.equal(wallets, 0);
 });

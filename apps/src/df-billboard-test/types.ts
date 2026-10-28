@@ -1,4 +1,4 @@
-import type { RequestView } from "./metamask-posting";
+import type { RequestView } from "./request-view";
 
 export type KeywordMode = "contains" | "word";
 export type RuleCategory =

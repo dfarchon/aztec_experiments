@@ -81,7 +81,11 @@ for (const target of ['vercel', 'netlify']) test(`isolated ${target} package con
   await assert.rejects(buildRelease(fixture, destination, target), /already exists/);
   const files = fs.readdirSync(dist, { recursive: true }).filter(file => fs.statSync(path.join(dist, file)).isFile());
   const bytes = files.reduce((total, file) => total + fs.statSync(path.join(dist, file)).size, 0);
-  for (const name of ['index.html', 'df-local.json', 'df-board-artifact.json', 'df-sponsor-artifact.json', 'aztec_bundle.js', 'df-wallet-runtime.js', 'main.worker.js', 'thread.worker.js', 'df-toxicity.worker.js']) assert(files.includes(name), `Missing ${name}`);
+  for (const name of ['index.html', 'df-local.json', 'df-read-config.json', 'df-board-artifact.json', 'df-sponsor-artifact.json', 'aztec_bundle.js', 'df-wallet-runtime.js', 'main.worker.js', 'thread.worker.js', 'df-toxicity.worker.js']) assert(files.includes(name), `Missing ${name}`);
+  const readConfig = JSON.parse(fs.readFileSync(path.join(dist, 'df-read-config.json')));
+  assert.equal(readConfig.boardArtifactHash, digest(board));
+  assert.deepEqual(Object.keys(readConfig.storageLayout).sort(), ['post_count', 'post_data', 'post_lengths']);
+  assert(fs.statSync(path.join(dist, 'df-read-config.json')).size < 1024);
   assert.deepEqual(files.filter(file => file.startsWith('onnx/')).sort(), [
     'onnx/ort-wasm-simd-threaded.asyncify.mjs',
     'onnx/ort-wasm-simd-threaded.asyncify.wasm',

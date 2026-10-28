@@ -22,6 +22,7 @@ import {
   verifyRequestEntry,
 } from "./l1-request-core.ts";
 import { networkPolicy, waitForInbox } from "./network.ts";
+import type { RequestView } from "./request-view";
 import { withWalletLock } from "./wallet-lock.ts";
 
 // Keep the orchestration testable without replacing the posting module itself.
@@ -55,20 +56,6 @@ interface Saved {
   signingKey: string;
   jobs: PostRequest[];
 }
-export type RequestJobView = Pick<
-  PostRequest,
-  "commitment" | "text" | "l1Tx" | "l2Tx" | "l2Attempted" | "postId"
->;
-export interface RequestView {
-  available: boolean;
-  payer: string;
-  jobs: RequestJobView[];
-}
-export const emptyRequestView: RequestView = {
-  available: false,
-  payer: "",
-  jobs: [],
-};
 
 // This account is independent of the payer's EVM keys. Both wallet choices use
 // the board from the main deployment, never the old isolated lab manifest.
