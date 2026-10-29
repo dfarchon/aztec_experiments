@@ -1,12 +1,22 @@
 # Build artifacts
 target/
+billboard/portal/out/
+billboard/portal/cache/
+billboard/portal/broadcast/
+apps/dist/
+apps/src/billboard/**/billboard_artifact.json
+apps/src/billboard/**/portal_bytecode.txt
+shared/aztec_bundle.js
+shared/main.worker.js
+shared/thread.worker.js
+shared/thread_worker.js
 
 # Auto-generated test harnesses from aztec compile
 *_test.nr
 
 # Dependencies
 node_modules/
-package-lock.json
+.local/
 
 # OS files
 .DS_Store

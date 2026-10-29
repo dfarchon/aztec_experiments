@@ -20,9 +20,8 @@
 // The bundle (aztec_bundle.js, 58MB) is NOT inlined -- it's too big.
 // Templates load it via <script src="aztec_bundle.js">. The build copies it to dist/.
 //
-// App-specific resource files (portal_bytecode.txt, *_artifact.json) are looked up
-// in the app directory first, then in the parent directory (for shared resources
-// within a project like billboard/).
+// Shared contract resources are read from the parent directory first so a stale
+// app-local generated artifact cannot override the current compiled contract.
 
 import fs from 'fs';
 import path from 'path';
@@ -48,7 +47,7 @@ const rpcConfig = (() => {
 const sharedFiles = {
   STYLES: loadShared('styles.css'),
   HELPERS: loadShared('helpers.js'),
-  AZTEC_LIB: loadShared('aztec-lib.js'),
+  AZTEC_LIB: loadShared('wallet-runtime.js') + '\n' + loadShared('aztec-lib.js'),
   POSEIDON2: loadShared('poseidon2.js'),
   ETHERS: loadShared('ethers.min.js'),
   WALLET_BUTTONS: loadShared('wallet-buttons.js'),
@@ -61,12 +60,12 @@ const rpcConfigScript = rpcConfig
   ? `<script>window.RPC_CONFIG = ${JSON.stringify(rpcConfig)};</script>`
   : '';
 
-// Look for a resource file in the app dir, then parent dir
+// Look for the shared resource first, then an app-specific fallback.
 function loadResource(appDir, filename) {
-  const appPath = path.join(appDir, filename);
-  if (fs.existsSync(appPath)) return fs.readFileSync(appPath, 'utf8').trim();
   const parentPath = path.join(path.dirname(appDir), filename);
   if (fs.existsSync(parentPath)) return fs.readFileSync(parentPath, 'utf8').trim();
+  const appPath = path.join(appDir, filename);
+  if (fs.existsSync(appPath)) return fs.readFileSync(appPath, 'utf8').trim();
   return null;
 }
 
@@ -94,7 +93,7 @@ function buildApp(appRelPath) {
   let html = fs.readFileSync(templatePath, 'utf8');
   const appJs = fs.readFileSync(appJsPath, 'utf8');
 
-  // App-specific resources (look in app dir, then parent)
+  // Prefer the current shared contract resources.
   const portalBytecode = loadResource(appDir, 'portal_bytecode.txt');
   const billboardArtifact = loadResource(appDir, 'billboard_artifact.json');
 
@@ -160,18 +159,15 @@ function buildApp(appRelPath) {
 // Ensure dist exists
 fs.mkdirSync(DIST, { recursive: true });
 
-// Copy bundle + thread_worker to dist (always overwrite to pick up patches)
+// Copy the SDK bundle and its worker entrypoints built by build:sdk.
 const bundleSrc = path.join(SHARED, 'aztec_bundle.js');
 const bundleDst = path.join(DIST, 'aztec_bundle.js');
-if (fs.existsSync(bundleSrc)) {
-  fs.copyFileSync(bundleSrc, bundleDst);
-  console.log('Copied aztec_bundle.js to dist/ (' + Math.round(fs.statSync(bundleDst).size/1024/1024) + 'MB)...');
-}
-const threadWorkerSrc = path.join(SHARED, 'thread_worker.js');
-const threadWorkerDst = path.join(DIST, 'thread_worker.js');
-if (fs.existsSync(threadWorkerSrc)) {
-  fs.copyFileSync(threadWorkerSrc, threadWorkerDst);
-  console.log('Copied thread_worker.js to dist/ (' + Math.round(fs.statSync(threadWorkerDst).size/1024) + 'KB)...');
+if (!fs.existsSync(bundleSrc)) throw new Error('Missing SDK bundle; run npm run build:sdk first.');
+fs.copyFileSync(bundleSrc, bundleDst);
+console.log('Copied aztec_bundle.js to dist/ (' + Math.round(fs.statSync(bundleDst).size/1024/1024) + 'MB)...');
+for (const worker of ['main.worker.js', 'thread.worker.js']) {
+  if (!fs.existsSync(path.join(SHARED, worker))) throw new Error(`Missing ${worker}; run npm run build:sdk first.`);
+  fs.copyFileSync(path.join(SHARED, worker), path.join(DIST, worker));
 }
 
 // Ensure CRS files are in dist/crs/
