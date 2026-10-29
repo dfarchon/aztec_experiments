@@ -839,7 +839,13 @@ test("wallet connects directly to sponsored posting without DF state or a deposi
   controller.setField("walletMode", "extension");
   assert.equal(controller.getSnapshot().walletMode, "local");
   controller.setField("message", "你好，独立留言板");
-  await controller.post();
+  const posting = controller.post();
+  assert.equal(controller.getSnapshot().posting, true);
+  assert.equal(controller.getSnapshot().progress.completed, false);
+  assert.equal(controller.getSnapshot().connecting, false);
+  await posting;
+  assert.equal(controller.getSnapshot().posting, false);
+  assert.equal(controller.getSnapshot().progress.completed, true);
   const sent = calls.find(([name]) => name === "post");
   assert.equal(sent[2], new TextEncoder().encode("你好，独立留言板").length);
   assert.equal(sent[1].length, 512);
@@ -900,7 +906,12 @@ test("post failures persist across feed refresh and allow retry", async (t) => {
   await controller.connect();
   controller.setField("message", "retry");
   failNextPost(new Error("24-hour post limit reached"));
-  await controller.post();
+  const posting = controller.post();
+  assert.equal(controller.getSnapshot().posting, true);
+  assert.equal(controller.getSnapshot().progress.completed, false);
+  await posting;
+  assert.equal(controller.getSnapshot().posting, false);
+  assert.equal(controller.getSnapshot().progress.completed, true);
   assert.equal(controller.getSnapshot().busy, false);
   assert.equal(controller.getSnapshot().actionError.label, "Anonymous posting");
   assert.equal(controller.getSnapshot().message, "retry");
@@ -1481,4 +1492,28 @@ test("initial read failure keeps the board available and can retry without walle
   await assert.rejects(controller.initialize(), /timeout/);
   assert.equal(reads, 2);
   assert.equal(wallets, 0);
+});
+
+test("connection loading ends after both successful and failed wallet initialization", async (t) => {
+  for (const fail of [false, true]) {
+    await t.test(fail ? "failure" : "success", async (t) => {
+      const gate = Promise.withResolvers();
+      const { controller } = fixture(t, {
+        loadWalletRuntime: async () => {
+          await gate.promise;
+          if (fail) throw Error("Wallet runtime unavailable");
+        },
+      });
+      await controller.initialize();
+      assert.equal(controller.getSnapshot().connecting, false);
+      const connection = controller.connect();
+      assert.equal(controller.getSnapshot().connecting, true);
+      gate.resolve();
+      await connection;
+      assert.equal(controller.getSnapshot().connecting, false);
+      assert.equal(controller.getSnapshot().connected, !fail);
+      await controller.refresh();
+      assert.equal(controller.getSnapshot().connecting, false);
+    });
+  }
 });

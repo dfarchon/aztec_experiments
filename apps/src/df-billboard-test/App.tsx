@@ -6,6 +6,7 @@ import { Brand } from "./Brand";
 import { Feed } from "./Feed";
 import { Hint } from "./Hint";
 import { Icon } from "./Icon";
+import { LoadingIcon } from "./LoadingIcon";
 import { NotificationToasts } from "./NotificationToasts";
 import { ReadingSettings } from "./ReadingSettings";
 import { RequestRecovery } from "./RequestRecovery";
@@ -47,8 +48,8 @@ function DebugPanel({ view }: { view: BillboardView }) {
         >
           {view.logs.map((entry) => (
             <div key={entry.id} className={`status ${entry.type}`}>
-              {entry.type === "working" && <span className="spinner" />}[
-              {entry.time}] {entry.message}
+              {entry.type === "working" && <LoadingIcon />}[{entry.time}]{" "}
+              {entry.message}
             </div>
           ))}
         </div>
@@ -242,6 +243,7 @@ export function App({
               <button
                 id="post"
                 type="button"
+                aria-busy={view.posting}
                 aria-label={
                   !view.busy && !view.connected ? "Connect to post" : undefined
                 }
@@ -255,8 +257,8 @@ export function App({
                     : controller.setWalletPanel(true)
                 }
               >
-                {view.busy ? (
-                  "Processing…"
+                {view.posting ? (
+                  "Posting…"
                 ) : view.connected ? (
                   "Post"
                 ) : (
@@ -270,7 +272,7 @@ export function App({
                     </span>
                   </>
                 )}{" "}
-                <Icon name="arrow" />
+                {view.posting ? <LoadingIcon /> : <Icon name="arrow" />}
               </button>
             </div>
             <RequestRecovery view={view} controller={controller} />

@@ -51,6 +51,8 @@ export function createBillboardController(deps = {}): BillboardController {
   let logId = 0;
   let view = {
     busy: false,
+    connecting: false,
+    posting: false,
     connected: false,
     address: "",
     canRead: false,
@@ -170,29 +172,22 @@ export function createBillboardController(deps = {}): BillboardController {
       /* Restricted/full storage: controls still work in this session. */
     }
   }
-  function showProgress(label, step, total) {
+  function showProgress(label) {
     clearTimeout(progressHideTimer);
-    const determinate =
-      Number.isFinite(step) && Number.isFinite(total) && total > 0;
-    patch({
-      progress: {
-        label,
-        failed: false,
-        total: determinate ? total : 1,
-        value: determinate ? Math.min(Math.max(step, 0), total) : undefined,
-        count: determinate ? `${step}/${total}` : "In progress",
-      },
-    });
+    patch({ progress: { label, completed: false, failed: false } });
   }
   function finishProgress(label, succeeded, completionLabel) {
-    showProgress(
-      succeeded && completionLabel
-        ? completionLabel
-        : `${label}${succeeded ? " completed" : " failed"}`,
-      succeeded ? 1 : 0,
-      1
-    );
-    patch({ progress: { ...view.progress, failed: !succeeded } });
+    clearTimeout(progressHideTimer);
+    patch({
+      progress: {
+        label:
+          succeeded && completionLabel
+            ? completionLabel
+            : `${label}${succeeded ? " completed" : " failed"}`,
+        completed: true,
+        failed: !succeeded,
+      },
+    });
     progressHideTimer = setTimeout(
       () => patch({ progress: null }),
       succeeded ? 2500 : 6000
@@ -282,9 +277,10 @@ export function createBillboardController(deps = {}): BillboardController {
     log(message, "error", "log");
     console.error(error);
   }
-  async function action(fn, label = "Operation") {
+  async function action(fn, label = "Operation", connecting = false) {
     if (busy) return;
     busy = true;
+    patch({ connecting, posting: label === "Anonymous posting" });
     // Refreshing the feed must not erase an unrelated transaction error.
     if (view.actionError?.label === label) patch({ actionError: null });
     if (label === "Anonymous posting") pauseAiHints();
@@ -300,6 +296,7 @@ export function createBillboardController(deps = {}): BillboardController {
       fail(error, label);
     } finally {
       busy = false;
+      patch({ connecting: false, posting: false });
       publishSession();
       finishProgress(label, succeeded, completionLabel);
       reading.resume();
@@ -478,11 +475,11 @@ export function createBillboardController(deps = {}): BillboardController {
   }
 
   async function finishConnect(label) {
-    showProgress("Checking the network and loading Billboard…", 0, 2);
+    showProgress("Checking the network and loading Billboard…");
     await checkChain();
     contracts = {};
     contracts.board = await attachContract("board", deployment.board);
-    showProgress("Loading Sponsored FPC…", 1, 2);
+    showProgress("Loading Sponsored FPC…");
     contracts.sponsor = await attachContract(
       "sponsor",
       deployment.sponsoredFpc
@@ -491,7 +488,7 @@ export function createBillboardController(deps = {}): BillboardController {
     state.feePaymentMethod = new (A().SponsoredFeePaymentMethod)(
       A().AztecAddress.fromStringUnsafe(deployment.sponsoredFpc)
     );
-    showProgress("Billboard and sponsor contract ready", 2, 2);
+    showProgress("Billboard and sponsor contract ready");
     publishSession();
     log(
       `Connected ${label}. Anonymous posting is ready, with L2 gas paid by Sponsored FPC.`,
@@ -570,8 +567,8 @@ export function createBillboardController(deps = {}): BillboardController {
     try {
       const connected = await ensureAztecSetup(state, "log", {
         ...setupOptions,
-        onProgress: (step, total, message) => {
-          showProgress(`Wallet initialization · ${message}`, step, total);
+        onProgress: (_step, _total, message) => {
+          showProgress(`Wallet initialization · ${message}`);
         },
       });
       if (!connected) throw new Error("Wallet initialization failed");
@@ -926,7 +923,7 @@ export function createBillboardController(deps = {}): BillboardController {
   async function post() {
     const from = state.address;
     const message = view.message;
-    showProgress("Checking and encoding the message…", 0, 2);
+    showProgress("Checking and encoding the message…");
     const { text, length } = encodeDFMessage(message);
     if (view.walletMode === "metamask") {
       if (!requestPosting)
@@ -937,7 +934,7 @@ export function createBillboardController(deps = {}): BillboardController {
       throw new Error("Connect an Aztec wallet first");
     await checkChain();
     await checkSponsorBalance();
-    showProgress("Message encoded. Preparing the transaction.", 1, 2);
+    showProgress("Message encoded. Preparing the transaction.");
     showProgress(
       "Generating a proof and submitting the anonymous post. Waiting for confirmation…"
     );
@@ -1114,7 +1111,7 @@ export function createBillboardController(deps = {}): BillboardController {
     saveKeywords,
     copyAddress,
     accountBackup,
-    connect: () => action(connect, "Connect wallet"),
+    connect: () => action(connect, "Connect wallet", true),
     disconnect: () => action(disconnect, "Switch wallet"),
     resumeRequest: (hash) =>
       action(async () => {
@@ -1124,7 +1121,7 @@ export function createBillboardController(deps = {}): BillboardController {
       }, "Anonymous posting"),
     scan: () => action(scanWallets, "Scan extension wallets"),
     confirmWallet: () =>
-      action(confirmExtensionConnection, "Authorize and connect wallet"),
+      action(confirmExtensionConnection, "Authorize and connect wallet", true),
     cancelWallet: cancelExtensionConnection,
     selectGrantedAccount: (value) =>
       action(async () => {

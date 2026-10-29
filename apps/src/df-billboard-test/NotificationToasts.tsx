@@ -47,7 +47,10 @@ export function NotificationToasts({ view }: { view: BillboardView }) {
     }
   };
   // The error toast replaces the transient failed-progress notification.
-  const progress = error && view.progress?.failed ? null : view.progress;
+  const progress =
+    view.progress?.completed && !(error && view.progress.failed)
+      ? view.progress
+      : null;
   useEffect(() => {
     const element = viewport.current;
     const composer = element
@@ -111,17 +114,10 @@ export function NotificationToasts({ view }: { view: BillboardView }) {
         className={`operation-progress${progress?.failed ? " failed" : ""}`}
         hidden={!progress}
       >
-        <Toast>
+        <Toast error={progress?.failed}>
           <div className="operation-progress-text">
             <span id="operationLabel">{progress?.label}</span>
-            <span id="operationCount">{progress?.count}</span>
           </div>
-          <progress
-            id="operationBar"
-            max={progress?.total || 1}
-            value={progress?.value}
-            aria-label="Current operation progress"
-          />
         </Toast>
       </div>
     </div>

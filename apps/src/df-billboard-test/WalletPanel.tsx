@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 
+import { LoadingIcon } from "./LoadingIcon";
 import { Select } from "./Select";
 import type { BillboardController, ViewProps, WalletMode } from "./types";
 
@@ -70,13 +71,18 @@ export function WalletPanel({ view, controller }: ViewProps) {
         type="button"
         disabled={view.busy}
         className={`header-action${view.connected ? " connected" : ""}`}
+        aria-busy={view.connecting}
         aria-expanded={view.walletOpen}
         aria-controls="walletPanel"
         onClick={() => controller.setWalletPanel(!view.walletOpen)}
       >
-        <span className="wallet-icon" aria-hidden="true">
-          ◈
-        </span>
+        {view.connecting ? (
+          <LoadingIcon />
+        ) : (
+          <span className="wallet-icon" aria-hidden="true">
+            ◈
+          </span>
+        )}
         <span id="walletMenuText">
           {view.address
             ? `${view.address.slice(0, 8)}…${view.address.slice(-6)}`
@@ -262,8 +268,10 @@ export function WalletPanel({ view, controller }: ViewProps) {
                   id="confirmWallet"
                   type="button"
                   disabled={view.busy || !view.pendingConnection}
+                  aria-busy={view.connecting}
                   onClick={controller.confirmWallet}
                 >
+                  {view.connecting && <LoadingIcon />}
                   Emojis match · Continue
                 </button>
                 <button
@@ -301,8 +309,10 @@ export function WalletPanel({ view, controller }: ViewProps) {
               (mode === "local" && !view.savedAccounts.length) ||
               (mode === "metamask" && !view.request.available)
             }
+            aria-busy={view.connecting}
             onClick={controller.connect}
           >
+            {view.connecting && <LoadingIcon />}
             {connectLabel}
           </button>
         </div>

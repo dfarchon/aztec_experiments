@@ -259,14 +259,14 @@ test("Onchain Reality shell keeps wallet and section controls above the board", 
   controller.dispose();
 });
 
-test("operation toast sits outside the board and retains accessible progress states", () => {
+test("operation toast only shows completed results outside the board", () => {
   const base = createBillboardController();
   for (const progress of [
     null,
-    { label: "Connecting wallet", count: "In progress", total: 1 },
-    { label: "Loading posts", count: "1/2", total: 2, value: 1 },
-    { label: "Post completed", count: "1/1", total: 1, value: 1 },
-    { label: "Post failed", count: "Failed", total: 1, failed: true },
+    { label: "Connecting wallet", completed: false },
+    { label: "Preparing post", completed: false },
+    { label: "Post completed", completed: true },
+    { label: "Post failed", completed: true, failed: true },
   ]) {
     const view = { ...base.getSnapshot(), progress };
     const controller = { ...base, getSnapshot: () => view };
@@ -274,16 +274,15 @@ test("operation toast sits outside the board and retains accessible progress sta
     assert.ok(
       html.indexOf("</footer>") < html.indexOf('id="operationProgress"')
     );
-    assert.match(html, /role="status" aria-live="polite" aria-atomic="true"/);
     const toast = html.slice(html.indexOf('id="operationProgress"'));
-    if (!progress) assert.match(toast, /hidden=""/);
+    if (!progress?.completed) assert.match(toast, /hidden=""/);
     else {
       assert.doesNotMatch(toast, /hidden=""/);
       assert.ok(toast.includes(progress.label));
       if (progress.failed) assert.match(toast, /operation-progress failed/);
-      if (progress.value != null)
-        assert.match(toast, new RegExp(`value="${progress.value}"`));
+      assert.match(toast, progress.failed ? /role="alert"/ : /role="status"/);
     }
+    assert.doesNotMatch(toast, /<progress|In progress|operationCount/);
   }
   base.dispose();
 });
@@ -719,7 +718,11 @@ test("load errors stay copyable without retry or duplicate failed progress", () 
       message: "HTTP 408",
       guidance: "Try again",
     },
-    progress: { label: "Load failed", count: "Failed", total: 1, failed: true },
+    progress: {
+      label: "Load failed",
+      completed: true,
+      failed: true,
+    },
   };
   const html = renderToStaticMarkup(
     createElement(App, {
@@ -732,5 +735,54 @@ test("load errors stay copyable without retry or duplicate failed progress", () 
   assert.match(html, /HTTP 408/);
   assert.match(html, /id="operationProgress"[^>]*hidden/);
   assert.doesNotMatch(html, /Load failed/);
+  base.dispose();
+});
+
+test("post button shows the shared loading icon only during posting", () => {
+  const base = createBillboardController();
+  for (const posting of [false, true]) {
+    const view = {
+      ...base.getSnapshot(),
+      connected: true,
+      busy: true,
+      posting,
+    };
+    const html = renderToStaticMarkup(
+      createElement(App, {
+        controller: { ...base, getSnapshot: () => view },
+      })
+    );
+    const button = html.match(/<button id="post"[\s\S]*?<\/button>/)[0];
+    assert.ok(button.includes(`aria-busy="${posting}"`));
+    assert.equal(button.includes('class="loading-icon"'), posting);
+    assert.equal(button.includes("Posting…"), posting);
+    assert.match(button, /disabled=""/);
+  }
+  base.dispose();
+});
+
+test("wallet buttons show the shared loading icon only during connection", () => {
+  const base = createBillboardController();
+  for (const connecting of [false, true]) {
+    const view = {
+      ...base.getSnapshot(),
+      walletOpen: true,
+      busy: true,
+      connecting,
+    };
+    const html = renderToStaticMarkup(
+      createElement(App, {
+        controller: { ...base, getSnapshot: () => view },
+      })
+    );
+    for (const id of ["walletMenu", "connect", "confirmWallet"]) {
+      const button = html.match(
+        new RegExp(`<button id="${id}"[\\s\\S]*?</button>`)
+      )[0];
+      assert.ok(button.includes(`aria-busy="${connecting}"`));
+      assert.equal(button.includes('class="loading-icon"'), connecting);
+      assert.match(button, /disabled=""/);
+    }
+  }
   base.dispose();
 });

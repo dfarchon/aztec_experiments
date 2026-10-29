@@ -26,10 +26,8 @@ export interface PostData {
 }
 export interface Progress {
   label: string;
+  completed: boolean;
   failed: boolean;
-  total: number;
-  value?: number;
-  count: string;
 }
 export interface EditableFields {
   walletMode: WalletMode;
@@ -45,6 +43,8 @@ export interface EditableFields {
 export interface BillboardView extends EditableFields {
   request: RequestView;
   busy: boolean;
+  connecting: boolean;
+  posting: boolean;
   connected: boolean;
   address: string;
   canRead: boolean;
