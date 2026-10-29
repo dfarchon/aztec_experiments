@@ -4,6 +4,7 @@ import { POST_PAGE_SIZE as PAGE_SIZE } from "./feed-reader";
 import { Icon } from "./Icon";
 import { keywordMatches } from "./keywords.ts";
 import { canFoldBasicRules } from "./moderation.ts";
+import { PostTime } from "./PostTime";
 import { Select } from "./Select";
 import type { PostData, ViewProps } from "./types";
 
@@ -28,6 +29,14 @@ export function Feed({ view, controller }: ViewProps) {
   const [query, setQuery] = useState("");
   const [order, setOrder] = useState("newest");
   const [page, setPage] = useState(1);
+  const [now, setNow] = useState(Date.now);
+  const hasTimestamps = view.posts.some((post) => post.publishedAt != null);
+  useEffect(() => {
+    if (!hasTimestamps) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, [hasTimestamps]);
   const root = useRef<HTMLElement>(null);
   const posts = view.posts.map((post) => ({
     ...post,
@@ -220,7 +229,12 @@ export function Feed({ view, controller }: ViewProps) {
           {matching.slice(offset, offset + PAGE_SIZE).map((post) => (
             <li className="post-row" key={post.id}>
               <article data-post-id={post.id}>
-                <span className="post-number">#{post.id}</span>
+                <div className="post-meta">
+                  <span className="post-number">#{post.id}</span>
+                  {post.publishedAt != null && (
+                    <PostTime timestamp={post.publishedAt} now={now} />
+                  )}
+                </div>
                 <div className="post-text">
                   {post.decodeError
                     ? "This onchain message could not be decoded as UTF-8."

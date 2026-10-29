@@ -501,3 +501,56 @@ test("completing a partially cached page returns posts before old cache entries 
     "eviction does not erase the returned page"
   );
 });
+
+test("publication timestamps share the post batch, pagination snapshot and cache", async () => {
+  const f = feedFixture(12);
+  f.layout.post_timestamps = { slot: "time" };
+  const read = f.node.getPublicStorageAt;
+  const batches = [];
+  f.node.getPublicStorageMany = async (block, board, slots) => {
+    batches.push({ block, slots });
+    return Promise.all(
+      slots.map((slot) =>
+        slot.startsWith("time/")
+          ? new f.sdk.Fr(1_793_275_200n + BigInt(slot.split("/")[1]))
+          : read(block, board, slot)
+      )
+    );
+  };
+  const reader = createFeedReader();
+  const recent = await reader(f.sdk, f.node, "board", f.layout);
+  assert.equal(batches.length, 10);
+  assert.ok(
+    batches.every(({ block, slots }) => block === 42 && slots.length === 19)
+  );
+  assert.ok(
+    recent.posts.every(
+      (post) =>
+        post.text === "A" && post.publishedAt === 1_793_275_200 + post.id
+    )
+  );
+  await reader(f.sdk, f.node, "board", f.layout);
+  assert.equal(batches.length, 10, "cached posts do not reread timestamps");
+  const older = await reader(f.sdk, f.node, "board", f.layout, recent.cursor);
+  assert.deepEqual(
+    older.posts.map((post) => post.publishedAt),
+    [1_793_275_200, 1_793_275_201]
+  );
+  assert.ok(batches.every(({ block }) => block === 42));
+});
+
+test("old boards and invalid timestamps never fabricate a publication date", async () => {
+  const f = feedFixture(1);
+  assert.equal((await f.read()).posts[0].publishedAt, undefined);
+  f.layout.post_timestamps = { slot: "time" };
+  const read = f.node.getPublicStorageAt;
+  for (const invalid of [0n, -1n, 8_640_000_000_001n, 2n ** 64n - 1n]) {
+    f.node.getPublicStorageAt = async (block, board, slot) =>
+      slot.startsWith("time/")
+        ? new f.sdk.Fr(invalid)
+        : read(block, board, slot);
+    const { posts } = await f.read();
+    assert.equal(posts[0].publishedAt, undefined);
+    assert.equal(posts[0].text, "A");
+  }
+});

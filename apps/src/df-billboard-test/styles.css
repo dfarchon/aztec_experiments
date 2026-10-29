@@ -609,7 +609,7 @@ textarea::placeholder {
 }
 #feed article {
   display: grid;
-  grid-template-columns: 46px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   align-items: baseline;
   min-width: 0;
@@ -1102,6 +1102,18 @@ textarea::placeholder {
   color: var(--muted);
   font: 11px var(--font-mono);
 }
+.post-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.post-meta time::before {
+  content: "·";
+  margin-right: 8px;
+}
 .empty-state {
   display: grid;
   justify-items: center;
@@ -1259,7 +1271,6 @@ textarea::placeholder {
     padding: 0;
   }
   #feed article {
-    grid-template-columns: 32px minmax(0, 1fr);
     gap: 8px;
   }
   .reading-option {

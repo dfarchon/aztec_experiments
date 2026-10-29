@@ -82,6 +82,41 @@ unconstrained fn account_created_after_deployment_can_post() {
 }
 
 #[test]
+unconstrained fn publication_time_uses_inclusion_block_and_remains_immutable() {
+    let (env, board, _, owner) = setup();
+    let anchor_time = env.last_block_timestamp();
+    env.set_next_block_timestamp(anchor_time + 60);
+    env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
+    assert(env.view_public(DFBillboard::at(board).get_post_timestamp(0)) == anchor_time + 60);
+    env.mine_block_at(anchor_time + 120);
+    env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
+    assert(env.view_public(DFBillboard::at(board).get_post_timestamp(1)) == anchor_time + 120);
+    assert(env.view_public(DFBillboard::at(board).get_post_timestamp(0)) == anchor_time + 60);
+}
+
+#[test]
+unconstrained fn l1_post_records_l2_publication_time() {
+    let mut env = TestEnvironment::new();
+    let owner = env.create_light_account();
+    let entry = EthAddress::from_field(123);
+    let board = env.deploy("@df_billboard/DFBillboard").with_public_initializer(
+        owner, DFBillboard::interface().constructor_with_inbox(entry),
+    );
+    let content = df_billboard::bridge::request_commitment(hello(), 2, 7, owner.to_field());
+    let leaf = env.send_l1_to_l2_message(content, 9, entry, board);
+    let request_time = env.last_block_timestamp();
+    env.mine_block_at(request_time + 120);
+    env.call_private(owner, DFBillboard::at(board).post_from_l1(hello(), 2, 7, 9, leaf));
+    assert(env.view_public(DFBillboard::at(board).get_post_timestamp(0)) == request_time + 120);
+}
+
+#[test(should_fail_with = "Unknown post")]
+unconstrained fn unknown_post_has_no_publication_time() {
+    let (env, board, _, _) = setup();
+    let _ = env.view_public(DFBillboard::at(board).get_post_timestamp(0));
+}
+
+#[test]
 unconstrained fn ten_posts_allowed_in_one_window() {
     let (env, board, _, owner) = setup();
     for _ in 0..10 {

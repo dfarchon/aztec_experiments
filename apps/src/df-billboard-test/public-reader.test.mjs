@@ -98,6 +98,7 @@ test("public reader serializes pinned block reads and handles RPC errors without
 });
 
 test("read layout is bound to the deployed artifact", async (t) => {
+  let withTimestamp = false;
   t.mock.method(globalThis, "fetch", async () => ({
     ok: true,
     json: async () => ({
@@ -106,6 +107,7 @@ test("read layout is bound to the deployed artifact", async (t) => {
         post_count: { slot: "0x02" },
         post_lengths: { slot: "0x03" },
         post_data: { slot: "0x04" },
+        ...(withTimestamp ? { post_timestamps: { slot: "0x06" } } : {}),
       },
     }),
   }));
@@ -113,6 +115,12 @@ test("read layout is bound to the deployed artifact", async (t) => {
   assert.equal(
     (await loadReadLayout("expected")).post_data.slot.toBigInt(),
     4n
+  );
+  assert.equal((await loadReadLayout("expected")).post_timestamps, undefined);
+  withTimestamp = true;
+  assert.equal(
+    (await loadReadLayout("expected")).post_timestamps.slot.toBigInt(),
+    6n
   );
 });
 
@@ -141,17 +149,17 @@ test("storage reads use batches of three, bound concurrency and restore response
   const node = createPublicNode("https://rpc.example");
   const board = `0x${"1".repeat(64)}`;
   const slots = Array.from(
-    { length: 18 },
+    { length: 19 },
     (_, index) => new PublicField(BigInt(index))
   );
   assert.equal(await node.getBlockNumber(), 42);
   const values = await node.getPublicStorageMany(42, board, slots);
   assert.equal(
     requests.length,
-    7,
-    "18 fields use six HTTP batches after the block read"
+    8,
+    "19 fields use seven HTTP batches after the block read"
   );
-  assert.ok(requests.slice(1).every((request) => request.length === 3));
+  assert.ok(requests.slice(1).every((request) => request.length <= 3));
   assert.equal(peak, 3);
   assert.equal(active, 0);
   const calls = requests.slice(1).flat();
@@ -161,7 +169,7 @@ test("storage reads use batches of three, bound concurrency and restore response
   );
   assert.equal(
     new Set([requests[0].id, ...calls.map((call) => call.id)]).size,
-    19
+    20
   );
   for (const [index, call] of calls.entries()) {
     assert.equal(call.method, "node_getPublicStorageAt");
@@ -170,11 +178,11 @@ test("storage reads use batches of three, bound concurrency and restore response
   assert.deepEqual(await node.getPublicStorageMany(42, board, []), []);
   await assert.rejects(
     node.getPublicStorageMany(42, board, [...slots, slots[0]]),
-    /18 slots/
+    /19 slots/
   );
   assert.equal(
     requests.length,
-    7,
+    8,
     "empty and oversized batches do not make requests"
   );
 });

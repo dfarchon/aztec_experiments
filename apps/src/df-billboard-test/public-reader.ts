@@ -121,7 +121,7 @@ export function createPublicNode(url: string) {
       value: { toString(): string },
       slots: Field[]
     ): Promise<PublicField[]> => {
-      if (slots.length > 18) throw new Error("Storage batch exceeds 18 slots");
+      if (slots.length > 19) throw new Error("Storage batch exceeds 19 slots");
       if (!slots.length) return [];
       const contract = address(value.toString());
       // The public RPC accepts at most three calls per HTTP batch.
@@ -163,5 +163,8 @@ export async function loadReadLayout(artifactHash: string): Promise<Layout> {
     post_count: slot("post_count"),
     post_lengths: slot("post_lengths"),
     post_data: slot("post_data"),
+    ...(config.storageLayout.post_timestamps
+      ? { post_timestamps: slot("post_timestamps") }
+      : {}),
   };
 }

@@ -14,7 +14,7 @@ import { classifyRulePosts } from "./moderation.ts";
 const compiled = await build({
   stdin: {
     contents:
-      "export { App } from './App.tsx'; export { Feed, pageNumbers } from './Feed.tsx'; export { ReadingSettings } from './ReadingSettings.tsx'; export { Select } from './Select.tsx';",
+      "export { PostTime, formatPostTime } from './PostTime.tsx'; export { App } from './App.tsx'; export { Feed, pageNumbers } from './Feed.tsx'; export { ReadingSettings } from './ReadingSettings.tsx'; export { Select } from './Select.tsx';",
     resolveDir: fileURLToPath(new URL(".", import.meta.url)),
   },
   bundle: true,
@@ -30,7 +30,15 @@ new Function("require", "module", "exports", compiled.outputFiles[0].text)(
   module,
   module.exports
 );
-const { App, Feed, pageNumbers, ReadingSettings, Select } = module.exports;
+const {
+  App,
+  Feed,
+  pageNumbers,
+  ReadingSettings,
+  Select,
+  PostTime,
+  formatPostTime,
+} = module.exports;
 const renderToStaticMarkup = (element) =>
   renderMarkup(createElement(StaticRouter, { location: "/" }, element));
 
@@ -784,5 +792,47 @@ test("wallet buttons show the shared loading icon only during connection", () =>
       assert.match(button, /disabled=""/);
     }
   }
+  base.dispose();
+});
+
+test("post time uses English relative dates and exposes the exact timestamp", () => {
+  const now = new Date(2026, 9, 29, 14, 30).getTime();
+  assert.equal(formatPostTime(now / 1000, now), "Just now");
+  assert.equal(formatPostTime(now / 1000 - 300, now), "5m ago");
+  assert.equal(formatPostTime(now / 1000 - 7200, now), "2h ago");
+  assert.equal(
+    formatPostTime(new Date(2026, 9, 28, 23, 59).getTime() / 1000, now),
+    "Oct 28"
+  );
+  assert.match(
+    formatPostTime(new Date(2025, 9, 29).getTime() / 1000, now),
+    /2025/
+  );
+  assert.equal(formatPostTime(now / 1000 + 10, now), "Just now");
+  const html = renderToStaticMarkup(
+    createElement(PostTime, { timestamp: now / 1000 - 300, now })
+  );
+  assert.ok(html.includes(new Date(now - 300_000).toISOString()));
+  assert.match(html, /<time[^>]*title="[^"]+"[^>]*aria-label="[^"]+">5m ago/);
+});
+
+test("feed renders publication time only when provided by the contract", () => {
+  const base = createBillboardController();
+  const html = renderToStaticMarkup(
+    createElement(Feed, {
+      controller: base,
+      view: {
+        ...base.getSnapshot(),
+        feedLoaded: true,
+        posts: [
+          { id: 1, text: "New post", publishedAt: 1793275200 },
+          { id: 0, text: "Old post" },
+        ],
+      },
+    })
+  );
+  assert.equal((html.match(/<time /g) || []).length, 1);
+  assert.match(html, /New post/);
+  assert.match(html, /Old post/);
   base.dispose();
 });

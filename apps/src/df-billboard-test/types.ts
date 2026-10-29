@@ -15,6 +15,7 @@ export type WalletMode =
   | "metamask";
 export interface PostData {
   id: number | string;
+  publishedAt?: number;
   text?: string;
   decodeError?: boolean;
   adTier?: string;

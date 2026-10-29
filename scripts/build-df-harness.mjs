@@ -26,7 +26,7 @@ if (!expected || digest(boardArtifact) === expected) {
 const { storageLayout } = loadContractArtifact(JSON.parse(fs.readFileSync(publishedArtifact, 'utf8')));
 fs.writeFileSync(path.join(dist, 'df-read-config.json'), JSON.stringify({
   boardArtifactHash: digest(publishedArtifact),
-  storageLayout: Object.fromEntries(['post_count', 'post_lengths', 'post_data'].map(key => [key, storageLayout[key]])),
+  storageLayout: Object.fromEntries(['post_count', 'post_lengths', 'post_data', 'post_timestamps'].map(key => [key, storageLayout[key]])),
 }) + '\n');
 fs.copyFileSync(fileURLToPath(import.meta.resolve('@aztec-labs/noir-contracts.js/artifacts/sponsored_fpc_contract-SponsoredFPC')),
   path.join(dist, 'df-sponsor-artifact.json'));

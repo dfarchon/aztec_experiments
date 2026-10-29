@@ -29,7 +29,7 @@ export interface FeedNode {
 export type Layout = Record<
   "post_count" | "post_lengths" | "post_data",
   { slot: Field }
->;
+> & { post_timestamps?: { slot: Field } };
 export interface FeedCursor {
   block: number;
   total: number;
@@ -146,6 +146,14 @@ export async function readPostPage(
                 new sdk.Fr(BigInt(id * 17 + i))
               )
             ),
+            ...(layout.post_timestamps
+              ? [
+                  sdk.deriveStorageSlotInMap(
+                    layout.post_timestamps.slot,
+                    new sdk.Fr(BigInt(id))
+                  ),
+                ]
+              : []),
           ]);
           const values = node.getPublicStorageMany
             ? await node.getPublicStorageMany(block, address, slots)
@@ -155,12 +163,21 @@ export async function readPostPage(
             post = {
               id,
               text: decodeDFMessage(
-                values.slice(1),
+                values.slice(1, 18),
                 Number(values[0].toBigInt())
               ),
             };
           } catch {
             post = { id, decodeError: true };
+          }
+          if (layout.post_timestamps) {
+            const timestamp = Number(values[18].toBigInt());
+            if (
+              Number.isSafeInteger(timestamp) &&
+              timestamp > 0 &&
+              timestamp <= 8_640_000_000_000
+            )
+              post.publishedAt = timestamp;
           }
           cache.set(key(id), post);
           if (!failed) publishProgress();

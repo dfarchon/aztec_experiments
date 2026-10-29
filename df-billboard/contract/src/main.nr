@@ -51,6 +51,7 @@ pub contract DFBillboard {
         post_lengths: Map<u32, PublicMutable<u32, Context>, Context>,
         post_data: Map<u32, PublicMutable<Field, Context>, Context>,
         l1_inbox: PublicMutable<EthAddress, Context>,
+        post_timestamps: Map<u32, PublicMutable<u64, Context>, Context>,
     }
 
     #[external("public")]
@@ -188,6 +189,7 @@ pub contract DFBillboard {
             self.storage.post_data.at(id * TEXT_FIELDS + i).write(text[i]);
         }
         self.storage.post_lengths.at(id).write(length);
+        self.storage.post_timestamps.at(id).write(self.context.timestamp());
         self.storage.post_count.write(id + 1);
         self.emit(PostPublished { id });
     }
@@ -196,6 +198,13 @@ pub contract DFBillboard {
     #[view]
     fn get_post_count() -> pub u32 {
         self.storage.post_count.read()
+    }
+
+    #[external("public")]
+    #[view]
+    fn get_post_timestamp(id: u32) -> pub u64 {
+        assert(id < self.storage.post_count.read(), "Unknown post");
+        self.storage.post_timestamps.at(id).read()
     }
 
     #[external("public")]
