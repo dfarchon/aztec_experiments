@@ -29,7 +29,7 @@ export function WalletPanel({ view, controller }: ViewProps) {
     mode === "metamask"
       ? "Connect MetaMask"
       : mode === "extension"
-        ? `Connect ${view.providers[Number(view.provider)]?.name || "Azguard"}`
+        ? `Connect ${view.providers[Number(view.provider)]?.name || "Aztec extension wallet"}`
         : mode === "create"
           ? "Create & connect Aztec account"
           : mode === "import"
@@ -130,7 +130,10 @@ export function WalletPanel({ view, controller }: ViewProps) {
                 label: "MetaMask · Pay L1 gas",
                 disabled: !view.request.available,
               },
-              { value: "extension", label: "Azguard · L2 fees sponsored" },
+              {
+                value: "extension",
+                label: "Aztec extension wallet · L2 fees sponsored",
+              },
               { value: "browser", label: "Browser wallet" },
             ]}
           />
@@ -230,9 +233,10 @@ export function WalletPanel({ view, controller }: ViewProps) {
           </div>
           <div id="extensionOptions" hidden={mode !== "extension"}>
             <p className="small">
-              Open in Chrome with Azguard installed and switch the extension to{" "}
+              Install an Aztec wallet extension such as Nulo and select the
+              matching Aztec network ({" "}
               <code>{view.deployment?.nodeUrl || "http://127.0.0.1:5180"}</code>
-              .
+              ).
             </p>
             <div className="row">
               <button

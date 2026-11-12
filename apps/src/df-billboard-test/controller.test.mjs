@@ -1076,12 +1076,12 @@ test("changed network is checked again before submitting", async (t) => {
   assert.match(controller.getSnapshot().actionError.message, /does not match/);
 });
 
-test("extension discovery, emoji confirmation and capability grants preserve the connection flow", async (t) => {
+test("Nulo discovery, emoji confirmation and capability grants preserve the connection flow", async (t) => {
   const { controller, sdk, node } = fixture(t);
   let confirmed = 0;
   const provider = {
-    id: "azguard",
-    name: "Azguard",
+    id: "nulo",
+    name: "Nulo",
     establishSecureChannel: async () => ({
       verificationHash: "test",
       cancel() {},
@@ -1123,6 +1123,7 @@ test("extension discovery, emoji confirmation and capability grants preserve the
       getAvailableWallets: () => ({
         wallets: (async function* () {
           yield provider;
+          yield { ...provider, id: "another-wallet", name: "Another wallet" };
         })(),
         done: Promise.resolve(),
         cancel() {},
@@ -1132,6 +1133,10 @@ test("extension discovery, emoji confirmation and capability grants preserve the
   await controller.initialize();
   controller.setField("walletMode", "extension");
   await controller.connect();
+  assert.deepEqual(
+    controller.getSnapshot().providers.map((item) => item.name),
+    ["Nulo", "Another wallet"]
+  );
   assert.equal(controller.getSnapshot().pendingConnection, true);
   assert.equal(controller.getSnapshot().verification, true);
   assert.equal(controller.getSnapshot().emoji, "🌲 🌎");
@@ -1141,6 +1146,37 @@ test("extension discovery, emoji confirmation and capability grants preserve the
   assert.equal(controller.getSnapshot().connected, true);
   assert.equal(controller.getSnapshot().verification, false);
   assert.equal(controller.getSnapshot().walletOpen, false);
+});
+
+test("extension discovery finishes shortly after a wallet responds", async (t) => {
+  const { controller, sdk, node } = fixture(t);
+  let cancelDiscovery;
+  let cancelled = false;
+  sdk.createAztecNodeClient = () => node;
+  sdk.WalletManager = {
+    configure: () => ({
+      getAvailableWallets: () => ({
+        wallets: (async function* () {
+          yield { id: "nulo", name: "Nulo" };
+          await new Promise((resolve) => {
+            cancelDiscovery = resolve;
+          });
+        })(),
+        done: Promise.resolve(),
+        cancel() {
+          cancelled = true;
+          cancelDiscovery?.();
+        },
+      }),
+    }),
+  };
+  await controller.initialize();
+  await controller.scan();
+  assert.equal(cancelled, true);
+  assert.deepEqual(controller.getSnapshot().providers, [
+    { id: "nulo", name: "Nulo" },
+  ]);
+  assert.match(controller.getSnapshot().extensionStatus, /Found Nulo/);
 });
 
 test("AI publishes labels to subscribers, reuses cache and stops when disabled", async (t) => {

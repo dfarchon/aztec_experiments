@@ -150,7 +150,7 @@ test("one wallet menu offers MetaMask and Aztec without a second composer", () =
   );
   assert.match(html, /role="combobox"/);
   assert.match(html, /MetaMask · Pay L1 gas/);
-  assert.match(html, /Azguard · L2 fees sponsored/);
+  assert.match(html, /Aztec extension wallet · L2 fees sponsored/);
   assert.doesNotMatch(
     html,
     /<select|testing only|testOptions|panel-address|id="localStatus"/
@@ -357,7 +357,7 @@ test("wallet selector has three methods and nests browser account actions", () =
     ];
     assert.equal(options.length, 3);
     const methods = options.map((option) => option[1]).join(" ");
-    for (const name of ["MetaMask", "Azguard", "Browser wallet"])
+    for (const name of ["MetaMask", "Aztec extension wallet", "Browser wallet"])
       assert.ok(methods.includes(name));
     assert.doesNotMatch(
       methods,

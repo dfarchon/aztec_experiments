@@ -16,11 +16,11 @@ React 18 + TypeScript + Vite + React Router。视觉沿用 DFArchon 的黑色、
 | `/` 留言广场 | 匿名发帖、读取公开留言、搜索已读取内容、按新旧排序、分批展示、展开折叠内容 |
 | `/?view=settings` 阅读偏好 | 用户关键词、基础规则、本地 AI 三个独立开关 |
 | `/?view=activity` 发布记录 | 本浏览器保存的 MetaMask 发帖请求及提交进度 |
-| 右上角钱包 | MetaMask、Azguard 或浏览器 Aztec 账号；共用同一个留言板与发言框，可用 Switch wallet 切换 |
+| 右上角钱包 | MetaMask、Aztec 扩展钱包或浏览器 Aztec 账号；共用同一个留言板与发言框，可用 Switch wallet 切换 |
 | 连接详情（仅开发模式） | RPC、留言板、Sponsored FPC 地址及运行记录；生产构建不显示 |
 
-钱包菜单只列 MetaMask、Azguard、Browser wallet。选择 Browser wallet 后，再选择使用已有账号、创建账号或导入备份。
-证明模式由客户端验证过的部署清单决定，不提供用户切换开关：本地使用 synthetic，公共测试网必须使用真实证明。公共测试网合约已部署；2026-10-24 已从本地网页实测 Browser wallet 直发与 MetaMask Sepolia 请求到 Aztec 发帖，两条帖子刷新后均可读取。Azguard 扩展和线上 HTTPS 站点尚未完成该验证。本地网页连接公共测试网无需启动本地链，切换步骤见 [部署说明](DEPLOYMENT.md#use-public-testnet-from-a-local-website)。
+钱包菜单只列 MetaMask、Aztec extension wallet、Browser wallet。扩展钱包通过 Aztec Wallet SDK 发现，Nulo 等兼容扩展可被选择；选择 Browser wallet 后，再选择使用已有账号、创建账号或导入备份。
+证明模式由客户端验证过的部署清单决定，不提供用户切换开关：本地使用 synthetic，公共测试网必须使用真实证明。公共测试网合约已部署；2026-10-24 已从本地网页实测 Browser wallet 直发与 MetaMask Sepolia 请求到 Aztec 发帖，两条帖子刷新后均可读取。Nulo 扩展发帖路径尚未完成实测。本地网页连接公共测试网无需启动本地链，切换步骤见 [部署说明](DEPLOYMENT.md#use-public-testnet-from-a-local-website)。
 运行日志在 Vite 开发模式显示，生产构建和 preview 不显示；操作进度与失败提示始终保留。
 阅读偏好只读取当前 v5 格式，不再迁移 v2–v4；旧偏好、钱包密钥及待处理交易数据不会被删除。
 

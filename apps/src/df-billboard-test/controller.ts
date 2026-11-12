@@ -75,7 +75,7 @@ export function createBillboardController(deps = {}): BillboardController {
     deployment: null,
     progress: null,
     actionError: null,
-    extensionStatus: "Waiting to connect Azguard",
+    extensionStatus: "Waiting to connect an Aztec extension wallet",
     copied: false,
     message: "",
     request: emptyRequestView,
@@ -593,7 +593,7 @@ export function createBillboardController(deps = {}): BillboardController {
     showProgress("Scanning for Aztec extension wallets…");
     patch({
       extensionStatus:
-        "Looking for Azguard. If a connection request appears in your wallet, approve it within 60 seconds…",
+        "Looking for Aztec extension wallets. Approve the request in your wallet within 60 seconds…",
     });
     const a = A();
     const node = a.createAztecNodeClient(deployment.nodeUrl);
@@ -609,26 +609,20 @@ export function createBillboardController(deps = {}): BillboardController {
       timeout: 60000,
     });
     providers = [];
+    let stopAfterFirst;
     try {
       for await (const provider of discovery.wallets) {
         if (!providers.some((item) => item.id === provider.id))
           providers.push(provider);
-        // The discovered MessagePort remains usable after stopping discovery.
-        // Avoid making an already-discovered Azguard wait for the full timeout.
-        if (/azguard/i.test(provider.name) || /azguard/i.test(provider.id)) {
-          discovery.cancel();
-          break;
-        }
+        // Allow other extensions a brief window, then stop waiting for the
+        // full discovery timeout. Discovered MessagePorts remain usable.
+        stopAfterFirst ||= setTimeout(() => discovery.cancel(), 1500);
       }
       await discovery.done;
     } finally {
+      clearTimeout(stopAfterFirst);
       discovery.cancel();
     }
-    providers.sort(
-      (left, right) =>
-        Number(/azguard/i.test(right.name) || /azguard/i.test(right.id)) -
-        Number(/azguard/i.test(left.name) || /azguard/i.test(left.id))
-    );
     patch({
       providers: providers.map(({ name, id }) => ({ name, id })),
       provider: "0",
@@ -636,14 +630,14 @@ export function createBillboardController(deps = {}): BillboardController {
 
     patch({
       extensionStatus: providers.length
-        ? `Found ${providers.map((provider) => provider.name).join(", ")}. Azguard is preferred.`
-        : `No Azguard response. After switching nodes, approve this site again in your wallet. Check extension site permissions and compatibility with Aztec ${SDK_VERSION}.`,
+        ? `Found ${providers.map((provider) => provider.name).join(", ")}.`
+        : `No extension wallet responded. Check its network, site permissions and compatibility with Aztec ${SDK_VERSION}.`,
     });
     publishSession();
     log(
       providers.length
         ? `Found ${providers.length} Aztec extension wallets. Select one to connect.`
-        : "No Aztec extension wallets found. Check Azguard site permissions and version, or use the browser wallet.",
+        : "No Aztec extension wallets found. Check wallet site permissions and version, or use the browser wallet.",
       providers.length ? "success" : "info",
       "log"
     );
@@ -653,7 +647,7 @@ export function createBillboardController(deps = {}): BillboardController {
     const provider = providers[Number(view.provider)];
     if (!provider)
       throw new Error(
-        `Azguard was not found. Check extension site permissions and Aztec ${SDK_VERSION} compatibility.`
+        `No Aztec extension wallet was found. Check site permissions and Aztec ${SDK_VERSION} compatibility.`
       );
     patch({
       extensionStatus: `Requesting a secure connection to ${provider.name}…`,
@@ -797,7 +791,8 @@ export function createBillboardController(deps = {}): BillboardController {
     pendingConnection = null;
     patch({ verification: false });
     patch({
-      extensionStatus: "Connection cancelled. You can reconnect to Azguard.",
+      extensionStatus:
+        "Connection cancelled. You can reconnect to your wallet.",
     });
     publishSession();
   }
