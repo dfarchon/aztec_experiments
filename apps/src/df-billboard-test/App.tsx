@@ -1,7 +1,8 @@
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { AsciiClouds } from "./AsciiClouds";
+import { BoardGuide } from "./BoardGuide";
 import { Brand } from "./Brand";
 import { Feed } from "./Feed";
 import { Hint } from "./Hint";
@@ -66,6 +67,7 @@ export function App({
   development?: boolean;
 }) {
   const mainRef = useRef<HTMLDivElement>(null);
+  const [guideReplay, setGuideReplay] = useState(0);
   const [params, setParams] = useSearchParams();
   const selected = params.get("view");
   const section =
@@ -148,6 +150,18 @@ export function App({
                 </button>
               )}
               <h1>{title}</h1>
+              {section === "settings" && (
+                <button
+                  type="button"
+                  className="guide-replay"
+                  onClick={() => {
+                    navigate("board");
+                    setGuideReplay((value) => value + 1);
+                  }}
+                >
+                  Show guide
+                </button>
+              )}
             </div>
             <div className="board-page" hidden={section !== "board"}>
               <Feed view={view} controller={controller} />
@@ -285,6 +299,7 @@ export function App({
         </a>
       </footer>
       <NotificationToasts view={view} />
+      <BoardGuide active={section === "board"} replay={guideReplay} />
     </div>
   );
 }

@@ -979,6 +979,74 @@ textarea::placeholder {
   line-height: 1.35;
   letter-spacing: -0.025em;
 }
+.guide-replay {
+  margin-left: auto;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.driver-popover.billboard-tour {
+  width: min(300px, calc(100vw - 24px));
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--accent-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 60%);
+  font-family: var(--font);
+}
+.billboard-tour .driver-popover-title {
+  color: var(--heading);
+  font-size: 17px;
+  padding-right: 34px;
+}
+.billboard-tour .driver-popover-description {
+  color: var(--muted);
+  font-size: 13px;
+}
+.billboard-tour .driver-popover-progress-text {
+  color: var(--muted);
+}
+.billboard-tour .driver-popover-close-btn,
+.billboard-tour .driver-popover-close-btn:hover {
+  color: var(--text);
+  width: auto;
+  height: auto;
+  top: 16px;
+  right: 18px;
+  font-size: 12px;
+}
+.billboard-tour .driver-popover-footer-btn {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: 12px var(--font);
+  padding: 7px 11px;
+}
+.billboard-tour .driver-popover-footer-btn:hover,
+.billboard-tour .driver-popover-footer-btn:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+.billboard-tour .driver-popover-footer-btn:focus-visible,
+.billboard-tour .driver-popover-close-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.billboard-tour .driver-popover-arrow-side-left {
+  border-left-color: var(--surface);
+}
+.billboard-tour .driver-popover-arrow-side-right {
+  border-right-color: var(--surface);
+}
+.billboard-tour .driver-popover-arrow-side-top {
+  border-top-color: var(--surface);
+}
+.billboard-tour .driver-popover-arrow-side-bottom {
+  border-bottom-color: var(--surface);
+}
 .compose-cost {
   display: flex;
   flex-wrap: wrap;
@@ -1028,6 +1096,10 @@ textarea::placeholder {
   padding: 0;
   border: 0;
   margin-bottom: 0;
+}
+.feed-card.driver-active-element {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 3px;
 }
 .feed-heading {
   flex: none;

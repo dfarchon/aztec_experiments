@@ -59,6 +59,7 @@
     "@aztec-labs/wallets": "6.0.0",
     "@fontsource/fira-sans": "5.3.0",
     "@huggingface/transformers": "4.3.1",
+    "driver.js": "1.12.1",
     "ethers": "^6.17.0",
     "fake-indexeddb": "^6.2.5",
     "linkifyjs": "4.3.3",

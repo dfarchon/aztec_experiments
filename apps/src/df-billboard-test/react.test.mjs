@@ -22,7 +22,12 @@ const compiled = await build({
   format: "cjs",
   jsx: "automatic",
   write: false,
-  external: ["react", "react/jsx-runtime", "react-router-dom"],
+  external: [
+    "react",
+    "react/jsx-runtime",
+    "react-router-dom",
+    "./board-guide-driver",
+  ],
 });
 const module = { exports: {} };
 new Function("require", "module", "exports", compiled.outputFiles[0].text)(
@@ -209,6 +214,7 @@ test("product sections support direct URLs and keep the composer mounted", () =>
       )
     );
     assert.match(html, new RegExp(`<h1>${title}</h1>`));
+    if (section === "settings") assert.match(html, /Show guide/);
     assert.match(html, /class="back-button" aria-label="Back to board"/);
     assert.ok(
       html.indexOf('class="back-button"') < html.indexOf(`<h1>${title}</h1>`)
