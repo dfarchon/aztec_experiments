@@ -2,15 +2,15 @@ import type { PostRequest } from "./l1-request-core";
 
 export type RequestJobView = Pick<
   PostRequest,
-  "commitment" | "text" | "l1Tx" | "l2Tx" | "l2Attempted" | "postId"
+  "text" | "l1Tx" | "l2Tx" | "l2Attempted"
 >;
 export interface RequestView {
   available: boolean;
   payer: string;
-  jobs: RequestJobView[];
+  pending: RequestJobView | null;
 }
 export const emptyRequestView: RequestView = {
   available: false,
   payer: "",
-  jobs: [],
+  pending: null,
 };

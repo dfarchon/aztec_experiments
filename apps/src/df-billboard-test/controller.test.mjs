@@ -256,12 +256,11 @@ function fixture(t, overrides = {}) {
 test("MetaMask and Aztec use one board, one feed and the same composer", async (t) => {
   let emitRequest;
   let config;
-  const request = { available: true, payer: "", jobs: [] };
+  const request = { available: true, payer: "", pending: null };
   const { controller, deployment, posts, calls } = fixture(t, {
     createMetaMaskPosting: (value, _sdk, emit) => {
       config = value;
-      emitRequest = () =>
-        emit({ ...request, jobs: request.jobs.map((job) => ({ ...job })) });
+      emitRequest = () => emit({ ...request });
       return {
         connect: async () => {
           request.payer = "0xpayer";
@@ -293,7 +292,9 @@ test("MetaMask and Aztec use one board, one feed and the same composer", async (
     false
   );
   controller.setField("walletMode", "metamask");
+  controller.setWalletPanel(true);
   await controller.connect();
+  assert.equal(controller.getSnapshot().walletOpen, false);
   assert.equal(config.board, deployment.board);
   assert.equal(config.l1, deployment.l1Request);
   assert.equal(controller.getSnapshot().address, "0xpayer");
@@ -363,12 +364,12 @@ test("MetaMask approval timeout restores the connect button", async (t) => {
 
 test("pending MetaMask posts survive wallet switching and resume without another payment", async (t) => {
   const job = { commitment: "request", text: "pending text", l1Tx: "0xpaid" };
-  const request = { available: true, payer: "", jobs: [job] };
+  const request = { available: true, payer: "", pending: job };
   let payments = 0;
   const { controller, deployment, posts } = fixture(t, {
     createMetaMaskPosting: (_config, _sdk, emit) => {
       const publish = () =>
-        emit({ ...request, jobs: request.jobs.map((job) => ({ ...job })) });
+        emit({ ...request, pending: job.postId ? null : { ...job } });
       return {
         connect: async () => {
           request.payer = "0xpayer";
@@ -396,14 +397,16 @@ test("pending MetaMask posts survive wallet switching and resume without another
   controller.setField("walletMode", "metamask");
   await controller.connect();
   assert.equal(controller.getSnapshot().canPost, false);
+  assert.equal(controller.getSnapshot().walletOpen, true);
   await controller.disconnect();
   await controller.connect();
+  assert.equal(controller.getSnapshot().walletOpen, true);
   controller.setField("message", job.text);
   await controller.resumeRequest();
   assert.equal(payments, 0);
   assert.equal(controller.getSnapshot().message, "");
   assert.equal(controller.getSnapshot().canPost, true);
-  assert.equal(controller.getSnapshot().request.jobs[0].postId, "3");
+  assert.equal(controller.getSnapshot().request.pending, null);
 });
 
 test("old boards never fall back to the isolated MetaMask deployment", async (t) => {
@@ -1003,7 +1006,8 @@ test("confirmed MetaMask recovery stays successful when the feed fails, and refr
   let resumes = 0;
   const { controller, deployment, node } = fixture(t, {
     createMetaMaskPosting: (_config, _sdk, emit) => ({
-      connect: async () => emit({ available: true, payer: "payer", jobs: [] }),
+      connect: async () =>
+        emit({ available: true, payer: "payer", pending: null }),
       resume: async () => {
         resumes++;
         return "confirmed request";
@@ -1519,7 +1523,7 @@ test("MetaMask adapter initialization retries without reloading the shared runti
       if (++attempts === 1) throw Error("MetaMask chunk unavailable");
       return {
         connect: async () =>
-          emit({ available: true, payer: "0xpayer", jobs: [] }),
+          emit({ available: true, payer: "0xpayer", pending: null }),
         dispose() {},
       };
     },

@@ -118,8 +118,7 @@ export function ReadingSettings({ view, controller }: ViewProps) {
             game-asset shops, requests for wallet credentials, token-claim
             links, adult solicitation and repeated external solicitation. Rules
             aim to preserve in-game trading, community activities and
-            discussion. Only your view changes. Mistakes are possible; originals
-            remain available.
+            discussion. Mistakes are possible.
           </Hint>
         </div>
       </section>
@@ -136,9 +135,7 @@ export function ReadingSettings({ view, controller }: ViewProps) {
           <Hint label="About AI filtering">
             Content Safety Guard Small · English and Chinese. Runs locally and
             is off by default. Flagged posts move to Filtered; unreviewed posts
-            remain visible. Requires about 268 MB of weights, a 34 MB tokenizer
-            and runtime files. Posts are not sent to a moderation service.
-            Results can be wrong.
+            remain visible. Results can be wrong.
           </Hint>
         </div>
         {view.aiConsentOpen && (

@@ -896,12 +896,6 @@ textarea::placeholder {
 .nav-item {
   text-align: center;
 }
-.nav-activity {
-  width: auto;
-}
-.nav-item > span {
-  min-width: 0;
-}
 .nav-item > strong {
   display: block;
   font: inherit;
@@ -909,16 +903,12 @@ textarea::placeholder {
 .nav-item.active {
   color: var(--heading);
 }
-.nav-count,
 .count-badge {
   font: 11px var(--font-mono);
   padding: 3px 6px;
   background: var(--accent-tint);
   color: var(--accent);
   border-radius: 5px;
-}
-.nav-count {
-  margin-left: 0;
 }
 .product-main {
   min-width: 0;
@@ -1076,14 +1066,21 @@ textarea::placeholder {
 }
 .request-recovery {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 8px;
-  margin-top: 8px;
-  grid-column: 1 / -1;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.request-recovery p {
+  margin: 0;
+}
+.request-recovery button {
+  align-self: flex-start;
 }
 .request-recovery input {
-  flex: 1;
   min-width: 0;
   font-size: 16px;
 }
@@ -1279,15 +1276,6 @@ textarea::placeholder {
   .nav-settings {
     grid-column: 1;
     grid-row: 1;
-  }
-  .nav-activity {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    width: auto;
-    justify-self: start;
-  }
-  .nav-count {
-    margin-left: 0;
   }
   .board-content {
     padding: 20px;

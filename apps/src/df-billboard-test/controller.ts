@@ -195,7 +195,7 @@ export function createBillboardController(deps = {}): BillboardController {
   }
 
   // Like DF's embedded wallet, local accounts are saved in this browser. The
-  // test page has a different origin from the game, so a game account must be
+  // This site has a different origin from the game, so a game account must be
   // explicitly imported from its backup rather than read from game localStorage.
   function localAccountsKey() {
     return `df-signal:accounts:${deployment.rollupAddress}`;
@@ -274,7 +274,7 @@ export function createBillboardController(deps = {}): BillboardController {
         ? "Open MetaMask and approve or reject the pending request before trying again."
         : /fetch|connect|network/i.test(message)
           ? "Check the local Aztec node and the network selected in your wallet, then retry."
-          : "Check the error details and activity log below. If a transaction was submitted, check the post list and receipt before retrying.";
+          : "If a transaction was submitted, check its receipt and the post list before retrying.";
     patch({ actionError: { label, message, guidance } });
     log(message, "error", "log");
     console.error(error);
@@ -312,8 +312,7 @@ export function createBillboardController(deps = {}): BillboardController {
       address: metamask ? view.request.payer : state.address?.toString() || "",
       hasLocalAccount: !metamask && Boolean(state.localAccount),
       canPost: metamask
-        ? Boolean(view.request.payer) &&
-          !view.request.jobs.some((job) => job.postId === undefined)
+        ? Boolean(view.request.payer) && !view.request.pending
         : Boolean(state.wallet && state.feePaymentMethod && contracts?.board),
       pendingConnection: Boolean(pendingConnection),
     });
@@ -322,9 +321,7 @@ export function createBillboardController(deps = {}): BillboardController {
   async function readArtifact(name) {
     const response = await fetch(`/df-${name}-artifact.json`);
     if (!response.ok)
-      throw new Error(
-        `Missing ${name} contract artifact. Rebuild the test site.`
-      );
+      throw new Error(`Missing ${name} contract artifact. Rebuild the site.`);
     return A().loadContractArtifact(await response.json());
   }
   async function attachContract(name, address) {
@@ -838,7 +835,7 @@ export function createBillboardController(deps = {}): BillboardController {
       await checkChain();
       await checkSponsorBalance();
       await requestPosting.connect();
-      setWalletPanel(false);
+      setWalletPanel(Boolean(view.request.pending));
       await refresh(false);
     } else if (view.walletMode === "extension") {
       try {
@@ -847,8 +844,7 @@ export function createBillboardController(deps = {}): BillboardController {
       } catch (error) {
         if (providers.length)
           patch({
-            extensionStatus:
-              "Connection failed. Check the activity log and retry.",
+            extensionStatus: "Connection failed. Check your wallet and retry.",
           });
         throw error;
       }

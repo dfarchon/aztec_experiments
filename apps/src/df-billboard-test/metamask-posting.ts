@@ -133,20 +133,19 @@ export function createMetaMaskPosting(
   window.addEventListener("storage", onStorage);
   const notify = () => {
     if (disposed) return;
+    const job = pending();
     emit({
       available: true,
       payer,
-      // Never publish request secrets or account keys to React snapshots.
-      jobs: (saved?.jobs || []).map(
-        ({ commitment, text, l1Tx, l2Tx, l2Attempted, postId }) => ({
-          commitment,
-          text,
-          l1Tx,
-          l2Tx,
-          l2Attempted,
-          postId,
-        })
-      ),
+      // Keep recovery secrets and completed requests out of React snapshots.
+      pending: job
+        ? {
+            text: job.text,
+            l1Tx: job.l1Tx,
+            l2Tx: job.l2Tx,
+            l2Attempted: job.l2Attempted,
+          }
+        : null,
     });
   };
   const persist = () => {

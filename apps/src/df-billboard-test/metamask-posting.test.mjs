@@ -268,7 +268,7 @@ test("a different tab resumes a paid request without paying again; storage event
   f.state.publishError = Error("RPC unavailable");
   await assert.rejects(first.post("recover me"), /RPC unavailable/);
   f.notifyStorage();
-  assert.equal(f.snapshots[1].jobs[0].l1Tx, "0xpaid");
+  assert.equal(f.snapshots[1].pending.l1Tx, "0xpaid");
   await assert.rejects(second.post("new"), /existing request/);
   f.state.publishError = null;
   first.dispose();
@@ -278,8 +278,7 @@ test("a different tab resumes a paid request without paying again; storage event
   assert.equal(f.state.payments, 1);
   assert.equal(f.state.published, 1);
   f.notifyStorage();
-  assert.equal(f.snapshots[1].jobs[0].postId, "1");
-  assert.equal("secret" in f.snapshots[1].jobs[0], false);
+  assert.equal(f.snapshots[1].pending, null);
 });
 
 test("wallet rejection removes only the new request and permits a later retry", async (t) => {

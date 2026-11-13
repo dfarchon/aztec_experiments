@@ -10,7 +10,6 @@ import { Icon } from "./Icon";
 import { LoadingIcon } from "./LoadingIcon";
 import { NotificationToasts } from "./NotificationToasts";
 import { ReadingSettings } from "./ReadingSettings";
-import { RequestRecovery } from "./RequestRecovery";
 import type { BillboardController, BillboardView } from "./types";
 import { WalletPanel } from "./WalletPanel";
 
@@ -70,8 +69,7 @@ export function App({
   const [guideReplay, setGuideReplay] = useState(0);
   const [params, setParams] = useSearchParams();
   const selected = params.get("view");
-  const section =
-    selected === "settings" || selected === "activity" ? selected : "board";
+  const section = selected === "settings" ? "settings" : "board";
   const navigate = (value: string) => {
     setParams(value === "board" ? {} : { view: value });
   };
@@ -84,14 +82,8 @@ export function App({
     controller.getSnapshot
   );
   const bytes = new TextEncoder().encode(view.message).length;
-  const pending = view.request.jobs.filter(
-    (job) => job.postId === undefined
-  ).length;
-  const title = {
-    board: "Public board",
-    settings: "Settings",
-    activity: "Activity",
-  }[section];
+  const pendingPost =
+    view.walletMode === "metamask" && Boolean(view.request.pending);
   return (
     <div className="billboard-app">
       <AsciiClouds paused={view.busy} />
@@ -107,27 +99,13 @@ export function App({
               className="product-navigation"
               aria-label="Billboard navigation"
             >
-              {(
-                [
-                  ["settings", "Settings"],
-                  ["activity", "Activity"],
-                ] as const
-              ).map(([key, label]) => (
-                <button
-                  key={key}
-                  hidden={
-                    key === "activity" && !pending && section !== "activity"
-                  }
-                  className={`header-action nav-item nav-${key}${section === key ? " active" : ""}`}
-                  aria-current={section === key ? "page" : undefined}
-                  onClick={() => navigate(key)}
-                >
-                  <strong>{label}</strong>
-                  {key === "activity" && pending > 0 && (
-                    <span className="nav-count">{pending}</span>
-                  )}
-                </button>
-              ))}
+              <button
+                className={`header-action nav-item nav-settings${section === "settings" ? " active" : ""}`}
+                aria-current={section === "settings" ? "page" : undefined}
+                onClick={() => navigate("settings")}
+              >
+                <strong>Settings</strong>
+              </button>
             </nav>
             <WalletPanel view={view} controller={controller} />
           </div>
@@ -149,7 +127,7 @@ export function App({
                   <span aria-hidden="true">←</span> Back
                 </button>
               )}
-              <h1>{title}</h1>
+              <h1>Settings</h1>
               {section === "settings" && (
                 <button
                   type="button"
@@ -177,39 +155,6 @@ export function App({
               <ReadingSettings view={view} controller={controller} />
               {development && <DebugPanel view={view} />}
             </section>
-            <section
-              hidden={section !== "activity"}
-              className="activity-page"
-              aria-label="Publishing activity"
-            >
-              {view.request.jobs.length > 0 && (
-                <section aria-label="MetaMask posts">
-                  <h2>MetaMask posts</h2>
-                  {view.request.jobs.map((job) => (
-                    <details key={job.commitment}>
-                      <summary>
-                        {job.postId === undefined
-                          ? "Pending post"
-                          : `Post #${job.postId}`}
-                      </summary>
-                      <p>{job.text}</p>
-                      <p className="mono">L1: {job.l1Tx || "Unknown"}</p>
-                      <p className="mono">L2: {job.l2Tx || "Pending"}</p>
-                    </details>
-                  ))}
-                </section>
-              )}
-              {!view.request.jobs.length && (
-                <div className="empty-state">
-                  <Icon name="activity" />
-                  <h2>No MetaMask posts yet</h2>
-                  <p>Your MetaMask posting requests will appear here.</p>
-                  <button onClick={() => navigate("board")}>
-                    Go to public board
-                  </button>
-                </div>
-              )}
-            </section>
           </div>
           <section
             className="card compose-card"
@@ -224,11 +169,7 @@ export function App({
               rows={2}
               placeholder="Leave a message…"
               value={view.message}
-              disabled={
-                view.busy ||
-                (view.walletMode === "metamask" &&
-                  view.request.jobs.some((job) => job.postId === undefined))
-              }
+              disabled={view.busy || pendingPost}
               onChange={(event) =>
                 controller.setField("message", event.target.value)
               }
@@ -259,20 +200,28 @@ export function App({
                 type="button"
                 aria-busy={view.posting}
                 aria-label={
-                  !view.busy && !view.connected ? "Connect to post" : undefined
+                  pendingPost
+                    ? "Continue pending post in wallet"
+                    : !view.busy && !view.connected
+                      ? "Connect to post"
+                      : undefined
                 }
                 disabled={
                   view.busy ||
-                  (view.connected && (!view.canPost || !bytes || bytes > 512))
+                  (view.connected &&
+                    !pendingPost &&
+                    (!view.canPost || !bytes || bytes > 512))
                 }
                 onClick={() =>
-                  view.connected
-                    ? void controller.post()
-                    : controller.setWalletPanel(true)
+                  pendingPost || !view.connected
+                    ? controller.setWalletPanel(true)
+                    : void controller.post()
                 }
               >
                 {view.posting ? (
                   "Posting…"
+                ) : pendingPost ? (
+                  "Continue post"
                 ) : view.connected ? (
                   "Post"
                 ) : (
@@ -289,7 +238,6 @@ export function App({
                 {view.posting ? <LoadingIcon /> : <Icon name="arrow" />}
               </button>
             </div>
-            <RequestRecovery view={view} controller={controller} />
           </section>
         </main>
       </div>

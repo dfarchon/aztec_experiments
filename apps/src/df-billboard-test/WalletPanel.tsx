@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { LoadingIcon } from "./LoadingIcon";
+import { RequestRecovery } from "./RequestRecovery";
 import { Select } from "./Select";
 import type { BillboardController, ViewProps, WalletMode } from "./types";
 
@@ -226,8 +227,7 @@ export function WalletPanel({ view, controller }: ViewProps) {
                 }
               />
               <p className="small">
-                The file is read locally and never uploaded. Connect your
-                account to post; no DF game account is required.
+                The file is read locally and never uploaded.
               </p>
             </div>
           </div>
@@ -320,12 +320,13 @@ export function WalletPanel({ view, controller }: ViewProps) {
             {connectLabel}
           </button>
         </div>
+        <RequestRecovery view={view} controller={controller} />
         {view.connected && (
           <div className="wallet-account-actions">
             {mode === "metamask" && (
               <p className="small">
-                Local prototype · Browser keys are stored unencrypted. Keep this
-                browser&apos;s site data until pending posts finish.
+                Browser keys are stored unencrypted. Keep this browser&apos;s
+                site data until pending posts finish.
               </p>
             )}
             <button

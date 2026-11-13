@@ -148,7 +148,7 @@ test("one wallet menu offers MetaMask and Aztec without a second composer", () =
     ...base.getSnapshot(),
     walletOpen: true,
     walletMode: "metamask",
-    request: { available: true, payer: "", jobs: [] },
+    request: { available: true, payer: "", pending: null },
   };
   const html = renderToStaticMarkup(
     createElement(App, { controller: { ...base, getSnapshot: () => view } })
@@ -168,69 +168,83 @@ test("one wallet menu offers MetaMask and Aztec without a second composer", () =
   base.dispose();
 });
 
-test("MetaMask recovery blocks new posts and keeps the original request visible", () => {
+test("MetaMask recovery stays in the wallet without a duplicate activity page", () => {
   const base = createBillboardController();
   const view = {
     ...base.getSnapshot(),
     walletMode: "metamask",
     connected: true,
+    walletOpen: true,
     address: "0xpayer",
     canPost: false,
     message: "pending",
     request: {
       available: true,
       payer: "0xpayer",
-      jobs: [{ commitment: "one", text: "pending", l1Tx: "0xpaid" }],
+      pending: { text: "pending", l1Tx: "0xpaid" },
     },
   };
   const render = () =>
     renderToStaticMarkup(
       createElement(App, { controller: { ...base, getSnapshot: () => view } })
     );
-  assert.match(render(), /Resume post/);
-  assert.match(render(), /id="post"[^>]*disabled/);
+  assert.match(render(), /Continue post/);
+  assert.match(
+    render(),
+    /id="post"[^>]*aria-label="Continue pending post in wallet"/
+  );
+  assert.doesNotMatch(render(), /id="post"[^>]*disabled/);
+  assert.match(render(), /class="request-recovery"/);
+  assert.doesNotMatch(
+    render(),
+    /nav-activity|Publishing activity|Pending post · Resume without another L1 payment/
+  );
   assert.match(render(), /Switch wallet/);
   assert.doesNotMatch(render(), /class="panel-address"/);
-  view.request.jobs[0].l1Tx = undefined;
+  view.request.pending.l1Tx = undefined;
   assert.match(render(), /aria-label="L1 transaction hash"/);
-  assert.match(render(), /Recover post/);
-  view.request.jobs[0].l1Tx = "0xpaid";
-  view.request.jobs[0].l2Attempted = true;
+  assert.match(render(), /Check existing transaction/);
+  view.request.pending.l1Tx = "0xpaid";
+  view.request.pending.l2Attempted = true;
   assert.match(render(), /aria-label="L2 transaction hash"/);
+  view.posting = true;
+  assert.match(render(), /Posting…/);
+  assert.doesNotMatch(render(), /class="request-recovery"/);
+  assert.doesNotMatch(render(), /Continue post/);
   base.dispose();
 });
 
 test("product sections support direct URLs and keep the composer mounted", () => {
   const controller = createBillboardController();
-  for (const [section, title] of [
-    ["settings", "Settings"],
-    ["activity", "Activity"],
-  ]) {
-    const html = renderMarkup(
-      createElement(
-        StaticRouter,
-        { location: `/?view=${section}` },
-        createElement(App, { controller })
-      )
-    );
-    assert.match(html, new RegExp(`<h1>${title}</h1>`));
-    if (section === "settings") assert.match(html, /Show guide/);
-    assert.match(html, /class="back-button" aria-label="Back to board"/);
-    assert.ok(
-      html.indexOf('class="back-button"') < html.indexOf(`<h1>${title}</h1>`)
-    );
-    assert.match(
-      html,
-      new RegExp(
-        `<section class="[^"]+" aria-label="${section === "activity" ? "Publishing activity" : title}">`
-      )
-    );
-    assert.match(
-      html,
-      /class="card compose-card" aria-label="Write a post" hidden=""/
-    );
-    assert.match(html, /id="message"/);
-  }
+  const settings = renderMarkup(
+    createElement(
+      StaticRouter,
+      { location: "/?view=settings" },
+      createElement(App, { controller })
+    )
+  );
+  assert.match(settings, /<h1>Settings<\/h1>/);
+  assert.match(settings, /Show guide/);
+  assert.match(settings, /class="back-button" aria-label="Back to board"/);
+  assert.ok(
+    settings.indexOf('class="back-button"') <
+      settings.indexOf("<h1>Settings</h1>")
+  );
+  assert.match(settings, /<section class="[^"]+" aria-label="Settings">/);
+  assert.match(
+    settings,
+    /class="card compose-card" aria-label="Write a post" hidden=""/
+  );
+  assert.match(settings, /id="message"/);
+  const oldActivityUrl = renderMarkup(
+    createElement(
+      StaticRouter,
+      { location: "/?view=activity" },
+      createElement(App, { controller })
+    )
+  );
+  assert.match(oldActivityUrl, /class="board-content is-board"/);
+  assert.doesNotMatch(oldActivityUrl, /Publishing activity/);
   controller.dispose();
 });
 
@@ -321,7 +335,7 @@ test("account actions live in the wallet without Ethereum copy controls", () => 
   assert.doesNotMatch(html, /publishToL1|Ethereum cop|publish-l1/);
   const settings = html.slice(
     html.indexOf('class="preferences-page"'),
-    html.indexOf('class="activity-page"')
+    html.indexOf('class="card compose-card"')
   );
   assert.doesNotMatch(settings, /id="mergeDuplicates"/);
   assert.doesNotMatch(settings, /Connection details &amp; activity log/);
@@ -579,7 +593,14 @@ test("three independent folding switches default to off", () => {
   assert.doesNotMatch(html, /id="keywordEnabled"[^>]*checked/);
   assert.doesNotMatch(html, /id="aiHints"[^>]*checked/);
   assert.match(html, /Content Safety Guard Small/);
-  assert.match(html, /268 MB/);
+  assert.doesNotMatch(html, /268 MB/);
+  const confirm = renderToStaticMarkup(
+    createElement(ReadingSettings, {
+      view: { ...controller.getSnapshot(), aiConsentOpen: true },
+      controller,
+    })
+  );
+  assert.match(confirm, /268 MB/);
   assert.doesNotMatch(html, /mergeDuplicates|Group duplicate posts/);
   controller.dispose();
 });
