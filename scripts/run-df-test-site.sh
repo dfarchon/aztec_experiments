@@ -38,7 +38,7 @@ node_ready() {
   ' >/dev/null 2>&1
 }
 
-echo 'Building standalone billboard contract and test page...'
+echo 'Building standalone billboard contract and local site...'
 npm run build:df
 npm run build:df:l1
 npm run build:sdk
@@ -75,12 +75,12 @@ npm run deploy:df:harness >.local/df-test-deploy.log 2>&1 || {
   exit 1
 }
 
-echo "DF test page: http://127.0.0.1:${SITE_PORT}/"
+echo "DF billboard: http://127.0.0.1:${SITE_PORT}/"
 echo "Design and testing: df-billboard/README.md"
 node scripts/sync-df-clock.mjs
 node scripts/sync-df-clock.mjs --watch >.local/df-clock.log 2>&1 &
 CLOCK_PID=$!
 echo 'Keep this terminal open while testing; Ctrl+C stops services started here.'
-node node_modules/vite/bin/vite.js --config apps/src/df-billboard-test/vite.config.ts --port "$SITE_PORT" &
+node node_modules/vite/bin/vite.js --config apps/src/df-billboard/vite.config.ts --port "$SITE_PORT" &
 SITE_PID=$!
 wait "$SITE_PID"

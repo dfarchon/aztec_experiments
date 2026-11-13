@@ -19,7 +19,7 @@ import { SponsoredFPCContract } from '@aztec-labs/noir-contracts.js/SponsoredFPC
 import { computeSecretHash, siloNullifier } from '@aztec-labs/stdlib/hash';
 import { computeFeeJuiceMessageNullifier } from '@aztec-labs/stdlib/messaging';
 import { getFeeJuiceBalance } from '@aztec-labs/aztec.js/utils';
-import { createRequestSession, readRequestReceipt, requestABI, requestCommitment, validateRequestConfig, verifyRequestEntry } from '../apps/src/df-billboard-test/l1-request-core.ts';
+import { createRequestSession, readRequestReceipt, requestABI, requestCommitment, validateRequestConfig, verifyRequestEntry } from '../apps/src/df-billboard/l1-request-core.ts';
 import { syncLocalClock } from './sync-df-clock.mjs';
 
 const root = new URL('../', import.meta.url);

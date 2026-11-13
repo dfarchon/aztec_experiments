@@ -8,7 +8,7 @@ import { loadContractArtifact } from '@aztec-labs/aztec.js/abi';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const dist = process.env.BILLBOARD_OUTPUT_DIR ? path.resolve(process.env.BILLBOARD_OUTPUT_DIR) : path.join(root, 'apps/dist');
-const source = path.join(root, 'apps/src/df-billboard-test');
+const source = path.join(root, 'apps/src/df-billboard');
 fs.mkdirSync(dist, { recursive: true });
 const boardArtifact = path.join(root, 'df-billboard/target/df_billboard-DFBillboard.json');
 if (!fs.existsSync(boardArtifact)) throw new Error(`Missing ${boardArtifact}. Run npm run build:df first.`);

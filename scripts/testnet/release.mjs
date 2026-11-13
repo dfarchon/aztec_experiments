@@ -67,9 +67,9 @@ export async function buildRelease(manifest, destination, target = 'vercel') {
   const env = { ...process.env, BILLBOARD_OUTPUT_DIR: dist };
   // Rebuild SDK to prevent stale local runtime assets from entering a release.
   await run(['scripts/build-sdk.mjs'], env);
-  await run(['node_modules/typescript/bin/tsc', '-p', 'apps/src/df-billboard-test/tsconfig.json'], env);
+  await run(['node_modules/typescript/bin/tsc', '-p', 'apps/src/df-billboard/tsconfig.json'], env);
   await run(['scripts/build-df-harness.mjs'], env);
-  await run(['node_modules/vite/bin/vite.js', 'build', '--config', 'apps/src/df-billboard-test/vite.config.ts'], env);
+  await run(['node_modules/vite/bin/vite.js', 'build', '--config', 'apps/src/df-billboard/vite.config.ts'], env);
   assert.equal(digest(fs.readFileSync(path.join(dist, 'df-board-artifact.json'))), manifest.boardArtifactHash);
   if (target === 'netlify') {
     // Hosting rules are emitted only after all build steps succeed.

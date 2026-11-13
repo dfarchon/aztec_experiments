@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { createReadingReport } from '../apps/src/df-billboard-test/report-data.ts';
+import { createReadingReport } from '../apps/src/df-billboard/report-data.ts';
 
 // Evidence stays outside the repository. Generate an offline report on demand,
 // independently of the product build; no wallet/deployment data is copied.

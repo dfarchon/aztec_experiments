@@ -7,9 +7,9 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default defineConfig([
-  globalIgnores(["apps/dist", "apps/src/df-billboard-test/node_modules"]),
+  globalIgnores(["apps/dist", "apps/src/df-billboard/node_modules"]),
   {
-    files: ["apps/src/df-billboard-test/**/*.{ts,tsx,mjs}"],
+    files: ["apps/src/df-billboard/**/*.{ts,tsx,mjs}"],
     extends: [
       js.configs.recommended,
       tseslint.configs.recommended,
@@ -40,8 +40,8 @@ export default defineConfig([
   {
     // Existing SDK adapters opt out of type checking; keep this exception narrow.
     files: [
-      "apps/src/df-billboard-test/controller.ts",
-      "apps/src/df-billboard-test/toxicity.worker.ts",
+      "apps/src/df-billboard/controller.ts",
+      "apps/src/df-billboard/toxicity.worker.ts",
     ],
     rules: { "@typescript-eslint/ban-ts-comment": "off" },
   },
