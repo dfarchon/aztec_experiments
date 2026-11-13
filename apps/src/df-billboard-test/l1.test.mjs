@@ -44,3 +44,22 @@ test("MetaMask requests add an unknown local chain but never bypass rejection", 
   );
   assert.deepEqual(rejected, ["eth_chainId", "wallet_switchEthereumChain"]);
 });
+
+test("an unanswered network switch releases the page after a timeout", async () => {
+  const provider = {
+    request: async ({ method }) => {
+      if (method === "eth_chainId") return "0x1";
+      return new Promise(() => {});
+    },
+  };
+  await assert.rejects(
+    switchEthereumChain(
+      provider,
+      "0x7a69",
+      "http://127.0.0.1:5954",
+      "local",
+      10
+    ),
+    /network switch timed out/
+  );
+});

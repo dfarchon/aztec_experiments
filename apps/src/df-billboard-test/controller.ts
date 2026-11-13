@@ -270,9 +270,11 @@ export function createBillboardController(deps = {}): BillboardController {
     const message = error?.message || String(error);
     const guidance = message.includes("Timestamp too old")
       ? "The local chain timestamp may be stale after inactivity. Run node scripts/sync-df-clock.mjs --watch in the project terminal, wait for synchronization, then retry. Do not clear your wallet or reset the chain."
-      : /fetch|connect|network/i.test(message)
-        ? "Check the local Aztec node and the network selected in your wallet, then retry."
-        : "Check the error details and activity log below. If a transaction was submitted, check the post list and receipt before retrying.";
+      : /MetaMask.*(?:timed out|pending|still open)/i.test(message)
+        ? "Open MetaMask and approve or reject the pending request before trying again."
+        : /fetch|connect|network/i.test(message)
+          ? "Check the local Aztec node and the network selected in your wallet, then retry."
+          : "Check the error details and activity log below. If a transaction was submitted, check the post list and receipt before retrying.";
     patch({ actionError: { label, message, guidance } });
     log(message, "error", "log");
     console.error(error);

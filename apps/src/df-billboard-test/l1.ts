@@ -9,6 +9,41 @@ type Injected = Eip1193Provider & {
   on?(event: string, callback: () => void): void;
   removeListener?(event: string, callback: () => void): void;
 };
+
+export const WALLET_APPROVAL_TIMEOUT_MS = 60_000;
+
+export async function waitForWalletApproval<T>(
+  request: Promise<T>,
+  action: string,
+  timeoutMs = WALLET_APPROVAL_TIMEOUT_MS
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      request,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new Error(
+                `MetaMask ${action} timed out. Approve or reject the pending request in MetaMask before retrying.`
+              )
+            ),
+          timeoutMs
+        );
+      }),
+    ]);
+  } catch (error) {
+    if ((error as { code?: number }).code === -32002)
+      throw new Error(
+        "A MetaMask request is already pending. Approve or reject it in MetaMask before retrying."
+      );
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function findMetaMask(): Promise<Injected> {
   const provider = await new Promise<Injected | undefined>((resolve) => {
     const found: Injected[] = [];
@@ -42,7 +77,8 @@ export async function switchEthereumChain(
   provider: Awaited<ReturnType<typeof findMetaMask>>,
   chainId: string,
   rpcUrl: string,
-  env: Environment = "local"
+  env: Environment = "local",
+  approvalTimeoutMs = WALLET_APPROVAL_TIMEOUT_MS
 ) {
   validateRpc(rpcUrl, env);
   const policy = networkPolicy(env);
@@ -50,29 +86,37 @@ export async function switchEthereumChain(
     throw new Error("Unexpected wallet chain");
   if ((await provider.request({ method: "eth_chainId" })) === chainId) return;
   const switchChain = () =>
-    provider.request({
-      method: "wallet_switchEthereumChain",
-      params: [{ chainId }],
-    });
+    waitForWalletApproval(
+      provider.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId }],
+      }),
+      "network switch",
+      approvalTimeoutMs
+    );
   try {
     await switchChain();
   } catch (error) {
     if ((error as { code?: number }).code !== 4902) throw error;
-    await provider.request({
-      method: "wallet_addEthereumChain",
-      params: [
-        {
-          chainId,
-          chainName: policy.chainName,
-          rpcUrls: [rpcUrl],
-          nativeCurrency: {
-            name: policy.currency,
-            symbol: "ETH",
-            decimals: 18,
+    await waitForWalletApproval(
+      provider.request({
+        method: "wallet_addEthereumChain",
+        params: [
+          {
+            chainId,
+            chainName: policy.chainName,
+            rpcUrls: [rpcUrl],
+            nativeCurrency: {
+              name: policy.currency,
+              symbol: "ETH",
+              decimals: 18,
+            },
           },
-        },
-      ],
-    });
+        ],
+      }),
+      "network setup",
+      approvalTimeoutMs
+    );
     await switchChain();
   }
 }

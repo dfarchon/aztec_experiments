@@ -8,7 +8,12 @@ import {
   readStored,
   writeStored,
 } from "./accounts.ts";
-import { findMetaMask, switchEthereumChain } from "./l1.ts";
+import {
+  findMetaMask,
+  switchEthereumChain,
+  waitForWalletApproval,
+  WALLET_APPROVAL_TIMEOUT_MS,
+} from "./l1.ts";
 import {
   createRequestSession,
   type PostRequest,
@@ -29,6 +34,8 @@ import { withWalletLock } from "./wallet-lock.ts";
 const services = {
   findMetaMask,
   switchEthereumChain,
+  waitForWalletApproval,
+  approvalTimeoutMs: WALLET_APPROVAL_TIMEOUT_MS,
   validateRequestConfig,
   verifyRequestEntry,
   createRequestSession,
@@ -70,6 +77,7 @@ export function createMetaMaskPosting(
   let saved: Saved | undefined;
   let session: Session | undefined;
   let injected: Awaited<ReturnType<typeof findMetaMask>> | undefined;
+  let accountRequest: Promise<string[]> | undefined;
   let payer = "";
   let disposed = false;
   let operating = false;
@@ -204,15 +212,41 @@ export function createMetaMaskPosting(
       }
       payer = "";
       notify();
-      const accounts = (await injected.request({
-        method: "eth_requestAccounts",
-      })) as string[];
+      let accounts: string[];
+      if (accountRequest) {
+        accounts = (await injected.request({
+          method: "eth_accounts",
+        })) as string[];
+        if (!accounts[0])
+          throw new Error(
+            "A MetaMask connection request is still open. Approve or reject it in MetaMask before retrying."
+          );
+      } else {
+        const request = injected.request({
+          method: "eth_requestAccounts",
+        }) as Promise<string[]>;
+        accountRequest = request;
+        void request.then(
+          () => {
+            if (accountRequest === request) accountRequest = undefined;
+          },
+          () => {
+            if (accountRequest === request) accountRequest = undefined;
+          }
+        );
+        accounts = await api.waitForWalletApproval(
+          request,
+          "connection",
+          api.approvalTimeoutMs
+        );
+      }
       if (!accounts[0]) throw new Error("Wallet access was not authorized");
       await api.switchEthereumChain(
         injected,
         chainId,
         config.l1.rpcUrl,
-        requestEnvironment(config)
+        requestEnvironment(config),
+        api.approvalTimeoutMs
       );
       const node = await api.validateRequestConfig(a, config);
       const provider = rpc();

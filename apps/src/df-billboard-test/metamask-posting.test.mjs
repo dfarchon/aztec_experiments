@@ -43,6 +43,9 @@ function fixture(t) {
     publishError: null,
     sendGate: null,
     entered: null,
+    accountRequestGate: null,
+    accountRequests: 0,
+    approvalTimeoutMs: 60_000,
   };
   const config = {
     kind: "local-sponsored-l1-post",
@@ -86,8 +89,18 @@ function fixture(t) {
     json: async () => ({}),
   }));
   const injected = {
-    request: async ({ method }) =>
-      method === "eth_chainId" ? state.chain : [state.account],
+    request: async ({ method }) => {
+      if (method === "eth_chainId") return state.chain;
+      if (method === "eth_accounts")
+        return state.accountRequestGate ? [] : [state.account];
+      if (method === "eth_requestAccounts") {
+        state.accountRequests++;
+        return state.accountRequestGate
+          ? state.accountRequestGate.promise
+          : [state.account];
+      }
+      throw new Error(`Unexpected wallet request: ${method}`);
+    },
     on: (name, cb) => {
       const set = events.get(name) ?? new Set();
       set.add(cb);
@@ -158,7 +171,7 @@ function fixture(t) {
         snapshots[index] = view;
       },
       () => {},
-      api
+      { ...api, approvalTimeoutMs: state.approvalTimeoutMs }
     );
     clients.push(client);
     return client;
@@ -177,6 +190,23 @@ function fixture(t) {
     },
   };
 }
+
+test("an unanswered MetaMask request times out without starting a duplicate request", async (t) => {
+  const f = fixture(t);
+  f.state.accountRequestGate = deferred();
+  f.state.approvalTimeoutMs = 10;
+  const client = f.create();
+  await assert.rejects(client.connect(), /connection timed out/);
+  assert.equal(f.state.accountRequests, 1);
+  assert.equal(f.snapshots[0].payer, "");
+  await assert.rejects(client.connect(), /request is still open/);
+  assert.equal(f.state.accountRequests, 1);
+  f.state.accountRequestGate.resolve([f.state.account]);
+  f.state.accountRequestGate = null;
+  await client.connect();
+  assert.equal(f.snapshots[0].payer, f.state.account);
+  assert.equal(f.state.payments, 0);
+});
 
 test("wallet lock fails closed, rejects concurrent operations and releases after failure", async () => {
   const manager = locks(),

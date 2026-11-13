@@ -328,6 +328,39 @@ test("MetaMask and Aztec use one board, one feed and the same composer", async (
   );
 });
 
+test("MetaMask approval timeout restores the connect button", async (t) => {
+  let rejectRequest;
+  let markEntered;
+  const pending = new Promise((_, reject) => {
+    rejectRequest = reject;
+  });
+  const entered = new Promise((resolve) => {
+    markEntered = resolve;
+  });
+  const { controller, deployment } = fixture(t, {
+    createMetaMaskPosting: () => ({
+      connect: () => {
+        markEntered();
+        return pending;
+      },
+      disconnect() {},
+      dispose() {},
+    }),
+  });
+  deployment.l1Request = { entry: "entry", rpcUrl: "http://127.0.0.1:5954" };
+  await controller.initialize();
+  controller.setField("walletMode", "metamask");
+  const connecting = controller.connect();
+  await entered;
+  assert.equal(controller.getSnapshot().connecting, true);
+  rejectRequest(new Error("MetaMask connection timed out"));
+  await connecting;
+  const view = controller.getSnapshot();
+  assert.equal(view.busy, false);
+  assert.equal(view.connecting, false);
+  assert.match(view.actionError.guidance, /approve or reject/);
+});
+
 test("pending MetaMask posts survive wallet switching and resume without another payment", async (t) => {
   const job = { commitment: "request", text: "pending text", l1Tx: "0xpaid" };
   const request = { available: true, payer: "", jobs: [job] };
