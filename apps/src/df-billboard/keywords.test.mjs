@@ -5,7 +5,10 @@ import { AI_CATEGORY_THRESHOLDS, safetyResult } from "./ai-config.ts";
 import { keywordMatches, parseKeywords } from "./keywords.ts";
 
 test("keyword list is literal, deduplicated, case/width insensitive and bounded", () => {
-  assert.deepEqual(parseKeywords(" 代练\nVPN\nｖｐｎ\r\n\n"), ["代练", "VPN"]);
+  assert.deepEqual(parseKeywords(" \u4ee3\u7ec3\nVPN\nｖｐｎ\r\n\n"), [
+    "\u4ee3\u7ec3",
+    "VPN",
+  ]);
   assert.deepEqual(parseKeywords(""), []);
   assert.throws(() => parseKeywords("x".repeat(81)), /80/);
   assert.throws(
@@ -15,10 +18,13 @@ test("keyword list is literal, deduplicated, case/width insensitive and bounded"
       ),
     /200/
   );
-  assert.deepEqual(keywordMatches("请不要买代练！ＶＰＮ", ["代练", "vpn"]), [
-    "代练",
-    "vpn",
-  ]);
+  assert.deepEqual(
+    keywordMatches("\u8bf7\u4e0d\u8981\u4e70\u4ee3\u7ec3\uff01ＶＰＮ", [
+      "\u4ee3\u7ec3",
+      "vpn",
+    ]),
+    ["\u4ee3\u7ec3", "vpn"]
+  );
   assert.deepEqual(keywordMatches("anything", [".*", "(a+)+$"]), []);
   assert.deepEqual(keywordMatches("offer (a+)+$", ["(a+)+$"]), ["(a+)+$"]);
   assert.deepEqual(keywordMatches(undefined, ["abc"]), []);
@@ -28,11 +34,16 @@ test("whole word mode prevents substring collisions, retains Chinese containment
   assert.deepEqual(keywordMatches("trade badger", ["ad"], "contains"), ["ad"]);
   assert.deepEqual(keywordMatches("trade badger", ["ad"], "word"), []);
   assert.deepEqual(keywordMatches("An AD!", ["ad"], "word"), ["ad"]);
-  assert.deepEqual(keywordMatches("éad ad界", ["ad"], "word"), []);
-  assert.deepEqual(keywordMatches("请不要相信代练广告", ["代练"], "word"), [
-    "代练",
-  ]);
-  assert.deepEqual(keywordMatches("代\u200b练", ["代练"]), []);
+  assert.deepEqual(keywordMatches("éad ad\u754c", ["ad"], "word"), []);
+  assert.deepEqual(
+    keywordMatches(
+      "\u8bf7\u4e0d\u8981\u76f8\u4fe1\u4ee3\u7ec3\u5e7f\u544a",
+      ["\u4ee3\u7ec3"],
+      "word"
+    ),
+    ["\u4ee3\u7ec3"]
+  );
+  assert.deepEqual(keywordMatches("\u4ee3\u200b\u7ec3", ["\u4ee3\u7ec3"]), []);
   assert.deepEqual(keywordMatches("buycheap", ["buy cheap"]), []);
 });
 

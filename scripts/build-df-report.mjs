@@ -25,7 +25,7 @@ export function buildDFReport(root, dist) {
     report = { ...createReadingReport({ ...inputs, metadata: inputs.native.metadata }), sources };
   } catch (error) {
     // A fresh checkout without the local research folder must still build.
-    report = { available: false, error: error.code === 'ENOENT' ? '未找到外部测试资料。' : '测试资料校验失败，未展示统计数字。' };
+    report = { available: false, error: error.code === 'ENOENT' ? 'External test data was not found.' : 'Test data validation failed; statistics are unavailable.' };
     console.warn(`DF report unavailable: ${error.message}`);
   }
   fs.writeFileSync(path.join(dist, 'df-test-report.json'), JSON.stringify(report, null, 2) + '\n');

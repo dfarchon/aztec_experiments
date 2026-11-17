@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,12 +10,10 @@ const repository = path.resolve(root, "../../..");
 const dist = process.env.BILLBOARD_OUTPUT_DIR
   ? path.resolve(process.env.BILLBOARD_OUTPUT_DIR)
   : path.join(repository, "apps/dist");
-const worker = path.join(dist, "df-toxicity.worker.js");
 const fontLicense = path.join(
   repository,
   "node_modules/@fontsource/fira-sans/LICENSE"
 );
-const readme = path.join(repository, "df-billboard/README.md");
 const headers = {
   "Cross-Origin-Opener-Policy": "same-origin",
   "Cross-Origin-Embedder-Policy": "credentialless",
@@ -50,11 +47,6 @@ function localRuntimeAssets(): Plugin {
     generateBundle() {
       this.emitFile({
         type: "asset",
-        fileName: "billboard-readme.md",
-        source: readFileSync(readme, "utf8"),
-      });
-      this.emitFile({
-        type: "asset",
         fileName: "font-license.txt",
         source: readFileSync(fontLicense, "utf8"),
       });
@@ -83,13 +75,6 @@ function localRuntimeAssets(): Plugin {
       server.middlewares.use((request, response, next) => {
         const pathname = new URL(request.url || "/", "http://localhost")
           .pathname;
-        if (pathname === "/billboard-readme.md") {
-          response.writeHead(200, {
-            "Content-Type": "text/plain; charset=utf-8",
-          });
-          response.end(readFileSync(readme, "utf8"));
-          return;
-        }
         if (pathname === "/font-license.txt") {
           response.writeHead(200, {
             "Content-Type": "text/plain; charset=utf-8",
@@ -98,7 +83,7 @@ function localRuntimeAssets(): Plugin {
           return;
         }
         if (
-          !/^\/(?:df-[\w.-]+\.(?:js|json)|aztec_bundle\.js|(?:main|thread)\.worker\.js|(?:onnx|crs)\/[\w.-]+)$/.test(
+          !/^\/(?:df-[\w.-]+\.(?:js|json)|aztec_bundle\.js|(?:main|thread)\.worker\.js|crs\/[\w.-]+)$/.test(
             pathname
           )
         )
@@ -135,16 +120,6 @@ export default defineConfig({
   root,
   publicDir: false,
   plugins: [react(), localRuntimeAssets()],
-  define: {
-    __DF_TOXICITY_WORKER_HASH__: JSON.stringify(
-      existsSync(worker)
-        ? createHash("sha256")
-            .update(readFileSync(worker))
-            .digest("hex")
-            .slice(0, 16)
-        : "missing"
-    ),
-  },
   server: {
     host: "127.0.0.1",
     port: 5001,

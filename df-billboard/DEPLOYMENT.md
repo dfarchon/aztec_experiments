@@ -110,10 +110,7 @@ The release rebuilds the SDK, typechecks the client, prepares runtime assets,
 and builds React. It does not copy the existing `apps/dist` or change its local
 deployment manifest.
 
-The package includes only the ONNX runtime referenced by the bundled model
-worker, not every backend distributed with ONNX Runtime. Release source maps
-are omitted; normal local builds still generate them. Model weights remain
-downloaded on demand when the reader enables AI filtering.
+Release source maps are omitted; normal local builds still generate them.
 
 Before writing the deployable config, the build checks the uncompressed output
 against a conservative **100,000,000-byte / 15,000-file budget**. This matches
@@ -137,9 +134,7 @@ Generated [Vercel Build Output API](https://vercel.com/docs/build-output-api) la
       main.worker.js
       thread.worker.js
       df-wallet-runtime.js
-      df-toxicity.worker.js
       assets/            # React, CSS, fonts
-      onnx/              # optional local model runtime
       ...                # README/license and legacy URL redirects
 ```
 

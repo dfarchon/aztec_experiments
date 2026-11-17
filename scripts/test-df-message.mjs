@@ -11,14 +11,14 @@ function pack(text) {
   });
 }
 
-for (const message of ['hi', '黑暗森林 🌲', 'a'.repeat(512), '森'.repeat(170), '\uFEFFhi', 'a\0b']) {
+for (const message of ['hi', '\u9ed1\u6697\u68ee\u6797 🌲', 'a'.repeat(512), '\u68ee'.repeat(170), '\uFEFFhi', 'a\0b']) {
   test(`UTF-8 round trip (${new TextEncoder().encode(message).length} bytes)`, () => {
     const { text, length } = encodeDFMessage(message);
     assert.equal(decodeDFMessage(pack(text), length), message);
   });
 }
 test('rejects empty, oversized, or malformed Unicode text', () => {
-  for (const value of ['', 'a'.repeat(513), '森'.repeat(171), '\uD800']) assert.throws(() => encodeDFMessage(value));
+  for (const value of ['', 'a'.repeat(513), '\u68ee'.repeat(171), '\uD800']) assert.throws(() => encodeDFMessage(value));
 });
 test('rejects malformed public data and hidden padding', () => {
   assert.throws(() => decodeDFMessage([], 1));

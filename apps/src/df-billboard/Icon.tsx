@@ -2,7 +2,6 @@ const paths = {
   copy: "M9 9h11v11H9zM15 5V3H3v12h2",
   check: "m5 12 4 4L19 6",
   arrow: "M5 12h14m-6-6 6 6-6 6",
-  search: "m20 20-5-5M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0",
   refresh:
     "M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1",
 };

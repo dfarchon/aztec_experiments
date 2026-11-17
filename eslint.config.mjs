@@ -39,10 +39,7 @@ export default defineConfig([
   },
   {
     // Existing SDK adapters opt out of type checking; keep this exception narrow.
-    files: [
-      "apps/src/df-billboard/controller.ts",
-      "apps/src/df-billboard/toxicity.worker.ts",
-    ],
+    files: ["apps/src/df-billboard/controller.ts"],
     rules: { "@typescript-eslint/ban-ts-comment": "off" },
   },
 ]);

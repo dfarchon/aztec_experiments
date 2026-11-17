@@ -75,7 +75,7 @@ try {
   assert.equal(before, 0n, 'Fresh account must have no Fee Juice');
   assert(sponsorBefore > 0n, 'Sponsor must be funded');
 
-  const message = '独立匿名留言板：无需 DF 入局、无需存款，Sponsored FPC 代付 🌲';
+  const message = '\u72ec\u7acb\u533f\u540d\u7559\u8a00\u677f\uff1a\u65e0\u9700 DF \u5165\u5c40\u3001\u65e0\u9700\u5b58\u6b3e\uff0cSponsored FPC \u4ee3\u4ed8 🌲';
   const { text, length } = encodeDFMessage(message);
   const receipts = [];
   const send = async (from) => {

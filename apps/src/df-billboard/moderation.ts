@@ -5,37 +5,37 @@ import type { PostData, RuleCategory } from "./types";
 export const MODERATION_RULE_VERSION = "basic-reading-v2";
 
 const contactPattern =
-  /(?:微信|薇信|威信|加微|加v|v信|\bvx\b|telegram|t\.me|qq群|q群|私聊|主页|聯繫|联系)|\b(?:dm|inbox|contact|email|(?:link in|in my|in our) bio)\b/i;
+  /(?:\u5fae\u4fe1|\u8587\u4fe1|\u5a01\u4fe1|\u52a0\u5fae|\u52a0v|v\u4fe1|\bvx\b|telegram|t\.me|qq\u7fa4|q\u7fa4|\u79c1\u804a|\u4e3b\u9875|\u806f\u7e6b|\u8054\u7cfb)|\b(?:dm|inbox|contact|email|(?:link in|in my|in our) bio)\b/i;
 const productPattern =
-  /(?:代练|代練|玳练|陪练|上分|替你玩|升级服务|耳机|套餐|服务器|账号|返利|返佣|稳赚)|\b(?:boosting|b00st(?:ing)?|coaching|play for you|upgrades?|headphones|headsets|vpn|subscription|chairs|laptops|airdrop|returns?)\b/i;
+  /(?:\u4ee3\u7ec3|\u4ee3\u7df4|\u73b3\u7ec3|\u966a\u7ec3|\u4e0a\u5206|\u66ff\u4f60\u73a9|\u5347\u7ea7\u670d\u52a1|\u8033\u673a|\u5957\u9910|\u670d\u52a1\u5668|\u8d26\u53f7|\u8fd4\u5229|\u8fd4\u4f63|\u7a33\u8d5a)|\b(?:boosting|b00st(?:ing)?|coaching|play for you|upgrades?|headphones|headsets|vpn|subscription|chairs|laptops|airdrop|returns?)\b/i;
 const salesPattern =
-  /(?:接单|接單|出售|下单|购买|转让|低价|低價|优惠|半价|清仓|返利|返佣|稳赚|包赢|包贏|特惠|折扣|询价|(?:\d+|[一二三四五六七八九十百千]+)\s*[元折])|[$¥￥]\s*\d|\b(?:buy now|buy cheap|discount|cheap|for sale|on sale|promotion|promo|guaranteed|order|quote|rates|prices|deals?|get .{0,30} today|\d+%\s*off)\b/i;
+  /(?:\u63a5\u5355|\u63a5\u55ae|\u51fa\u552e|\u4e0b\u5355|\u8d2d\u4e70|\u8f6c\u8ba9|\u4f4e\u4ef7|\u4f4e\u50f9|\u4f18\u60e0|\u534a\u4ef7|\u6e05\u4ed3|\u8fd4\u5229|\u8fd4\u4f63|\u7a33\u8d5a|\u5305\u8d62|\u5305\u8d0f|\u7279\u60e0|\u6298\u6263|\u8be2\u4ef7|(?:\d+|[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u5343]+)\s*[\u5143\u6298])|[$¥￥]\s*\d|\b(?:buy now|buy cheap|discount|cheap|for sale|on sale|promotion|promo|guaranteed|order|quote|rates|prices|deals?|get .{0,30} today|\d+%\s*off)\b/i;
 const contextPattern =
-  /(?:不要|请勿|别相信|别买|禁止|反对|警惕|提醒|举报|骗局|被骗|风险|分析|讨论|教程)|\b(?:do not|don't|avoid|prohibit|report|warning|scam|investigat\w*|studied|tutorial|example of spam|nothing is being sold)\b/i;
+  /(?:\u4e0d\u8981|\u8bf7\u52ff|\u522b\u76f8\u4fe1|\u522b\u4e70|\u7981\u6b62|\u53cd\u5bf9|\u8b66\u60d5|\u63d0\u9192|\u4e3e\u62a5|\u9a97\u5c40|\u88ab\u9a97|\u98ce\u9669|\u5206\u6790|\u8ba8\u8bba|\u6559\u7a0b)|\b(?:do not|don't|avoid|prohibit|report|warning|scam|investigat\w*|studied|tutorial|example of spam|nothing is being sold)\b/i;
 const ownOfferPattern =
-  /(?:我们|本店|工作室).{0,16}(?:接单|出售|服务)|\b(?:buy our|hire our|we offer|our packages)\b/i;
+  /(?:\u6211\u4eec|\u672c\u5e97|\u5de5\u4f5c\u5ba4).{0,16}(?:\u63a5\u5355|\u51fa\u552e|\u670d\u52a1)|\b(?:buy our|hire our|we offer|our packages)\b/i;
 const strongOfferPattern =
-  /(?:限时优惠|低价出售|全场优惠|今天特惠|新店开业|清仓|只剩今天)|\b(?:limited promotion|flash deals?|hot deals?|special offer)\b/i;
+  /(?:\u9650\u65f6\u4f18\u60e0|\u4f4e\u4ef7\u51fa\u552e|\u5168\u573a\u4f18\u60e0|\u4eca\u5929\u7279\u60e0|\u65b0\u5e97\u5f00\u4e1a|\u6e05\u4ed3|\u53ea\u5269\u4eca\u5929)|\b(?:limited promotion|flash deals?|hot deals?|special offer)\b/i;
 const serviceOfferPattern =
-  /(?:替你玩|只要.{0,4}(?:元|块)|服务.{0,8}(?:提供|出售))|\b(?:(?:service|packages?) available|play for you|b00st your rank|get .{0,30} today)\b/i;
+  /(?:\u66ff\u4f60\u73a9|\u53ea\u8981.{0,4}(?:\u5143|\u5757)|\u670d\u52a1.{0,8}(?:\u63d0\u4f9b|\u51fa\u552e))|\b(?:(?:service|packages?) available|play for you|b00st your rank|get .{0,30} today)\b/i;
 const gameAssetOfferPattern =
-  /(?:出售|转让|交换|交易|换).{0,14}(?:账号|星球|舰船)|(?:账号|星球|舰船).{0,14}(?:出售|转让|交换|交易|换)|\b(?:ships? for sale|(?:sell\w*|trad\w*).{0,20}(?:account|planet|ship))\b/i;
+  /(?:\u51fa\u552e|\u8f6c\u8ba9|\u4ea4\u6362|\u4ea4\u6613|\u6362).{0,14}(?:\u8d26\u53f7|\u661f\u7403|\u8230\u8239)|(?:\u8d26\u53f7|\u661f\u7403|\u8230\u8239).{0,14}(?:\u51fa\u552e|\u8f6c\u8ba9|\u4ea4\u6362|\u4ea4\u6613|\u6362)|\b(?:ships? for sale|(?:sell\w*|trad\w*).{0,20}(?:account|planet|ship))\b/i;
 const inGameTradePattern =
-  /(?:游戏内|银币).{0,16}(?:交易|换|出售)|(?:交易|换|出售|只收).{0,16}(?:游戏内|银币)|\b(?:in-game silver|for silver|in-game trade)\b/i;
+  /(?:\u6e38\u620f\u5185|\u94f6\u5e01).{0,16}(?:\u4ea4\u6613|\u6362|\u51fa\u552e)|(?:\u4ea4\u6613|\u6362|\u51fa\u552e|\u53ea\u6536).{0,16}(?:\u6e38\u620f\u5185|\u94f6\u5e01)|\b(?:in-game silver|for silver|in-game trade)\b/i;
 const communityPattern =
-  /(?:联盟.{0,8}(?:招募|加入)|加入.{0,8}联盟|QQ群.{0,20}一起玩|比赛筹款|社区捐款)|\b(?:join.{0,20}(?:alliance|discord)|donate|donation|community tournament)\b/i;
+  /(?:\u8054\u76df.{0,8}(?:\u62db\u52df|\u52a0\u5165)|\u52a0\u5165.{0,8}\u8054\u76df|QQ\u7fa4.{0,20}\u4e00\u8d77\u73a9|\u6bd4\u8d5b\u7b79\u6b3e|\u793e\u533a\u6350\u6b3e)|\b(?:join.{0,20}(?:alliance|discord)|donate|donation|community tournament)\b/i;
 const storefrontUrlPattern =
   /(?:^|[/.:-])(?:shop|store|marketplace|checkout)(?:[/?#.:_-]|$)/i;
 const storefrontCallPattern =
-  /(?:购买入口|下单入口|站外商店|商城)|\b(?:buy now|order now|shop now|visit (?:our|the) store)\b/i;
+  /(?:\u8d2d\u4e70\u5165\u53e3|\u4e0b\u5355\u5165\u53e3|\u7ad9\u5916\u5546\u5e97|\u5546\u57ce)|\b(?:buy now|order now|shop now|visit (?:our|the) store)\b/i;
 const credentialRequestPattern =
-  /(?:输入|提交|发送|提供|上传|验证|导入|填写).{0,20}(?:助记词|私钥|恢复短语)|\b(?:enter|submit|send|share|verify|import|provide).{0,35}(?:seed phrase|private key|recovery phrase)\b/i;
+  /(?:\u8f93\u5165|\u63d0\u4ea4|\u53d1\u9001|\u63d0\u4f9b|\u4e0a\u4f20|\u9a8c\u8bc1|\u5bfc\u5165|\u586b\u5199).{0,20}(?:\u52a9\u8bb0\u8bcd|\u79c1\u94a5|\u6062\u590d\u77ed\u8bed)|\b(?:enter|submit|send|share|verify|import|provide).{0,35}(?:seed phrase|private key|recovery phrase)\b/i;
 const tokenClaimPattern =
-  /(?:领取|申领|点击领取).{0,18}(?:空投|代币|奖励)|(?:空投|代币).{0,18}(?:领取|申领)|\b(?:claim|get).{0,25}(?:airdrop|free tokens?|token rewards?)\b/i;
+  /(?:\u9886\u53d6|\u7533\u9886|\u70b9\u51fb\u9886\u53d6).{0,18}(?:\u7a7a\u6295|\u4ee3\u5e01|\u5956\u52b1)|(?:\u7a7a\u6295|\u4ee3\u5e01).{0,18}(?:\u9886\u53d6|\u7533\u9886)|\b(?:claim|get).{0,25}(?:airdrop|free tokens?|token rewards?)\b/i;
 const adultSolicitationPattern =
-  /(?:裸聊|成人陪聊|色情服务|付费成人视频|付费私密内容)|\b(?:paid adult chat|nude content|explicit content|sex services?)\b/i;
+  /(?:\u88f8\u804a|\u6210\u4eba\u966a\u804a|\u8272\u60c5\u670d\u52a1|\u4ed8\u8d39\u6210\u4eba\u89c6\u9891|\u4ed8\u8d39\u79c1\u5bc6\u5185\u5bb9)|\b(?:paid adult chat|nude content|explicit content|sex services?)\b/i;
 const repeatedCallPattern =
-  /(?:点击|点此|扫码|进群|入群|领取福利|免费礼物)|\b(?:click here|join (?:our|my) (?:group|channel)|free gift|sign up now)\b/i;
+  /(?:\u70b9\u51fb|\u70b9\u6b64|\u626b\u7801|\u8fdb\u7fa4|\u5165\u7fa4|\u9886\u53d6\u798f\u5229|\u514d\u8d39\u793c\u7269)|\b(?:click here|join (?:our|my) (?:group|channel)|free gift|sign up now)\b/i;
 
 export const isPromotion = (post: PostData): boolean =>
   post.adTier === "likely" || post.adTier === "possible";
@@ -90,9 +90,13 @@ export function classifyRulePosts<T extends PostData>(
     }
     const compact = readable.replace(/[\s\-·]+/g, "");
     const product =
-      productPattern.test(readable) || /代练|代練|陪练|玳练/.test(compact);
+      productPattern.test(readable) ||
+      /\u4ee3\u7ec3|\u4ee3\u7df4|\u966a\u7ec3|\u73b3\u7ec3/.test(compact);
     const sales =
-      salesPattern.test(readable) || /限时优惠|低价|特惠|接单/.test(compact);
+      salesPattern.test(readable) ||
+      /\u9650\u65f6\u4f18\u60e0|\u4f4e\u4ef7|\u7279\u60e0|\u63a5\u5355/.test(
+        compact
+      );
     const contact = hasContactSignal(text);
     const context = contextPattern.test(readable);
     const gameAssetOffer = gameAssetOfferPattern.test(readable);
@@ -120,30 +124,34 @@ export function classifyRulePosts<T extends PostData>(
           ? "possible"
           : "context";
       adReasons = [
-        "出现引用、讨论、否定或风险提醒语境",
-        "不自动折叠，仍可能夹带推广",
+        "Quoted, discussed, negated, or warned about",
+        "Not folded automatically; promotion may still be present",
       ];
     } else if (policy) {
       adTier = "policy";
-      adReasons = ["涉及玩家交易或社区活动，是否允许需另行确定"];
+      adReasons = [
+        "Player trade or community activity needs a separate policy decision",
+      ];
     } else if (externalStorefront) {
       adTier = "likely";
-      adReasons = ["游戏资产出售", "站外商店入口"];
+      adReasons = ["Game asset offered for sale", "External store link"];
     } else if (sales && (product || contact)) {
       adTier =
         contact && (product || strongOfferPattern.test(readable))
           ? "likely"
           : "possible";
       adReasons = [
-        product && "商品／服务",
-        "价格／优惠／接单行为",
-        contact && "联系或跳转入口",
+        product && "Product or service",
+        "Price, discount, or order solicitation",
+        contact && "Contact or external destination",
       ].filter((value): value is string => Boolean(value));
     } else if (product && contact) {
       adTier = serviceOfferPattern.test(readable) ? "likely" : "possible";
       adReasons = [
-        "商品／服务与联系入口同时出现",
-        adTier === "likely" ? "主动提供服务" : "未确认推销行为",
+        "Product or service with contact details",
+        adTier === "likely"
+          ? "Service offered directly"
+          : "Unconfirmed solicitation",
       ];
     }
     const ruleMatches: RuleCategory[] = [];

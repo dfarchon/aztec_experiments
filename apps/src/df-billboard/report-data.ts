@@ -8,12 +8,17 @@ import {
 } from "./moderation.ts";
 import type { Category, ReadingReport, ReportRow } from "./types";
 
-export const EXAMPLE_KEYWORDS = ["代练", "微信", "boosting", "VPN"];
+export const EXAMPLE_KEYWORDS = [
+  "\u4ee3\u7ec3",
+  "\u5fae\u4fe1",
+  "boosting",
+  "VPN",
+];
 export const CATEGORIES: Record<Category, string> = {
-  normal: "正常聊天／讨论",
-  advertising: "广告／变体引流",
-  toxic: "辱骂／现实威胁",
-  policy: "边界待定",
+  normal: "Ordinary chat/discussion",
+  advertising: "Ads and obfuscated solicitation",
+  toxic: "Abuse and real-world threats",
+  policy: "Borderline",
 };
 
 export function createReadingReport({
@@ -41,7 +46,7 @@ export function createReadingReport({
   metadata: { repo: string; revision: string; decision: string };
 }): ReadingReport {
   if (!browser.done || !Array.isArray(browser.rows))
-    throw new Error("AI 记录未完成");
+    throw new Error("AI record is incomplete");
   const expected = new Map(
     Object.entries(original)
       .filter(
@@ -61,7 +66,7 @@ export function createReadingReport({
         expected.get(row.id) !== row.text || typeof row.flagged !== "boolean"
     )
   ) {
-    throw new Error("样本与 AI 记录不一致");
+    throw new Error("Samples do not match the AI record");
   }
   const rows: ReportRow[] = classifyRulePosts(browser.rows).map((row) => ({
     id: row.id,
@@ -100,8 +105,14 @@ export function createReadingReport({
     exampleKeywords: EXAMPLE_KEYWORDS,
     rows,
     datasets: [
-      { name: "原始诊断集", count: expected.size - holdout.samples.length },
-      { name: "新增固定验证集", count: holdout.samples.length },
+      {
+        name: "Original diagnostic set",
+        count: expected.size - holdout.samples.length,
+      },
+      {
+        name: "Additional fixed validation set",
+        count: holdout.samples.length,
+      },
     ],
     duplicatePairs:
       original.duplicatePairs.length + holdout.duplicatePairs.length,

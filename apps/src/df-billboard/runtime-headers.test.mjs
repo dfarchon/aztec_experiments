@@ -15,13 +15,9 @@ for (const hook of ["configureServer", "configurePreviewServer"]) {
     });
     for (const url of [
       "/",
-      "/df-toxicity.worker.js?v=regression",
       "/main.worker.js",
-      "/onnx/ort-wasm-simd-threaded.asyncify.mjs",
-      "/onnx/ort-wasm-simd-threaded.asyncify.wasm",
       "/df-missing-runtime-for-test.js",
       "/crs/missing-regression.dat",
-      "/billboard-readme.md",
       "/df-billboard-test.html",
     ]) {
       const response = {

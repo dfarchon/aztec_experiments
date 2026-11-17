@@ -50,7 +50,7 @@ try {
     }
     assert(await session.ready(job), 'Message not ingested');
   };
-  const job = await session.create('Gas-only L1 request · L2 由 Sponsored FPC 代付');
+  const job = await session.create('Gas-only L1 request · L2 \u7531 Sponsored FPC \u4ee3\u4ed8');
   const payerBefore = await rpc.getBalance(await payer.getAddress());
   const balanceBefore = await rpc.getBalance(config.l1.entry);
   const l1 = await entry.requestPost(config.board, job.commitment, job.secretHash, { value: 0n });

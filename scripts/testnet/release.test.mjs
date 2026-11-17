@@ -81,15 +81,12 @@ for (const target of ['vercel', 'netlify']) test(`isolated ${target} package con
   await assert.rejects(buildRelease(fixture, destination, target), /already exists/);
   const files = fs.readdirSync(dist, { recursive: true }).filter(file => fs.statSync(path.join(dist, file)).isFile());
   const bytes = files.reduce((total, file) => total + fs.statSync(path.join(dist, file)).size, 0);
-  for (const name of ['index.html', 'df-local.json', 'df-read-config.json', 'df-board-artifact.json', 'df-sponsor-artifact.json', 'aztec_bundle.js', 'df-wallet-runtime.js', 'main.worker.js', 'thread.worker.js', 'df-toxicity.worker.js']) assert(files.includes(name), `Missing ${name}`);
+  for (const name of ['index.html', 'df-local.json', 'df-read-config.json', 'df-board-artifact.json', 'df-sponsor-artifact.json', 'aztec_bundle.js', 'df-wallet-runtime.js', 'main.worker.js', 'thread.worker.js']) assert(files.includes(name), `Missing ${name}`);
   const readConfig = JSON.parse(fs.readFileSync(path.join(dist, 'df-read-config.json')));
   assert.equal(readConfig.boardArtifactHash, digest(board));
   assert.deepEqual(Object.keys(readConfig.storageLayout).sort(), ['post_count', 'post_data', 'post_lengths', 'post_timestamps']);
   assert(fs.statSync(path.join(dist, 'df-read-config.json')).size < 1024);
-  assert.deepEqual(files.filter(file => file.startsWith('onnx/')).sort(), [
-    'onnx/ort-wasm-simd-threaded.asyncify.mjs',
-    'onnx/ort-wasm-simd-threaded.asyncify.wasm',
-  ]);
+  assert(!files.some(file => file.startsWith('onnx/') || file === 'df-toxicity.worker.js'));
   assert(!files.some(file => file.endsWith('.map')));
   if (target === 'vercel') assert(bytes + fs.statSync(path.join(output, 'config.json')).size <= 100_000_000);
   assert(files.every(file => !/(?:deployment|private|\.env|wallets|test-report)/.test(file)));
@@ -97,18 +94,14 @@ for (const target of ['vercel', 'netlify']) test(`isolated ${target} package con
   assert(!manifest.includes('DO-NOT-PUBLISH'));
   assert(!manifest.includes('127.0.0.1'));
   assert.equal(digest(fs.readFileSync(path.join(dist, 'df-board-artifact.json'))), digest(board));
-  // Rebuilding an existing output must retire only obsolete generated runtimes.
-  const staleRuntime = path.join(dist, 'onnx/ort-wasm-simd-threaded.jspi.wasm');
-  const unrelated = path.join(dist, 'onnx/keep.txt');
-  fs.writeFileSync(staleRuntime, 'old generated backend');
-  fs.writeFileSync(unrelated, 'leave unrelated files alone');
+  // Rebuilding an existing output must retire obsolete model runtime assets.
+  const staleRuntime = path.join(dist, 'df-toxicity.worker.js');
+  fs.writeFileSync(staleRuntime, 'old generated worker');
   const rebuild = spawnSync(process.execPath, [new URL('../build-df-harness.mjs', import.meta.url).pathname], {
     env: { ...process.env, BILLBOARD_OUTPUT_DIR: dist }, encoding: 'utf8',
   });
   assert.equal(rebuild.status, 0, rebuild.stderr);
   assert(!fs.existsSync(staleRuntime));
-  assert.equal(fs.readFileSync(unrelated, 'utf8'), 'leave unrelated files alone');
-  assert(fs.existsSync(path.join(dist, 'onnx/ort-wasm-simd-threaded.asyncify.wasm')));
   assert.equal(fs.existsSync(localFile) ? fs.readFileSync(localFile, 'utf8') : null, before);
   console.log(`Verified offline ${target} fixture: ${files.length} public files, ${(bytes / 1_000_000).toFixed(2)} MB; local deployment unchanged.`);
 });

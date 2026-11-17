@@ -3,8 +3,8 @@
 A standalone public message board on Aztec. Anyone can read without a wallet.
 Posting supports an Aztec wallet or MetaMask. MetaMask users pay Sepolia L1 gas
 per post; Sponsored FPC covers L2 execution. Both paths publish to the same
-Aztec board. Readers can choose local keyword, rule, or AI filters. Filtering
-does not remove chain data.
+Aztec board. The site shows public posts without a Settings page or local
+content filters.
 
 [Public testnet site](https://df-billboard-testnet.netlify.app/) · [Product design and usage](df-billboard/README.md) · [Deployment guide](df-billboard/DEPLOYMENT.md)
 
@@ -52,4 +52,4 @@ npm run test:df:l1
 ```
 
 See the [product README](df-billboard/README.md) for contract behavior, posting
-paths, privacy limits, filter behavior, and test coverage.
+paths, privacy limits, and test coverage.

@@ -1,6 +1,5 @@
 import type { RequestView } from "./request-view";
 
-export type KeywordMode = "contains" | "word";
 export type RuleCategory =
   | "promotion"
   | "credential-request"
@@ -37,9 +36,6 @@ export interface EditableFields {
   accountFile: File | null;
   provider: string;
   message: string;
-  rulesEnabled: boolean;
-  keywordEnabled: boolean;
-  keywordMode: KeywordMode;
 }
 export interface BillboardView extends EditableFields {
   request: RequestView;
@@ -77,14 +73,6 @@ export interface BillboardView extends EditableFields {
   totalPosts: number;
   hasOlderPosts: boolean;
   feedRevision: number;
-  aiHints: boolean;
-  aiStatus: string;
-  keywords: string[];
-  keywordError: string;
-  aiConsentGiven: boolean;
-  aiConsentOpen: boolean;
-  aiProgress: { percent?: number } | null;
-  aiClearing: boolean;
 }
 export interface BillboardController {
   subscribe(listener: () => void): () => void;
@@ -97,10 +85,6 @@ export interface BillboardController {
     value: EditableFields[K]
   ): void;
   setWalletPanel(open: boolean): void;
-  setAiHints(enabled: boolean): void;
-  confirmAiHints(): void;
-  clearAiCache(): Promise<void>;
-  saveKeywords(text: string): boolean;
   copyAddress(): Promise<void>;
   accountBackup(): { filename: string; contents: string } | null;
   connect(): Promise<void>;

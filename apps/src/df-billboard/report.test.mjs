@@ -5,10 +5,15 @@ import { createReadingReport } from "./report-data.ts";
 
 function fixture() {
   const original = {
-    normal_zh: ["我们反对代练。", "<img src=x onerror=alert(1)>"],
-    advertising_zh: ["专业代练接单，加微信 demo 咨询价格。"],
-    toxic_zh: ["风险测试文本"],
-    policy_zh: ["联盟招募"],
+    normal_zh: [
+      "\u6211\u4eec\u53cd\u5bf9\u4ee3\u7ec3\u3002",
+      "<img src=x onerror=alert(1)>",
+    ],
+    advertising_zh: [
+      "\u4e13\u4e1a\u4ee3\u7ec3\u63a5\u5355\uff0c\u52a0\u5fae\u4fe1 demo \u54a8\u8be2\u4ef7\u683c\u3002",
+    ],
+    toxic_zh: ["\u98ce\u9669\u6d4b\u8bd5\u6587\u672c"],
+    policy_zh: ["\u8054\u76df\u62db\u52df"],
     advertising_en: ["Ships for sale, visit https://example.invalid/store"],
     duplicatePairs: [],
   };
@@ -67,11 +72,11 @@ test("report derives category counts and separates promotion from discussion lab
 test("incomplete, duplicated or changed evidence fails closed instead of reporting zero errors", () => {
   const input = fixture();
   input.browser.done = false;
-  assert.throws(() => createReadingReport(input), /未完成/);
+  assert.throws(() => createReadingReport(input), /incomplete/);
   input.browser.done = true;
   input.browser.rows[0].text = "changed";
-  assert.throws(() => createReadingReport(input), /不一致/);
+  assert.throws(() => createReadingReport(input), /do not match/);
   const duplicate = fixture();
   duplicate.browser.rows[1] = duplicate.browser.rows[0];
-  assert.throws(() => createReadingReport(duplicate), /不一致/);
+  assert.throws(() => createReadingReport(duplicate), /do not match/);
 });

@@ -9,12 +9,11 @@ import { renderToStaticMarkup as renderMarkup } from "react-dom/server";
 import { StaticRouter } from "react-router-dom/server.js";
 
 import { createBillboardController } from "./controller.ts";
-import { classifyRulePosts } from "./moderation.ts";
 
 const compiled = await build({
   stdin: {
     contents:
-      "export { PostTime, formatPostTime } from './PostTime.tsx'; export { App } from './App.tsx'; export { Feed, pageNumbers } from './Feed.tsx'; export { ReadingSettings } from './ReadingSettings.tsx'; export { Select } from './Select.tsx';",
+      "export { PostTime, formatPostTime } from './PostTime.tsx'; export { App } from './App.tsx'; export { Feed, pageNumbers } from './Feed.tsx'; export { Select } from './Select.tsx';",
     resolveDir: fileURLToPath(new URL(".", import.meta.url)),
   },
   bundle: true,
@@ -35,15 +34,8 @@ new Function("require", "module", "exports", compiled.outputFiles[0].text)(
   module,
   module.exports
 );
-const {
-  App,
-  Feed,
-  pageNumbers,
-  ReadingSettings,
-  Select,
-  PostTime,
-  formatPostTime,
-} = module.exports;
+const { App, Feed, pageNumbers, Select, PostTime, formatPostTime } =
+  module.exports;
 const renderToStaticMarkup = (element) =>
   renderMarkup(createElement(StaticRouter, { location: "/" }, element));
 
@@ -70,26 +62,39 @@ test("a partially loaded feed shows posts and progress without an empty overlay"
   controller.dispose();
 });
 
-test("older posts remain reachable when every loaded post is filtered", () => {
-  const controller = createBillboardController();
+test("old settings and about URLs show the board without filtering posts", () => {
+  const base = createBillboardController();
   const view = {
-    ...controller.getSnapshot(),
-    posts: [{ id: 24, text: "hidden" }],
-    keywordEnabled: true,
-    keywords: ["hidden"],
+    ...base.getSnapshot(),
     feedLoaded: true,
-    totalPosts: 25,
-    hasOlderPosts: true,
-    busy: true,
+    posts: [
+      { id: 1, text: "ordinary message" },
+      {
+        id: 2,
+        text: "<script>literal text</script>",
+        ruleMatches: ["promotion"],
+      },
+    ],
   };
-  const render = () =>
-    renderToStaticMarkup(createElement(Feed, { view, controller }));
-  assert.match(render(), /No visible posts/);
-  assert.match(render(), /1 \/ 25 loaded/);
-  assert.match(render(), /<button disabled="">Load older posts/);
-  view.hasOlderPosts = false;
-  assert.doesNotMatch(render(), /Load older posts/);
-  controller.dispose();
+  const controller = { ...base, getSnapshot: () => view };
+  for (const url of ["/?view=settings", "/?view=about"]) {
+    const html = renderMarkup(
+      createElement(
+        StaticRouter,
+        { location: url },
+        createElement(App, { controller })
+      )
+    );
+    assert.match(html, /aria-label="Public posts"/);
+    assert.match(html, /data-post-id="1"/);
+    assert.match(html, /data-post-id="2"/);
+    assert.match(html, /&lt;script&gt;literal text&lt;\/script&gt;/);
+    assert.doesNotMatch(
+      html,
+      /<h1>Settings<\/h1>|<h1>About<\/h1>|Filter(?:ed)? \(/
+    );
+  }
+  base.dispose();
 });
 
 test("shared select labels its list and preserves disabled and selected options", () => {
@@ -122,11 +127,15 @@ test("React renders the wallet, composer and disconnected action guards", () => 
   const controller = createBillboardController();
   const html = renderToStaticMarkup(createElement(App, { controller }));
   assert.match(html, /id="walletMenu"/);
+  assert.match(html, /aria-label="Switch to light theme"/);
   assert.match(html, /DFARCHON/);
-  assert.match(html, /aria-label="Billboard navigation"/);
-  assert.match(html, /Public board/);
-  assert.match(html, /billboard-readme.md/);
-  assert.doesNotMatch(html, /href="\/reports"|设计与测试 →/);
+  assert.doesNotMatch(html, /Settings|About ↗/);
+  assert.match(html, /aria-label="Public posts"/);
+  assert.doesNotMatch(html, /billboard-readme.md|About ↗/);
+  assert.doesNotMatch(
+    html,
+    /href="\/reports"|\u8bbe\u8ba1\u4e0e\u6d4b\u8bd5 →/
+  );
   assert.match(html, /id="walletPanel"[^>]*hidden/);
   assert.doesNotMatch(html, /id="join"|Core\.initialize_player|PlayerStorage/);
   assert.doesNotMatch(html, /id="post"[^>]*disabled/);
@@ -214,51 +223,17 @@ test("MetaMask recovery stays in the wallet without a duplicate activity page", 
   base.dispose();
 });
 
-test("product sections support direct URLs and keep the composer mounted", () => {
-  const controller = createBillboardController();
-  const settings = renderMarkup(
-    createElement(
-      StaticRouter,
-      { location: "/?view=settings" },
-      createElement(App, { controller })
-    )
-  );
-  assert.match(settings, /<h1>Settings<\/h1>/);
-  assert.match(settings, /Show guide/);
-  assert.match(settings, /class="back-button" aria-label="Back to board"/);
-  assert.ok(
-    settings.indexOf('class="back-button"') <
-      settings.indexOf("<h1>Settings</h1>")
-  );
-  assert.match(settings, /<section class="[^"]+" aria-label="Settings">/);
-  assert.match(
-    settings,
-    /class="card compose-card" aria-label="Write a post" hidden=""/
-  );
-  assert.match(settings, /id="message"/);
-  const oldActivityUrl = renderMarkup(
-    createElement(
-      StaticRouter,
-      { location: "/?view=activity" },
-      createElement(App, { controller })
-    )
-  );
-  assert.match(oldActivityUrl, /class="board-content is-board"/);
-  assert.doesNotMatch(oldActivityUrl, /Publishing activity/);
-  controller.dispose();
-});
-
-test("Onchain Reality shell keeps wallet and section controls above the board", () => {
+test("Onchain Reality shell keeps the wallet above the board", () => {
   const controller = createBillboardController();
   const html = renderToStaticMarkup(createElement(App, { controller }));
   assert.match(html, /class="billboard-app"/);
   assert.match(html, /<canvas class="ascii-clouds" aria-hidden="true">/);
   const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
-  assert.match(header, /aria-label="Billboard navigation"/);
+  assert.doesNotMatch(header, /Settings|About/);
   assert.match(header, /id="walletMenu"/);
-  assert.match(header, /class="header-action nav-item nav-settings"/);
   assert.match(header, /id="walletMenu"[^>]*class="header-action"/);
-  assert.match(header, /orbit-mark brand-mark/);
+  assert.match(header, /DFARCHON/);
+  assert.doesNotMatch(header, /orbit-mark|brand-mark/);
   assert.match(html, /id="main-content" class="product-main" tabindex="-1"/);
   assert.match(html, /class="board-content is-board"/);
   assert.match(html, /class="board-page"/);
@@ -277,13 +252,14 @@ test("Onchain Reality shell keeps wallet and section controls above the board", 
       controller,
     })
   );
-  assert.match(feed, /id="feedSearch"[^>]*hidden/);
+  assert.match(feed, /id="refresh"[^>]*aria-label="Refresh posts"/);
+  assert.doesNotMatch(feed, /Public board|Sort posts|feed-heading/);
+  assert.doesNotMatch(feed, /feedSearch|type="search"|Search loaded posts/);
   assert.doesNotMatch(
     feed,
     /id="showFolded"|id="mergeDuplicates"|Reading preferences/
   );
   assert.doesNotMatch(header, /class="wallet-network"/);
-  assert.ok(html.indexOf("</main>") < html.indexOf('class="site-footer"'));
   controller.dispose();
 });
 
@@ -333,32 +309,8 @@ test("account actions live in the wallet without Ethereum copy controls", () => 
   assert.match(header, /Keep the backup private/);
   assert.doesNotMatch(html, /id="accountBar"/);
   assert.doesNotMatch(html, /publishToL1|Ethereum cop|publish-l1/);
-  const settings = html.slice(
-    html.indexOf('class="preferences-page"'),
-    html.indexOf('class="card compose-card"')
-  );
-  assert.doesNotMatch(settings, /id="mergeDuplicates"/);
-  assert.doesNotMatch(settings, /Connection details &amp; activity log/);
+  assert.doesNotMatch(html, /class="preferences-page"|id="mergeDuplicates"/);
   base.dispose();
-});
-
-test("developer connection details are opt-in and proof mode is not a user control", () => {
-  const controller = createBillboardController();
-  const production = renderToStaticMarkup(createElement(App, { controller }));
-  const development = renderToStaticMarkup(
-    createElement(App, { controller, development: true })
-  );
-  assert.doesNotMatch(
-    production,
-    /Connection details &amp; activity log|id="log"/
-  );
-  assert.match(development, /Connection details &amp; activity log/);
-  for (const html of [production, development])
-    assert.doesNotMatch(
-      html,
-      /id="realProofs"|Generate real client proofs|Advanced options/
-    );
-  controller.dispose();
 });
 
 test("wallet selector has three methods and nests browser account actions", () => {
@@ -395,7 +347,7 @@ test("wallet selector has three methods and nests browser account actions", () =
   base.dispose();
 });
 
-test("wallet modes and AI consent use English-only interface copy", () => {
+test("wallet modes use English-only interface copy", () => {
   const base = createBillboardController();
   try {
     for (const walletMode of [
@@ -409,13 +361,10 @@ test("wallet modes and AI consent use English-only interface copy", () => {
         ...base.getSnapshot(),
         walletMode,
         walletOpen: true,
-        aiConsentOpen: true,
-        aiHints: true,
       };
       const controller = { ...base, getSnapshot: () => view };
       const html = renderToStaticMarkup(createElement(App, { controller }));
       assert.doesNotMatch(html, /\p{Script=Han}/u, walletMode);
-      assert.match(html, /Download &amp; enable/);
       assert.match(html, /Your L1 payer address is public/);
     }
   } finally {
@@ -458,264 +407,9 @@ test("feed starts with the newest 10 posts and numbered pagination", () => {
   assert.match(html, /<\/ol><\/div><div class="feed-footer">/);
   assert.match(html, /aria-label="Next page"/);
   assert.doesNotMatch(html, /Anonymous|post-avatar|Load more|<details/);
-  assert.match(html, /Search loaded posts/);
+  assert.match(html, /id="refresh"[^>]*aria-label="Refresh posts"/);
+  assert.doesNotMatch(html, /type="search"|Search loaded posts/);
   controller.dispose();
-});
-
-test("React feed keeps duplicates flat, excludes filtered hits and preserves malformed entries", () => {
-  const view = {
-    busy: false,
-    connected: true,
-    feedLoaded: true,
-    rulesEnabled: false,
-    aiHints: true,
-    posts: classifyRulePosts([
-      ...[0, 1, 2].map((id) => ({ id, text: "come to https://example.com" })),
-      {
-        id: 3,
-        text: "<img src=x onerror=alert(1)>",
-        aiLabels: ["insult"],
-        aiAnalyzed: true,
-      },
-      { id: 4, decodeError: true },
-    ]),
-  };
-  const html = renderToStaticMarkup(
-    createElement(Feed, { view, controller: {} })
-  );
-  assert.doesNotMatch(html, /<details|identical posts|Anonymous/);
-  assert.match(html, /Filtered \(1\)/);
-  assert.doesNotMatch(html, /推广规则详情|AI 分析详情|关键词命中详情/);
-  for (const id of [0, 1, 2, 4])
-    assert.match(html, new RegExp(`data-post-id="${id}"`));
-  assert.doesNotMatch(html, /data-post-id="3"/);
-  assert.doesNotMatch(html, /<img/);
-  assert.match(html, /could not be decoded as UTF-8/);
-  const unfiltered = renderToStaticMarkup(
-    createElement(Feed, {
-      view: { ...view, aiHints: false },
-      controller: {},
-    })
-  );
-  assert.doesNotMatch(unfiltered, /<details(?! class="reading-panel")/);
-  assert.doesNotMatch(unfiltered, /class="is-folded"/);
-  assert.match(unfiltered, /&lt;img src=x onerror=alert\(1\)&gt;/);
-  assert.doesNotMatch(unfiltered, /<img/);
-  assert.equal((unfiltered.match(/data-post-id=/g) || []).length, 5);
-});
-
-test("basic rules exclude strong promotion without per-post warnings", () => {
-  const view = {
-    busy: false,
-    connected: true,
-    feedLoaded: true,
-    rulesEnabled: false,
-    aiHints: false,
-    posts: classifyRulePosts([{ id: 0, text: "低价代练加微信 demo" }]),
-  };
-  const render = (rulesEnabled) =>
-    renderToStaticMarkup(
-      createElement(Feed, { view: { ...view, rulesEnabled }, controller: {} })
-    );
-  assert.doesNotMatch(
-    render(false),
-    /class="is-folded"|<details(?! class="reading-panel")/
-  );
-  assert.doesNotMatch(render(true), /data-post-id="0"|低价代练加微信 demo/);
-  assert.match(render(true), /Filtered \(1\)/);
-  assert.doesNotMatch(render(true), /推广规则详情|⚑/);
-  assert.match(render(false), /低价代练加微信 demo/);
-});
-
-test("basic rules fold solicitation independently of keywords and AI", () => {
-  const posts = classifyRulePosts([
-    { id: 0, text: "输入你的助记词领取奖励" },
-    { id: 1, text: "不要输入助记词，警惕骗局" },
-  ]);
-  const view = {
-    busy: false,
-    connected: true,
-    feedLoaded: true,
-    rulesEnabled: true,
-    keywordEnabled: false,
-    aiHints: false,
-    posts,
-  };
-  const render = (rulesEnabled) =>
-    renderToStaticMarkup(
-      createElement(Feed, { view: { ...view, rulesEnabled }, controller: {} })
-    );
-  assert.doesNotMatch(render(true), /data-post-id="0"/);
-  assert.match(render(true), /data-post-id="1"/);
-  assert.match(render(true), /2 loaded posts · 1 filtered/);
-  assert.match(render(false), /data-post-id="0"/);
-});
-
-test("fold setting never hides context, policy, weak evidence or similar variants", () => {
-  const posts = classifyRulePosts([
-    { id: 0, text: "我们反对代练，具体规则看 https://example.org/rules 。" },
-    {
-      id: 1,
-      text: "Ships for sale for in-game silver: https://example.org/trade",
-    },
-    { id: 2, text: "代练限时优惠" },
-    { id: 3, text: "Meet now here" },
-    { id: 4, text: "Meet nowhere" },
-  ]);
-  const view = {
-    busy: false,
-    connected: true,
-    feedLoaded: true,
-    rulesEnabled: true,
-    aiHints: false,
-    posts,
-  };
-  const html = renderToStaticMarkup(
-    createElement(Feed, { view, controller: {} })
-  );
-  assert.doesNotMatch(
-    html,
-    /<details(?! class="reading-panel")|class="is-folded"/
-  );
-  assert.doesNotMatch(html, /data-tier=|推广规则详情|相似消息详情/);
-  assert.equal((html.match(/data-post-id=/g) || []).length, 5);
-});
-
-test("three independent folding switches default to off", () => {
-  const controller = createBillboardController();
-  const html = renderToStaticMarkup(
-    createElement(ReadingSettings, {
-      view: controller.getSnapshot(),
-      controller,
-    })
-  );
-  assert.doesNotMatch(html, /id="rulesEnabled"[^>]*checked/);
-  assert.doesNotMatch(html, /id="keywordEnabled"[^>]*checked/);
-  assert.doesNotMatch(html, /id="aiHints"[^>]*checked/);
-  assert.match(html, /Content Safety Guard Small/);
-  assert.doesNotMatch(html, /268 MB/);
-  const confirm = renderToStaticMarkup(
-    createElement(ReadingSettings, {
-      view: { ...controller.getSnapshot(), aiConsentOpen: true },
-      controller,
-    })
-  );
-  assert.match(confirm, /268 MB/);
-  assert.doesNotMatch(html, /mergeDuplicates|Group duplicate posts/);
-  controller.dispose();
-});
-
-test("keyword folding is independent, literal, reversible, and escapes user words", () => {
-  const view = {
-    busy: false,
-    connected: true,
-    feedLoaded: true,
-    rulesEnabled: false,
-    keywordEnabled: true,
-    keywordMode: "contains",
-    keywords: ["代练", "<script>"],
-    aiHints: false,
-    posts: classifyRulePosts([
-      { id: 0, text: "请不要相信代练" },
-      { id: 1, text: "<script>not executable</script>" },
-      { id: 2, text: "普通消息" },
-    ]),
-  };
-  const html = renderToStaticMarkup(
-    createElement(Feed, { view, controller: {} })
-  );
-  assert.equal((html.match(/data-post-id=/g) || []).length, 1);
-  assert.doesNotMatch(html, /命中你的屏蔽词|关键词命中详情/);
-  assert.doesNotMatch(html, /<script>/);
-  assert.doesNotMatch(html, /请不要相信代练/);
-  assert.match(html, /3 loaded posts · 2 filtered/);
-  const disabled = renderToStaticMarkup(
-    createElement(Feed, {
-      view: { ...view, keywordEnabled: false },
-      controller: {},
-    })
-  );
-  assert.doesNotMatch(disabled, /class="is-folded"|aria-label="推广规则详情"/);
-  assert.match(disabled, /普通消息/);
-  assert.match(disabled, /请不要相信代练/);
-  assert.match(disabled, /&lt;script&gt;not executable&lt;\/script&gt;/);
-  assert.doesNotMatch(disabled, /<script>/);
-});
-
-test("Feed applies all eight filter combinations and counts overlapping hits once", () => {
-  const posts = [
-    { id: 0, text: "ordinary message" },
-    { id: 1, text: "blocked keyword" },
-    { id: 2, text: "rule hit", ruleMatches: ["promotion"] },
-    { id: 3, text: "AI hit", aiAnalyzed: true, aiLabels: ["harassment"] },
-    {
-      id: 4,
-      text: "blocked overlap",
-      ruleMatches: ["promotion"],
-      aiAnalyzed: true,
-      aiLabels: ["harassment"],
-    },
-  ];
-  for (const keywordEnabled of [false, true])
-    for (const rulesEnabled of [false, true])
-      for (const aiHints of [false, true]) {
-        const html = renderToStaticMarkup(
-          createElement(Feed, {
-            view: {
-              feedLoaded: true,
-              posts,
-              keywordEnabled,
-              keywordMode: "contains",
-              keywords: ["blocked"],
-              rulesEnabled,
-              aiHints,
-            },
-            controller: {},
-          })
-        );
-        const hidden = [
-          false,
-          keywordEnabled,
-          rulesEnabled,
-          aiHints,
-          keywordEnabled || rulesEnabled || aiHints,
-        ];
-        hidden.forEach((filtered, id) =>
-          assert.equal(html.includes(`data-post-id="${id}"`), !filtered)
-        );
-        const count = hidden.filter(Boolean).length;
-        assert.equal((html.match(/data-post-id=/g) || []).length, 5 - count);
-        if (count)
-          assert.match(html, new RegExp(`5 loaded posts · ${count} filtered`));
-      }
-});
-
-test("AI folds only analyzed risk hits while pending and clean posts remain visible", () => {
-  const view = {
-    busy: false,
-    connected: true,
-    feedLoaded: true,
-    rulesEnabled: false,
-    aiHints: true,
-    keywordEnabled: false,
-    posts: [
-      { id: 0, text: "classified", aiLabels: ["harassment"], aiAnalyzed: true },
-      { id: 1, text: "pending" },
-      { id: 2, text: "checked", aiLabels: [], aiAnalyzed: true },
-    ],
-  };
-  const html = renderToStaticMarkup(
-    createElement(Feed, { view, controller: {} })
-  );
-  assert.doesNotMatch(html, /data-post-id="0"/);
-  assert.match(html, /data-post-id="1"/);
-  assert.match(html, /data-post-id="2"/);
-  assert.doesNotMatch(html, /AI 分析详情|AI 尚未检测|⚠|◇|◷/);
-  const disabled = renderToStaticMarkup(
-    createElement(Feed, { view: { ...view, aiHints: false }, controller: {} })
-  );
-  assert.doesNotMatch(disabled, /class="is-folded"/);
-  assert.match(disabled, /data-post-id="0"/);
 });
 
 test("action failure uses a compact copyable toast and escapes raw error text", () => {

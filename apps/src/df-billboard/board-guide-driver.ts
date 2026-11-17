@@ -25,15 +25,8 @@ export function startBoardGuide(seenKey: string) {
         popover: {
           title: "Public board",
           description:
-            "Read posts without connecting. Search and refresh here.",
+            "Read posts without connecting. Refresh from the top right.",
           showButtons: ["next", "close"],
-        },
-      },
-      {
-        element: ".nav-settings",
-        popover: {
-          title: "Settings",
-          description: "Choose which posts to fold in your own view.",
         },
       },
       {

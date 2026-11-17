@@ -3,12 +3,10 @@ import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { build } from 'esbuild';
 import { loadContractArtifact } from '@aztec-labs/aztec.js/abi';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const dist = process.env.BILLBOARD_OUTPUT_DIR ? path.resolve(process.env.BILLBOARD_OUTPUT_DIR) : path.join(root, 'apps/dist');
-const source = path.join(root, 'apps/src/df-billboard');
 fs.mkdirSync(dist, { recursive: true });
 const boardArtifact = path.join(root, 'df-billboard/target/df_billboard-DFBillboard.json');
 if (!fs.existsSync(boardArtifact)) throw new Error(`Missing ${boardArtifact}. Run npm run build:df first.`);
@@ -30,32 +28,8 @@ fs.writeFileSync(path.join(dist, 'df-read-config.json'), JSON.stringify({
 }) + '\n');
 fs.copyFileSync(fileURLToPath(import.meta.resolve('@aztec-labs/noir-contracts.js/artifacts/sponsored_fpc_contract-SponsoredFPC')),
   path.join(dist, 'df-sponsor-artifact.json'));
-await build({
-  entryPoints: [path.join(source, 'toxicity.worker.ts')],
-  outfile: path.join(dist, 'df-toxicity.worker.js'),
-  bundle: true,
-  platform: 'browser',
-  format: 'esm',
-  target: 'es2022',
-  logLevel: 'warning',
-});
-const ortDist = path.join(root, 'node_modules/onnxruntime-web/dist');
-// The bundled ORT backend names its external runtime files. Copy those exact
-// references, not every backend shipped by the dependency (JSEP/JSPI/etc.).
-const ortFiles = new Set(fs.readFileSync(path.join(dist, 'df-toxicity.worker.js'), 'utf8')
-  .match(/ort-wasm-simd-threaded[\w.-]*\.(?:wasm|mjs)\b/g));
-if (![...ortFiles].some(file => file.endsWith('.wasm')) || ![...ortFiles].some(file => file.endsWith('.mjs'))) {
-  throw new Error('Cannot identify ONNX runtime assets; inspect the bundled worker before publishing.');
-}
-const ortOutput = path.join(dist, 'onnx');
-fs.mkdirSync(ortOutput, { recursive: true });
-for (const file of ortFiles) fs.copyFileSync(path.join(ortDist, file), path.join(ortOutput, file));
-// Also retire unused generated backends from previous local builds.
-for (const file of fs.readdirSync(ortOutput)) {
-  if (/^ort-wasm-simd-threaded[\w.-]*\.(wasm|mjs)$/.test(file) && !ortFiles.has(file)) {
-    fs.rmSync(path.join(ortOutput, file));
-  }
-}
+fs.rmSync(path.join(dist, 'df-toxicity.worker.js'), { force: true });
+fs.rmSync(path.join(dist, 'onnx'), { recursive: true, force: true });
 for (const name of ['aztec_bundle.js', 'main.worker.js', 'thread.worker.js']) {
   const sourceFile = path.join(root, 'shared', name);
   if (!fs.existsSync(sourceFile)) throw new Error(`Missing ${sourceFile}. Run npm run build:sdk.`);

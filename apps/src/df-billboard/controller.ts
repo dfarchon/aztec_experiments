@@ -11,10 +11,7 @@ import {
   readStored,
   writeStored,
 } from "./accounts.ts";
-import { AI_MODEL_VERSION } from "./ai-config.ts";
 import { createFeedReader } from "./feed-reader.ts";
-import { parseKeywords } from "./keywords.ts";
-import { classifyRulePosts } from "./moderation.ts";
 import {
   environment,
   SDK_VERSION,
@@ -26,7 +23,6 @@ import {
   loadReadLayout,
   publicReadSDK,
 } from "./public-reader.ts";
-import { createReadingController } from "./reading.ts";
 import { emptyRequestView } from "./request-view.ts";
 import { loadAztecRuntime } from "./runtime-assets.ts";
 import type { BillboardController } from "./types";
@@ -86,17 +82,6 @@ export function createBillboardController(deps = {}): BillboardController {
     totalPosts: 0,
     hasOlderPosts: false,
     feedRevision: 0,
-    aiHints: false,
-    aiStatus: "AI filtering is off",
-    rulesEnabled: false,
-    keywordEnabled: false,
-    keywords: [],
-    keywordMode: "contains",
-    keywordError: "",
-    aiConsentGiven: false,
-    aiConsentOpen: false,
-    aiProgress: null,
-    aiClearing: false,
   };
   function patch(changes) {
     if (disposed) return;
@@ -137,41 +122,6 @@ export function createBillboardController(deps = {}): BillboardController {
   let pendingConnection = null;
   let busy = false;
   let progressHideTimer;
-  const reading = createReadingController({
-    getView: () => view,
-    getPosts: () => state.posts,
-    getDeployment: () => deployment,
-    isBusy: () => busy || view.feedLoading,
-    patch,
-    savePreferences,
-    publishPosts,
-  });
-  const {
-    pauseAiHints,
-    runAiHints,
-    setAiHints,
-    confirmAiHints,
-    clearAiCache,
-    saveKeywords,
-  } = reading;
-  const preferencesKey = "df-signal:reading-preferences:v5";
-  function savePreferences() {
-    try {
-      localStorage.setItem(
-        preferencesKey,
-        JSON.stringify({
-          rulesEnabled: view.rulesEnabled,
-          keywordEnabled: view.keywordEnabled,
-          keywords: view.keywords,
-          keywordMode: view.keywordMode,
-          aiHints: view.aiHints,
-          aiConsentVersion: view.aiConsentGiven ? AI_MODEL_VERSION : null,
-        })
-      );
-    } catch {
-      /* Restricted/full storage: controls still work in this session. */
-    }
-  }
   function showProgress(label) {
     clearTimeout(progressHideTimer);
     patch({ progress: { label, completed: false, failed: false } });
@@ -285,7 +235,6 @@ export function createBillboardController(deps = {}): BillboardController {
     patch({ connecting, posting: label === "Anonymous posting" });
     // Refreshing the feed must not erase an unrelated transaction error.
     if (view.actionError?.label === label) patch({ actionError: null });
-    if (label === "Anonymous posting") pauseAiHints();
     let succeeded = false;
     let completionLabel;
     showProgress(`${label}…`);
@@ -301,7 +250,6 @@ export function createBillboardController(deps = {}): BillboardController {
       patch({ connecting: false, posting: false });
       publishSession();
       finishProgress(label, succeeded, completionLabel);
-      reading.resume();
     }
   }
   function publishSession() {
@@ -349,39 +297,6 @@ export function createBillboardController(deps = {}): BillboardController {
     return a.Contract.at(addr, artifact, state.wallet);
   }
   async function initialize() {
-    try {
-      const preferences = JSON.parse(
-        localStorage.getItem(preferencesKey) || "{}"
-      );
-      patch({
-        rulesEnabled: preferences.rulesEnabled === true,
-        keywordEnabled: preferences.keywordEnabled === true,
-        keywordMode: preferences.keywordMode === "word" ? "word" : "contains",
-        aiConsentGiven: preferences.aiConsentVersion === AI_MODEL_VERSION,
-        aiHints: Boolean(
-          preferences.aiHints === true &&
-          preferences.aiConsentVersion === AI_MODEL_VERSION
-        ),
-      });
-      if (view.aiHints)
-        patch({ aiStatus: "AI enabled. Waiting to load public posts." });
-      try {
-        patch({
-          keywords: parseKeywords(
-            Array.isArray(preferences.keywords)
-              ? preferences.keywords.join("\n")
-              : ""
-          ),
-        });
-      } catch {
-        patch({
-          keywords: [],
-          keywordError: "The saved keyword list is invalid. Enter it again.",
-        });
-      }
-    } catch {
-      /* Unavailable or malformed storage must not block wallet setup. */
-    }
     deployment = await fetchPublicJson("/df-local.json", { cache: "no-store" });
     const env = environment(deployment.environment);
     validateRpc(deployment.nodeUrl, env);
@@ -967,7 +882,6 @@ export function createBillboardController(deps = {}): BillboardController {
   }
 
   async function loadFeed(older, reportProgress) {
-    pauseAiHints();
     if (!publicNode || !readLayout)
       throw new Error("Billboard is not initialized");
     if (older && (!feedCursor || feedCursor.before === 0)) return;
@@ -985,16 +899,14 @@ export function createBillboardController(deps = {}): BillboardController {
         !view.feedLoaded
           ? (posts, total) => {
               if (disposed) return;
-              state.posts = classifyRulePosts(posts);
+              state.posts = posts;
               publishPosts({ totalPosts: total });
             }
           : undefined
       );
       if (disposed) return;
       feedCursor = result.cursor;
-      state.posts = classifyRulePosts(
-        older ? [...result.posts, ...state.posts] : result.posts
-      );
+      state.posts = older ? [...result.posts, ...state.posts] : result.posts;
       publishPosts({
         feedLoaded: true,
         totalPosts: feedCursor.total,
@@ -1004,7 +916,6 @@ export function createBillboardController(deps = {}): BillboardController {
     } finally {
       patch({ feedLoading: false });
     }
-    if (view.aiHints) void runAiHints();
     log(
       `Loaded ${state.posts.length} of ${feedCursor.total} public posts`,
       "info",
@@ -1023,19 +934,8 @@ export function createBillboardController(deps = {}): BillboardController {
       "accountFile",
       "provider",
       "message",
-      "rulesEnabled",
-      "keywordEnabled",
-      "keywordMode",
     ];
-    const readingFields = ["rulesEnabled", "keywordEnabled", "keywordMode"];
-    if (!editable.includes(name) || (busy && !readingFields.includes(name)))
-      return;
-    if (
-      ["rulesEnabled", "keywordEnabled"].includes(name) &&
-      typeof value !== "boolean"
-    )
-      return;
-    if (name === "keywordMode" && !["contains", "word"].includes(value)) return;
+    if (!editable.includes(name) || busy) return;
     if (
       ["walletMode", "savedAccount", "provider"].includes(name) &&
       (state.wallet || view.request.payer || pendingConnection)
@@ -1048,7 +948,6 @@ export function createBillboardController(deps = {}): BillboardController {
       return;
     if (name === "walletMode") walletModeSelected = true;
     patch({ [name]: value });
-    if (readingFields.includes(name)) savePreferences();
     if (name === "walletMode" || name === "provider") publishSession();
   }
   async function copyAddress() {
@@ -1098,10 +997,6 @@ export function createBillboardController(deps = {}): BillboardController {
     log,
     setField,
     setWalletPanel,
-    setAiHints,
-    confirmAiHints,
-    clearAiCache,
-    saveKeywords,
     copyAddress,
     accountBackup,
     connect: () => action(connect, "Connect wallet", true),
@@ -1128,7 +1023,6 @@ export function createBillboardController(deps = {}): BillboardController {
     dispose: () => {
       disposed = true;
       requestPosting?.dispose();
-      reading.dispose();
       pendingConnection?.cancel();
       clearTimeout(progressHideTimer);
       clearTimeout(copyTimer);

@@ -8,5 +8,5 @@ export default function BoardRoute() {
     // Errors are shown inside the board, which stays usable while loading.
     void initializeRuntime().catch(() => {});
   }, []);
-  return <App controller={controller} development={import.meta.env.DEV} />;
+  return <App controller={controller} />;
 }

@@ -1,7 +1,9 @@
 import { useEffect, useRef } from "react";
 
+import type { Theme } from "./theme";
+
 // Adapted from dfarchon/onchain-reality/src/components/AsciiClouds.tsx.
-// Keep the original noise field and palette; limit work for the proving client.
+// Keep the original noise field, palette, and pointer influence.
 const PERM = new Uint8Array(512);
 {
   const p = Uint8Array.from({ length: 256 }, (_, i) => i);
@@ -57,7 +59,7 @@ function fbm(x: number, y: number, octaves: number) {
   return value / max;
 }
 
-export function AsciiClouds({ paused }: { paused: boolean }) {
+export function AsciiClouds({ theme }: { theme: Theme }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -67,12 +69,48 @@ export function AsciiClouds({ paused }: { paused: boolean }) {
     let timer: ReturnType<typeof setTimeout>;
     let width = 0;
     let height = 0;
+    let cols = 0;
+    let rows = 0;
+    let influence = new Float32Array(0);
+    let mouseX = 0;
+    let mouseY = 0;
+    let previousX = 0;
+    let previousY = 0;
+
+    function onMouseMove(event: MouseEvent) {
+      mouseX = event.clientX;
+      mouseY = event.clientY;
+      if (motion.matches) restart();
+    }
 
     function draw() {
       if (!canvas || !ctx || document.hidden) return;
-      const time = paused || motion.matches ? 0 : performance.now() * 0.001;
-      const cols = Math.ceil(width / 8.68) + 1;
-      const rows = Math.ceil(height / 14.7) + 1;
+      const time = motion.matches ? 0 : performance.now() * 0.001;
+      if ((mouseX - previousX) ** 2 + (mouseY - previousY) ** 2 > 1) {
+        const centerCol = Math.round(mouseX / 8.68);
+        const centerRow = Math.round(mouseY / 14.7);
+        for (
+          let row = Math.max(0, centerRow - 6);
+          row <= Math.min(rows - 1, centerRow + 6);
+          row++
+        ) {
+          for (
+            let col = Math.max(0, centerCol - 6);
+            col <= Math.min(cols - 1, centerCol + 6);
+            col++
+          ) {
+            const distance =
+              ((col - centerCol) ** 2 + (row - centerRow) ** 2) / 36;
+            if (distance < 1) {
+              const strength = (1 - distance) ** 2;
+              const index = row * cols + col;
+              influence[index] = Math.max(influence[index], strength);
+            }
+          }
+        }
+        previousX = mouseX;
+        previousY = mouseY;
+      }
       const panel = document
         .getElementById("main-content")
         ?.getBoundingClientRect();
@@ -121,11 +159,22 @@ export function AsciiClouds({ paused }: { paused: boolean }) {
             (fbm(angle * 2 + 7, Math.log(dist + 0.1) * 2 - time * 0.03 + 7, 3) +
               1) *
             0.5;
-          const final = Math.max(base * 0.35, density);
+          const index = row * cols + col;
+          const effect = influence[index];
+          influence[index] *= 0.985;
+          const final = Math.max(base * 0.35, density) * (1 - effect * 0.85);
           const bright = 0.5 + final * light * 0.5;
           const opacity =
             density > 0.01 ? lerp(0.5, alpha, density) : 0.3 + base * 0.3;
-          ctx.fillStyle = `rgba(${Math.round(lerp(240, 255, bright))},${Math.round(lerp(180, 220, bright))},${Math.round(lerp(210, 245, bright))},${opacity})`;
+          let red = lerp(lerp(240, 255, bright), 160, effect * 0.5);
+          let green = lerp(lerp(180, 220, bright), 235, effect * 0.5);
+          let blue = lerp(lerp(210, 245, bright), 255, effect * 0.5);
+          if (theme === "light") {
+            red = lerp(red, 198, 0.44);
+            green = lerp(green, 78, 0.44);
+            blue = lerp(blue, 148, 0.44);
+          }
+          ctx.fillStyle = `rgba(${Math.round(red)},${Math.round(green)},${Math.round(blue)},${Math.min(1, opacity * (theme === "light" ? 1.22 : 1) + effect * 0.3)})`;
           ctx.fillText(
             CHARS[
               Math.min(CHARS.length - 1, Math.floor(final * (CHARS.length - 1)))
@@ -135,7 +184,7 @@ export function AsciiClouds({ paused }: { paused: boolean }) {
           );
         }
       }
-      if (!paused && !motion.matches) timer = setTimeout(draw, 125);
+      if (!motion.matches) timer = setTimeout(draw, 125);
     }
     function restart() {
       clearTimeout(timer);
@@ -145,6 +194,9 @@ export function AsciiClouds({ paused }: { paused: boolean }) {
       if (!canvas || !ctx) return;
       width = window.innerWidth;
       height = window.innerHeight;
+      cols = Math.ceil(width / 8.68) + 1;
+      rows = Math.ceil(height / 14.7) + 1;
+      influence = new Float32Array(cols * rows);
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = width * dpr;
       canvas.height = height * dpr;
@@ -153,14 +205,16 @@ export function AsciiClouds({ paused }: { paused: boolean }) {
     }
     resize();
     window.addEventListener("resize", resize);
+    window.addEventListener("mousemove", onMouseMove);
     document.addEventListener("visibilitychange", restart);
     motion.addEventListener("change", restart);
     return () => {
       clearTimeout(timer);
       window.removeEventListener("resize", resize);
+      window.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("visibilitychange", restart);
       motion.removeEventListener("change", restart);
     };
-  }, [paused]);
+  }, [theme]);
   return <canvas ref={canvasRef} className="ascii-clouds" aria-hidden="true" />;
 }

@@ -17,7 +17,7 @@ interface SelectProps {
 }
 
 // A shared select-only combobox. The popover stays in the top layer, so wallet
-// and settings scroll containers cannot clip it. Focus remains on the trigger.
+// and scroll containers cannot clip it. Focus remains on the trigger.
 export function Select({
   id,
   value,
