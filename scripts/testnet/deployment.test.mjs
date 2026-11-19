@@ -17,7 +17,7 @@ import { adapters } from './network.mjs';
 import { buildRelease, vercelConfig } from './release.mjs';
 
 const config = JSON.parse(fs.readFileSync(new URL('./config.json', import.meta.url)));
-const binding = { config, boardArtifactHash: 'artifact-hash', boardClassId: 'class-id', sponsoredFpc: 'sponsor' };
+const binding = { config, boardArtifactHash: 'artifact-hash', boardClassId: 'class-id', portalArtifactHash: 'portal-hash', sponsoredFpc: 'sponsor' };
 function temporary(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'billboard-deployment-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -117,11 +117,12 @@ test('reverted transaction and confirmation timeout do not trigger replacement',
 test('public export excludes all secrets and refuses incomplete deployments', () => {
   const state = { schemaVersion: 1, binding, account: { secret: 'PRIVATE' },
     l1: { confirmed: true, raw: 'PRIVATE', address: 'entry', hash: 'l1hash', runtimeCodeHash: 'codehash' },
-    l2: { confirmed: true, raw: 'PRIVATE', address: 'board', hash: 'l2hash' } };
+    l2: { confirmed: true, raw: 'PRIVATE', address: 'board', hash: 'l2hash' },
+    bind: { confirmed: true, raw: 'PRIVATE', address: 'entry', hash: 'bindhash' } };
   const manifest = publicManifest(state);
   assert(!JSON.stringify(manifest).includes('PRIVATE'));
   assert.equal(manifest.environment, 'testnet');
-  assert.equal(manifest.l1Request.chainId, 11155111);
+  assert.equal(manifest.l1Stake.chainId, 11155111);
   assert.equal(manifest.boardArtifactHash, binding.boardArtifactHash);
   assert.throws(() => publicManifest({ ...state, l2: {} }), /confirmed/);
 });
@@ -139,12 +140,12 @@ test('Vercel config isolates workers and does not rewrite missing assets to HTML
 });
 
 test('L1 recovery validates signed creation bytecode, chain and expected address without reading a key', async () => {
-  const inbox = JSON.parse(fs.readFileSync(new URL('../../.local/billboard-l1-out/BillboardInbox.sol/BillboardInbox.json', import.meta.url)));
+  const portal = JSON.parse(fs.readFileSync(new URL('../../.local/billboard-l1-out/BillboardPortal.sol/BillboardPortal.json', import.meta.url)));
   const signer = Wallet.createRandom(); // Ephemeral fixture, never funded or sent.
-  const data = await new ContractFactory(inbox.abi, inbox.bytecode.object).getDeployTransaction(config.rollupAddress, config.rollupVersion);
+  const data = await new ContractFactory(portal.abi, portal.bytecode.object).getDeployTransaction(config.rollupAddress, config.rollupVersion);
   const raw = await signer.signTransaction({ ...data, nonce: 0, chainId: 11155111, gasLimit: 1_000_000, gasPrice: 1 });
   const stage = { raw, hash: keccak256(raw), address: getCreateAddress({ from: signer.address, nonce: 0 }) };
-  const adapter = adapters({ binding, inbox }, { state: {} }, '/must-not-read').l1;
+  const adapter = adapters({ binding, portal }, { state: {} }, '/must-not-read').l1;
   await adapter.validate(stage);
   await assert.rejects(adapter.validate({ ...stage, hash: 'wrong' }));
   await assert.rejects(adapter.validate({ ...stage, address: config.rollupAddress }));

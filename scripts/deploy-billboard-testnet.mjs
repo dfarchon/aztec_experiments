@@ -10,7 +10,7 @@ import { buildRelease } from './testnet/release.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
   config: { type: 'string', default: path.join(root, 'scripts/testnet/config.json') },
-  state: { type: 'string', default: path.join(root, '.local/testnet/deployment.json') },
+  state: { type: 'string', default: path.join(root, '.local/testnet/stake-deployment.json') },
   'key-file': { type: 'string' }, out: { type: 'string' },
   target: { type: 'string' },
   broadcast: { type: 'boolean', default: false }, help: { type: 'boolean', default: false },
@@ -42,7 +42,7 @@ Resume uses recorded transactions. No private keys belong in the hosting package
     if (action === 'plan') {
       console.log(JSON.stringify({ ...context.binding, sponsorBalance: context.sponsorBalance.toString(),
         warning: 'Balance does not guarantee sponsorship. No keys loaded or transactions sent.',
-        order: ['Sepolia BillboardInbox', 'Aztec DFBillboard (real proofs, Sponsored FPC)'],
+        order: ['Sepolia BillboardPortal', 'Aztec DFBillboard (real proofs)', 'Bind portal to board'],
       }, null, 2));
     } else {
       assert(action === 'deploy' || fs.existsSync(values.state), 'No deployment journal exists');
@@ -52,14 +52,14 @@ Resume uses recorded transactions. No private keys belong in the hosting package
         if (!journal.state.l2?.confirmed) {
           assert(context.sponsorBalance > 0n, 'Sponsored FPC is empty; stop before spending L1 gas');
         }
-        for (const name of ['l1', 'l2']) {
+        for (const name of ['l1', 'l2', 'bind']) {
           console.log(`Deploy/resume ${name}; checkpoint: ${path.resolve(values.state)}`);
           const stage = await runStage(journal, name, stages[name]);
           console.log(`${name}: ${stage.address} · ${stage.hash} · confirmed`);
         }
-        console.log('Contracts confirmed. Use export or release; the local website is unchanged.');
+        console.log('Portal, board and binding confirmed. Use export or release; the local website is unchanged.');
       } else if (action === 'status') {
-        for (const name of ['l1', 'l2']) {
+        for (const name of ['l1', 'l2', 'bind']) {
           const stage = journal.state[name];
           if (!stage) { console.log(`${name}: not prepared`); continue; }
           await stages[name].validate(stage);

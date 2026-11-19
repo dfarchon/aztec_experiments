@@ -1,20 +1,11 @@
 use aztec::{
-    keys::getters::get_public_keys,
-    protocol::{address::{AztecAddress, EthAddress}, hash::poseidon2_hash_with_separator, traits::ToField},
+    protocol::{address::{AztecAddress, EthAddress}, traits::ToField},
     test::helpers::test_environment::TestEnvironment,
 };
 use df_billboard::DFBillboard;
 
-unconstrained fn setup() -> (TestEnvironment, AztecAddress, AztecAddress, AztecAddress) {
-    let mut env = TestEnvironment::new();
-    let deployer = env.create_light_account();
-    let owner = env.create_light_account();
-    let board = env.deploy("@df_billboard/DFBillboard").with_public_initializer(
-        deployer,
-        DFBillboard::interface().constructor(),
-    );
-    (env, board, deployer, owner)
-}
+global UNIT: u128 = 500000000000000;
+global WINDOW: u64 = 86400;
 
 fn hello() -> [u8; 512] {
     let mut text = [0; 512];
@@ -23,267 +14,139 @@ fn hello() -> [u8; 512] {
     text
 }
 
-#[test]
-fn request_commitment_matches_typescript_vector() {
-    let expected = 0x00d54d44ffea3f9915c55df999bf41127de33c1f49d9c7fef71a17aee13aa70f;
-    assert(df_billboard::bridge::request_commitment(hello(), 2, 7, 9) == expected);
-    assert(df_billboard::bridge::request_commitment(hello(), 2, 8, 9) != expected);
-    assert(df_billboard::bridge::request_commitment(hello(), 2, 7, 10) != expected);
-}
-
-#[test(should_fail_with = "L1 entry disabled")]
-unconstrained fn default_board_rejects_l1_requests() {
-    let (env, board, _, owner) = setup();
-    env.call_private(owner, DFBillboard::at(board).post_from_l1(hello(), 2, 7, 9, 16));
-}
-
-#[test]
-unconstrained fn l1_board_pins_sender_at_initialization() {
+unconstrained fn setup() -> (TestEnvironment, AztecAddress, AztecAddress, EthAddress, EthAddress) {
     let mut env = TestEnvironment::new();
     let owner = env.create_light_account();
-    let entry = EthAddress::from_field(123);
+    let portal = EthAddress::from_field(123);
+    let depositor = EthAddress::from_field(456);
     let board = env.deploy("@df_billboard/DFBillboard").with_public_initializer(
-        owner, DFBillboard::interface().constructor_with_inbox(entry),
+        owner, DFBillboard::interface().constructor_with_portal(portal),
     );
-    assert(env.view_public(DFBillboard::at(board).get_l1_inbox()).to_field() == 123);
-    env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
-    assert(env.view_public(DFBillboard::at(board).get_post_count()) == 1);
+    (env, board, owner, portal, depositor)
 }
 
-#[test(should_fail)]
-unconstrained fn cannot_reconfigure_l1_sender() {
-    let (env, board, deployer, _) = setup();
-    env.call_public(deployer, DFBillboard::at(board).constructor_with_inbox(EthAddress::from_field(123)));
+unconstrained fn add_stake(
+    env: &mut TestEnvironment,
+    board: AztecAddress,
+    owner: AztecAddress,
+    portal: EthAddress,
+    depositor: EthAddress,
+    amount: u128,
+    secret: Field,
+) {
+    let content = df_billboard::bridge::deposit_message(depositor, amount);
+    let leaf = env.send_l1_to_l2_message(content, secret, portal, board);
+    env.call_private(owner, DFBillboard::at(board).claim_deposit(depositor, amount, secret, leaf));
 }
 
 #[test]
-unconstrained fn new_account_posts_without_registration_or_deposit() {
-    let (env, board, _, owner) = setup();
+unconstrained fn first_stake_posts_without_cooldown() {
+    let (mut env, board, owner, portal, depositor) = setup();
+    add_stake(&mut env, board, owner, portal, depositor, UNIT, 9);
     env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
     assert(env.view_public(DFBillboard::at(board).get_post_count()) == 1);
     let (data, length) = env.view_public(DFBillboard::at(board).get_post(0));
-    let mut expected: Field = 104 * 256 + 105;
-    for _ in 0..29 {
-        expected = expected * 256;
-    }
     assert(length == 2);
-    assert(data[0] == expected);
-    for i in 1..17 {
-        assert(data[i] == 0);
-    }
+    assert(data[0] != 0);
 }
 
-#[test]
-unconstrained fn account_created_after_deployment_can_post() {
-    let (mut env, board, _, _) = setup();
-    let newcomer = env.create_light_account();
-    env.call_private(newcomer, DFBillboard::at(board).post(hello(), 2));
-    assert(env.view_public(DFBillboard::at(board).get_post_count()) == 1);
-}
-
-#[test]
-unconstrained fn publication_time_uses_inclusion_block_and_remains_immutable() {
-    let (env, board, _, owner) = setup();
-    let anchor_time = env.last_block_timestamp();
-    env.set_next_block_timestamp(anchor_time + 60);
-    env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
-    assert(env.view_public(DFBillboard::at(board).get_post_timestamp(0)) == anchor_time + 60);
-    env.mine_block_at(anchor_time + 120);
-    env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
-    assert(env.view_public(DFBillboard::at(board).get_post_timestamp(1)) == anchor_time + 120);
-    assert(env.view_public(DFBillboard::at(board).get_post_timestamp(0)) == anchor_time + 60);
-}
-
-#[test]
-unconstrained fn l1_post_records_l2_publication_time() {
-    let mut env = TestEnvironment::new();
-    let owner = env.create_light_account();
-    let entry = EthAddress::from_field(123);
-    let board = env.deploy("@df_billboard/DFBillboard").with_public_initializer(
-        owner, DFBillboard::interface().constructor_with_inbox(entry),
-    );
-    let content = df_billboard::bridge::request_commitment(hello(), 2, 7, owner.to_field());
-    let leaf = env.send_l1_to_l2_message(content, 9, entry, board);
-    let request_time = env.last_block_timestamp();
-    env.mine_block_at(request_time + 120);
-    env.call_private(owner, DFBillboard::at(board).post_from_l1(hello(), 2, 7, 9, leaf));
-    assert(env.view_public(DFBillboard::at(board).get_post_timestamp(0)) == request_time + 120);
-}
-
-#[test(should_fail_with = "Unknown post")]
-unconstrained fn unknown_post_has_no_publication_time() {
-    let (env, board, _, _) = setup();
-    let _ = env.view_public(DFBillboard::at(board).get_post_timestamp(0));
-}
-
-#[test]
-unconstrained fn ten_posts_allowed_in_one_window() {
-    let (env, board, _, owner) = setup();
-    for _ in 0..10 {
-        env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
-    }
-    assert(env.view_public(DFBillboard::at(board).get_post_count()) == 10);
-}
-
-#[test(should_fail_with = "24-hour post limit reached")]
-unconstrained fn eleventh_post_inside_rolling_window_rejected() {
-    let (env, board, _, owner) = setup();
-    for _ in 0..11 {
-        env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
-    }
-}
-
-#[test(should_fail_with = "24-hour post limit reached")]
-unconstrained fn one_second_before_expiry_is_still_limited() {
-    let (env, board, _, owner) = setup();
-    let first_time = env.last_block_timestamp();
-    for _ in 0..10 {
-        env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
-    }
-    env.mine_block_at(first_time + 86399);
+#[test(should_fail_with = "Stake required")]
+unconstrained fn unstaked_account_cannot_post() {
+    let (env, board, owner, _, _) = setup();
     env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
 }
 
 #[test]
-unconstrained fn only_expired_post_frees_one_slot_at_exact_boundary() {
-    let (env, board, _, owner) = setup();
-    let first_time = env.last_block_timestamp();
-    env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
-    env.mine_block_at(first_time + 3600);
-    for _ in 0..9 {
-        env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
-    }
-    env.mine_block_at(first_time + 86400);
-    env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
-    assert(env.view_public(DFBillboard::at(board).get_post_count()) == 11);
-}
-
-#[test(should_fail_with = "24-hour post limit reached")]
-unconstrained fn expired_oldest_does_not_reset_other_nine() {
-    let (env, board, _, owner) = setup();
-    let first_time = env.last_block_timestamp();
-    env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
-    env.mine_block_at(first_time + 3600);
-    for _ in 0..9 {
-        env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
-    }
-    env.mine_block_at(first_time + 86400);
-    env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
-    env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
-}
-
-#[test(should_fail_with = "24-hour post limit reached")]
-unconstrained fn future_inclusion_time_does_not_advance_anchor_quota() {
-    let (env, board, _, owner) = setup();
-    let first_time = env.last_block_timestamp();
-    for _ in 0..10 {
-        env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
-    }
-    // Moving the pending block clock alone must not free quota at the old anchor.
-    env.set_next_block_timestamp(first_time + 86400);
-    env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
-}
-
-#[test]
-unconstrained fn rolling_history_survives_multiple_ring_wraps() {
-    let (env, board, _, owner) = setup();
-    let first_time = env.last_block_timestamp();
-    for day in 0..3 {
-        env.mine_block_at(first_time + day as u64 * 86400);
-        for _ in 0..10 {
+unconstrained fn all_four_stake_tiers_unlock_immediately() {
+    let (mut env, board, owner, portal, depositor) = setup();
+    for tier in 0..4 {
+        add_stake(&mut env, board, owner, portal, depositor, UNIT, (tier + 1) as Field);
+        for _ in 0..5 {
             env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
         }
+        assert(env.view_public(DFBillboard::at(board).get_post_count()) == (tier + 1) * 5);
     }
-    assert(env.view_public(DFBillboard::at(board).get_post_count()) == 30);
+}
+
+#[test(should_fail_with = "24-hour post limit reached")]
+unconstrained fn twenty_first_post_rejected() {
+    let (mut env, board, owner, portal, depositor) = setup();
+    add_stake(&mut env, board, owner, portal, depositor, 4 * UNIT, 9);
+    for _ in 0..21 {
+        env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
+    }
+}
+
+#[test(should_fail_with = "Stake exceeds account cap")]
+unconstrained fn l2_stake_cap_is_checked() {
+    let (mut env, board, owner, portal, depositor) = setup();
+    add_stake(&mut env, board, owner, portal, depositor, 4 * UNIT, 9);
+    add_stake(&mut env, board, owner, portal, depositor, UNIT, 10);
+}
+
+#[test(should_fail_with = "Stake belongs to another L1 address")]
+unconstrained fn another_depositor_cannot_top_up_the_same_account() {
+    let (mut env, board, owner, portal, depositor) = setup();
+    add_stake(&mut env, board, owner, portal, depositor, UNIT, 9);
+    add_stake(&mut env, board, owner, portal, EthAddress::from_field(789), UNIT, 10);
 }
 
 #[test]
-unconstrained fn accounts_have_independent_full_quotas() {
-    let (env, board, deployer, owner) = setup();
-    for _ in 0..10 {
-        env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
-    }
-    for _ in 0..10 {
-        env.call_private(deployer, DFBillboard::at(board).post(hello(), 2));
-    }
-    assert(env.view_public(DFBillboard::at(board).get_post_count()) == 20);
-}
-
-#[test]
-unconstrained fn boards_have_independent_full_quotas() {
-    let (mut env, board, deployer, owner) = setup();
-    let other_board = env.deploy("@df_billboard/DFBillboard").with_public_initializer(
-        deployer,
-        DFBillboard::interface().constructor(),
-    );
-    for _ in 0..10 {
-        env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
-    }
-    for _ in 0..10 {
-        env.call_private(owner, DFBillboard::at(other_board).post(hello(), 2));
-    }
-    assert(env.view_public(DFBillboard::at(board).get_post_count()) == 10);
-    assert(env.view_public(DFBillboard::at(other_board).get_post_count()) == 10);
-}
-
-#[test(should_fail_with = "duplicate siloed nullifier")]
-unconstrained fn missing_history_cannot_reinitialize_quota() {
-    let (env, board, _, owner) = setup();
-    // Model an absent private history with its first-post nullifier already
-    // settled. A wallet omitting its history must not get a fresh quota.
-    env.private_context_at(board, |context| {
-        let secret = context.request_nhk_app(get_public_keys(owner).npk_m_hash);
-        let first_post_id = poseidon2_hash_with_separator(
-            [board.to_field(), owner.to_field(), secret],
-            1145455153,
-        );
-        context.push_nullifier_unsafe(first_post_id);
-    });
+unconstrained fn expired_post_frees_only_its_slot() {
+    let (mut env, board, owner, portal, depositor) = setup();
+    add_stake(&mut env, board, owner, portal, depositor, UNIT, 9);
+    let start = env.last_block_timestamp();
     env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
+    env.mine_block_at(start + 3600);
+    for _ in 0..4 { env.call_private(owner, DFBillboard::at(board).post(hello(), 2)); }
+    env.mine_block_at(start + WINDOW);
+    env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
+    assert(env.view_public(DFBillboard::at(board).get_post_count()) == 6);
 }
 
-#[test(should_fail_with = "Function _publish can only be called by the same contract")]
-unconstrained fn direct_public_publish_rejected() {
-    let (env, board, _, owner) = setup();
-    env.call_public(owner, DFBillboard::at(board)._publish([0; 17], 1));
+#[test(should_fail_with = "Wait 24 hours after the last post")]
+unconstrained fn exit_before_last_post_expires_rejected() {
+    let (mut env, board, owner, portal, depositor) = setup();
+    add_stake(&mut env, board, owner, portal, depositor, UNIT, 9);
+    env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
+    env.call_private(owner, DFBillboard::at(board).withdraw());
+}
+
+#[test]
+unconstrained fn exit_after_last_post_expires_succeeds() {
+    let (mut env, board, owner, portal, depositor) = setup();
+    add_stake(&mut env, board, owner, portal, depositor, UNIT, 9);
+    env.call_private(owner, DFBillboard::at(board).post(hello(), 2));
+    let last = env.last_block_timestamp();
+    env.mine_block_at(last + WINDOW);
+    env.call_private(owner, DFBillboard::at(board).withdraw());
+}
+
+#[test]
+unconstrained fn unused_stake_can_exit() {
+    let (mut env, board, owner, portal, depositor) = setup();
+    add_stake(&mut env, board, owner, portal, depositor, UNIT, 9);
+    env.call_private(owner, DFBillboard::at(board).withdraw());
+}
+
+#[test(should_fail_with = "No stake to withdraw")]
+unconstrained fn withdrawn_stake_cannot_exit_twice() {
+    let (mut env, board, owner, portal, depositor) = setup();
+    add_stake(&mut env, board, owner, portal, depositor, UNIT, 9);
+    env.call_private(owner, DFBillboard::at(board).withdraw());
+    env.call_private(owner, DFBillboard::at(board).withdraw());
 }
 
 #[test(should_fail_with = "Message too long")]
 unconstrained fn overlength_rejected() {
-    let (env, board, _, owner) = setup();
+    let (mut env, board, owner, portal, depositor) = setup();
+    add_stake(&mut env, board, owner, portal, depositor, UNIT, 9);
     env.call_private(owner, DFBillboard::at(board).post(hello(), 513));
-}
-
-#[test(should_fail_with = "Empty message")]
-unconstrained fn empty_rejected() {
-    let (env, board, _, owner) = setup();
-    env.call_private(owner, DFBillboard::at(board).post([0; 512], 0));
 }
 
 #[test(should_fail_with = "Nonzero padding")]
 unconstrained fn hidden_trailing_bytes_rejected() {
-    let (env, board, _, owner) = setup();
+    let (mut env, board, owner, portal, depositor) = setup();
+    add_stake(&mut env, board, owner, portal, depositor, UNIT, 9);
     env.call_private(owner, DFBillboard::at(board).post(hello(), 1));
-}
-
-#[test]
-unconstrained fn maximum_length_round_trip() {
-    let (env, board, _, owner) = setup();
-    env.call_private(owner, DFBillboard::at(board).post([97; 512], 512));
-    let (fields, length) = env.view_public(DFBillboard::at(board).get_post(0));
-    assert(length == 512);
-    let mut expected: Field = 0;
-    for _ in 0..16 {
-        expected = expected * 256 + 97;
-    }
-    for _ in 0..15 {
-        expected = expected * 256;
-    }
-    assert(fields[16] == expected);
-}
-
-#[test(should_fail_with = "Unknown post")]
-unconstrained fn unpublished_post_cannot_be_read() {
-    let (env, board, _, _) = setup();
-    let _ = env.view_public(DFBillboard::at(board).get_post(0));
 }

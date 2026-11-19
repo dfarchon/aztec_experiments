@@ -93,19 +93,20 @@ export async function runStage(journal, name, adapter) {
 
 export function publicManifest(state) {
   assert.equal(state.schemaVersion, 1);
-  assert(state.l1?.confirmed && state.l2?.confirmed, 'Both deployment transactions must be confirmed before export');
+  assert(state.l1?.confirmed && state.l2?.confirmed && state.bind?.confirmed, 'Portal, board and binding must be confirmed before export');
   const { config, boardArtifactHash, boardClassId, sponsoredFpc } = state.binding;
   // Explicit allowlist. Never spread the private journal into public output.
   return {
-    kind: 'standalone-billboard', schemaVersion: 1, environment: 'testnet',
+    kind: 'notch-stake', schemaVersion: 2, environment: 'testnet',
     nodeUrl: publicRpc(config.nodeUrl), chainId: config.chainId,
     rollupVersion: config.rollupVersion, rollupAddress: config.rollupAddress,
     board: state.l2.address, boardArtifactHash, boardClassId,
     sponsoredFpc, sponsorSalt: '0', deploymentTx: state.l2.hash,
-    l1Request: {
+    l1Stake: {
       chainId: config.chainId, rpcUrl: publicRpc(config.l1RpcUrl),
-      entry: state.l1.address, inbox: config.inboxAddress,
+      portal: state.l1.address, inbox: config.inboxAddress,
       runtimeCodeHash: state.l1.runtimeCodeHash,
+      deploymentBlock: state.l1.blockNumber,
     },
   };
 }

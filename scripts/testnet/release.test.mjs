@@ -61,10 +61,11 @@ for (const target of ['vercel', 'netlify']) test(`isolated ${target} package con
   const before = fs.existsSync(localFile) ? fs.readFileSync(localFile, 'utf8') : null;
   const config = JSON.parse(fs.readFileSync(new URL('./config.json', import.meta.url)));
   const fixture = publicManifest({ schemaVersion: 1,
-    binding: { config, boardArtifactHash: digest(board), boardClassId: 'offline-fixture', sponsoredFpc: 'offline-fixture' },
+    binding: { config, boardArtifactHash: digest(board), boardClassId: 'offline-fixture', portalArtifactHash: 'offline-fixture', sponsoredFpc: 'offline-fixture' },
     account: { secret: 'DO-NOT-PUBLISH-THIS-FIXTURE-SECRET' },
     l1: { confirmed: true, address: 'offline-fixture', runtimeCodeHash: 'offline-fixture', raw: 'DO-NOT-PUBLISH' },
     l2: { confirmed: true, address: 'offline-fixture', hash: 'offline-fixture', raw: 'DO-NOT-PUBLISH' },
+    bind: { confirmed: true, address: 'offline-fixture', hash: 'offline-fixture', raw: 'DO-NOT-PUBLISH' },
   });
   const destination = path.join(temp, 'release');
   // Omitting the target must continue to produce the existing Vercel layout.

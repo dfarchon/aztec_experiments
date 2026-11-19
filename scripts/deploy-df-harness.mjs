@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
-import { ContractFactory, JsonRpcProvider, keccak256 } from 'ethers';
+import { Contract as EvmContract, ContractFactory, JsonRpcProvider, keccak256 } from 'ethers';
 import { createAztecNodeClient } from '@aztec-labs/aztec.js/node';
 import { AztecAddress, EthAddress } from '@aztec-labs/aztec.js/addresses';
 import { EmbeddedWallet } from '@aztec-labs/wallets/embedded';
@@ -45,39 +45,39 @@ const l1Provider = new JsonRpcProvider(l1RpcUrl, undefined, {
 try {
   assert.equal((await l1Provider.getNetwork()).chainId, 31337n);
   assert.notEqual(await l1Provider.getCode(l1.rollupAddress.toString()), '0x', 'L1 RPC does not host this rollup');
-  let requestEntry;
-  let requestCodeHash;
-  if (previous?.rollupAddress === l1.rollupAddress.toString() && previous.l1Request?.rpcUrl === l1RpcUrl) {
-    const code = await l1Provider.getCode(previous.l1Request.entry);
-    if (code !== '0x' && keccak256(code) === previous.l1Request.runtimeCodeHash) {
-      requestEntry = previous.l1Request.entry;
-      requestCodeHash = previous.l1Request.runtimeCodeHash;
+  let portalAddress;
+  let portalCodeHash;
+  if (previous?.kind === 'notch-stake' && previous?.rollupAddress === l1.rollupAddress.toString() && previous.l1Stake?.rpcUrl === l1RpcUrl) {
+    const code = await l1Provider.getCode(previous.l1Stake.portal);
+    if (code !== '0x' && keccak256(code) === previous.l1Stake.runtimeCodeHash) {
+      portalAddress = previous.l1Stake.portal;
+      portalCodeHash = previous.l1Stake.runtimeCodeHash;
     }
   }
-  if (!requestEntry) {
-    const inboxArtifact = JSON.parse(
-      fs.readFileSync(new URL('../.local/billboard-l1-out/BillboardInbox.sol/BillboardInbox.json', import.meta.url)),
+  const portalArtifact = JSON.parse(
+      fs.readFileSync(new URL('../.local/billboard-l1-out/BillboardPortal.sol/BillboardPortal.json', import.meta.url)),
     );
-    const entry = await new ContractFactory(inboxArtifact.abi, inboxArtifact.bytecode.object, await l1Provider.getSigner(0)).deploy(
+  if (!portalAddress) {
+    const portal = await new ContractFactory(portalArtifact.abi, portalArtifact.bytecode.object, await l1Provider.getSigner(0)).deploy(
       l1.rollupAddress.toString(),
       info.rollupVersion,
     );
-    await entry.waitForDeployment();
-    requestEntry = await entry.getAddress();
-    requestCodeHash = keccak256(await l1Provider.getCode(requestEntry));
+    await portal.waitForDeployment();
+    portalAddress = await portal.getAddress();
+    portalCodeHash = keccak256(await l1Provider.getCode(portalAddress));
   }
   let boardAddress;
   if (
-    previous?.kind === 'standalone-billboard' &&
+    previous?.kind === 'notch-stake' &&
     previous.nodeUrl === url &&
     previous.rollupAddress === l1.rollupAddress.toString() &&
     previous.boardArtifactHash === boardArtifactHash &&
-    previous.l1Request?.entry === requestEntry
+    previous.l1Stake?.portal === portalAddress
   ) {
     const instance = await node.getContract(AztecAddress.fromStringUnsafe(previous.board));
     if (
       instance?.currentContractClassId.equals(boardClass.id) &&
-      (await node.getPublicStorageAt('latest', instance.address, artifact.storageLayout.l1_inbox.slot)).toBigInt() === BigInt(requestEntry)
+      (await node.getPublicStorageAt('latest', instance.address, artifact.storageLayout.l1_portal.slot)).toBigInt() === BigInt(portalAddress)
     )
       boardAddress = instance.address.toString();
   }
@@ -90,7 +90,7 @@ try {
     try {
       await wallet.createSchnorrInitializerlessAccount(accounts[0].secret, accounts[0].salt, accounts[0].signingKey);
       await wallet.registerContract(sponsorInstance, SponsoredFPCContract.artifact);
-      const result = await Contract.deploy(wallet, artifact, [EthAddress.fromString(requestEntry)], 'constructor_with_inbox').send({
+      const result = await Contract.deploy(wallet, artifact, [EthAddress.fromString(portalAddress)], 'constructor_with_portal').send({
         from: deployer,
         fee: await getBillboardFeeOptions(node, new SponsoredFeePaymentMethod(sponsorInstance.address), GasFees),
       });
@@ -101,9 +101,17 @@ try {
       await wallet.stop();
     }
   }
+  const portal = new EvmContract(portalAddress, portalArtifact.abi, await l1Provider.getSigner(0));
+  const boundBoard = await portal.board();
+  if (boundBoard === '0x' + '0'.repeat(64)) {
+    const bind = await portal.bindBoard(boardAddress);
+    await bind.wait();
+  } else {
+    assert.equal(boundBoard.toLowerCase(), boardAddress.toLowerCase(), 'Portal is bound to another board');
+  }
   const manifest = {
-    kind: 'standalone-billboard',
-    schemaVersion: 1,
+    kind: 'notch-stake',
+    schemaVersion: 2,
     nodeUrl: url,
     chainId: Number(info.l1ChainId),
     rollupVersion: info.rollupVersion.toString(),
@@ -113,12 +121,13 @@ try {
     sponsorSalt: '0',
     boardArtifactHash,
     boardClassId: boardClass.id.toString(),
-    l1Request: {
+    l1Stake: {
       chainId: 31337,
       rpcUrl: l1RpcUrl,
-      entry: requestEntry,
+      portal: portalAddress,
       inbox: l1.inboxAddress.toString(),
-      runtimeCodeHash: requestCodeHash,
+      runtimeCodeHash: portalCodeHash,
+      deploymentBlock: 0,
     },
   };
   fs.mkdirSync(new URL('../.local/', import.meta.url), { recursive: true });

@@ -2,9 +2,35 @@ pub mod bridge;
 
 use aztec::macros::aztec;
 
+// Five six-byte timestamps fit in one field without overflowing its modulus.
+fn read_time(packed: [Field; 4], index: u32) -> u64 {
+    let bytes: [u8; 32] = packed[index / 5].to_be_bytes();
+    let start = 2 + (index % 5) * 6;
+    let mut time: u64 = 0;
+    for i in 0..6 { time = time * 256 + bytes[start + i] as u64; }
+    time
+}
+
+fn write_time(mut packed: [Field; 4], index: u32, time: u64) -> [Field; 4] {
+    assert(time < 281474976710656, "Timestamp out of range");
+    let mut bytes: [u8; 32] = packed[index / 5].to_be_bytes();
+    let start = 2 + (index % 5) * 6;
+    bytes[start] = (time >> 40) as u8;
+    bytes[start + 1] = (time >> 32) as u8;
+    bytes[start + 2] = (time >> 24) as u8;
+    bytes[start + 3] = (time >> 16) as u8;
+    bytes[start + 4] = (time >> 8) as u8;
+    bytes[start + 5] = time as u8;
+    let mut value: Field = 0;
+    for i in 0..32 { value = value * 256 + bytes[i] as Field; }
+    packed[index / 5] = value;
+    packed
+}
+
 #[aztec]
 pub contract DFBillboard {
-    use crate::bridge::request_commitment;
+    use crate::{read_time, write_time};
+    use crate::bridge::{deposit_message, withdrawal_message};
     use aztec::{
         keys::getters::get_public_keys,
         macros::{
@@ -15,18 +41,20 @@ pub contract DFBillboard {
         },
         messages::delivery::MessageDelivery,
         note::note_getter_options::NoteGetterOptions,
+        note::note_viewer_options::NoteViewerOptions,
         history::storage::public_storage_historical_read,
         protocol::{
-            address::EthAddress,
+            address::{AztecAddress, EthAddress},
             hash::poseidon2_hash_with_separator,
             traits::{Deserialize, Packable, Serialize, ToField},
         },
         state_vars::{Map, Owned, PrivateSet, PublicMutable, StateVariable},
     };
     global FIRST_POST_DOMAIN: u32 = 1145455153;
-    global POST_LIMIT: u32 = 10;
+    global POST_LIMIT: u32 = 20;
     global POST_WINDOW_SECONDS: u64 = 86400;
-    global U64_MASK: u128 = 18446744073709551615;
+    global STAKE_UNIT: u128 = 500000000000000;
+    global MAX_STAKE: u128 = 2000000000000000;
     global MAX_BYTES: u32 = 512;
     global TEXT_FIELDS: u32 = 17;
 
@@ -38,19 +66,27 @@ pub contract DFBillboard {
     #[derive(Deserialize, Eq, Serialize, Packable)]
     #[note]
     pub struct PostingHistory {
-        // Two u64 timestamps per u128 keeps the note below Aztec's 8-field cap.
-        pub timestamp_pairs: [u128; 5],
+        pub packed_times: [Field; 4],
         pub next_index: u32,
         pub count: u32,
+    }
+
+    #[derive(Deserialize, Eq, Serialize, Packable)]
+    #[note]
+    pub struct StakeNote {
+        pub amount: u128,
+        pub depositor: EthAddress,
+        pub last_post: u64,
     }
 
     #[storage]
     struct Storage<Context> {
         histories: Owned<PrivateSet<PostingHistory, Context>, Context>,
+        stakes: Owned<PrivateSet<StakeNote, Context>, Context>,
         post_count: PublicMutable<u32, Context>,
         post_lengths: Map<u32, PublicMutable<u32, Context>, Context>,
         post_data: Map<u32, PublicMutable<Field, Context>, Context>,
-        l1_inbox: PublicMutable<EthAddress, Context>,
+        l1_portal: PublicMutable<EthAddress, Context>,
         post_timestamps: Map<u32, PublicMutable<u64, Context>, Context>,
     }
 
@@ -58,44 +94,65 @@ pub contract DFBillboard {
     #[initializer]
     fn constructor() {
         self.storage.post_count.write(0);
-        self.storage.l1_inbox.write(EthAddress::zero());
+        self.storage.l1_portal.write(EthAddress::zero());
     }
 
-    // Separate initializer preserves the existing L2-only deployment API.
-    // No setter: a deployed board's trusted L1 sender cannot be changed.
     #[external("public")]
     #[initializer]
-    fn constructor_with_inbox(inbox: EthAddress) {
-        assert(inbox.to_field() != 0, "L1 inbox cannot be zero");
+    fn constructor_with_portal(portal: EthAddress) {
+        assert(portal.to_field() != 0, "L1 portal cannot be zero");
         self.storage.post_count.write(0);
-        self.storage.l1_inbox.write(inbox);
+        self.storage.l1_portal.write(portal);
     }
 
     #[external("private")]
-    fn post_from_l1(
-        text: [u8; MAX_BYTES],
-        length: u32,
-        salt: Field,
+    fn claim_deposit(
+        depositor: EthAddress,
+        amount: u128,
         secret: Field,
         message_leaf_index: Field,
     ) {
         let header = self.context.get_anchor_block_header();
-        let inbox_field = public_storage_historical_read(
-            header, self.storage.l1_inbox.get_storage_slot(), self.context.this_address(),
+        let portal_field = public_storage_historical_read(
+            header, self.storage.l1_portal.get_storage_slot(), self.context.this_address(),
         );
-        assert(inbox_field != 0, "L1 entry disabled");
-        let inbox = EthAddress::from_field(inbox_field);
-        let content = request_commitment(text, length, salt, self.msg_sender().to_field());
-        self.context.consume_l1_to_l2_message(content, [secret], inbox, message_leaf_index);
-        // Message consumption and publication are atomic. Failed validation
-        // rolls back the consumption, allowing the original request to retry.
-        self.internal.post_inner(text, length);
+        assert(portal_field != 0, "L1 portal disabled");
+        assert((amount > 0) & (amount % STAKE_UNIT == 0) & (amount <= MAX_STAKE), "Invalid stake amount");
+        let portal = EthAddress::from_field(portal_field);
+        self.context.consume_l1_to_l2_message(
+            deposit_message(depositor, amount), [secret], portal, message_leaf_index,
+        );
+        let owner = self.msg_sender();
+        let notes = self.storage.stakes.at(owner).pop_notes(
+            NoteGetterOptions::<StakeNote, 3, Field, Field>::new().set_limit(1),
+        );
+        let mut stake = if notes.len() == 0 {
+            StakeNote { amount: 0, depositor, last_post: 0 }
+        } else {
+            notes.get_unchecked(0)
+        };
+        assert(stake.depositor == depositor, "Stake belongs to another L1 address");
+        assert(stake.amount + amount <= MAX_STAKE, "Stake exceeds account cap");
+        stake.amount += amount;
+        self.storage.stakes.at(owner).insert(stake).deliver(MessageDelivery::onchain_constrained());
     }
 
     #[external("public")]
     #[view]
-    fn get_l1_inbox() -> pub EthAddress {
-        self.storage.l1_inbox.read()
+    fn get_l1_portal() -> pub EthAddress {
+        self.storage.l1_portal.read()
+    }
+
+    #[external("utility")]
+    unconstrained fn get_stake_info(owner: AztecAddress) -> pub [Field; 3] {
+        let notes = self.storage.stakes.at(owner).view_notes(
+            NoteViewerOptions::<StakeNote, 3>::new().set_limit(1),
+        );
+        if notes.len() == 0 { [0, 0, 0] }
+        else {
+            let stake = notes.get_unchecked(0);
+            [stake.amount as Field, stake.depositor.to_field(), stake.last_post as Field]
+        }
     }
 
     #[external("private")]
@@ -110,9 +167,19 @@ pub contract DFBillboard {
         let owner = self.msg_sender();
         let header = self.context.get_anchor_block_header();
         let now = header.timestamp();
+        let stake_notes = self.storage.stakes.at(owner).pop_notes(
+            NoteGetterOptions::<StakeNote, 3, Field, Field>::new().set_limit(1),
+        );
+        assert(stake_notes.len() > 0, "Stake required");
+        let mut stake = stake_notes.get_unchecked(0);
+        assert(stake.amount >= STAKE_UNIT & stake.amount <= MAX_STAKE, "Invalid stake");
+        let quota = ((stake.amount / STAKE_UNIT) as u32) * 5;
+        assert(now >= stake.last_post, "Posting time moved backwards");
+        stake.last_post = now;
+        self.storage.stakes.at(owner).insert(stake).deliver(MessageDelivery::onchain_constrained());
         let board = self.context.this_address();
         let notes = self.storage.histories.at(owner).pop_notes(
-            NoteGetterOptions::<PostingHistory, 7, Field, Field>::new().set_limit(1),
+            NoteGetterOptions::<PostingHistory, 6, Field, Field>::new().set_limit(1),
         );
         let mut history = if notes.len() == 0 {
             // The one-time nullifier prevents an account from dropping its
@@ -123,41 +190,28 @@ pub contract DFBillboard {
                 FIRST_POST_DOMAIN,
             );
             self.context.push_nullifier_unsafe(first_post_id);
-            PostingHistory { timestamp_pairs: [0; 5], next_index: 0, count: 0 }
+            PostingHistory { packed_times: [0; 4], next_index: 0, count: 0 }
         } else {
             notes.get_unchecked(0)
         };
         assert(history.count <= POST_LIMIT, "Invalid posting history");
         assert(history.next_index < POST_LIMIT, "Invalid posting history");
-        let index = history.next_index as u32;
+        let index = history.next_index;
         if history.count > 0 {
             let last_index = (index + POST_LIMIT - 1) % POST_LIMIT;
-            let last_pair = history.timestamp_pairs[last_index / 2];
-            let last = if last_index % 2 == 0 {
-                (last_pair & U64_MASK) as u64
-            } else {
-                (last_pair >> 64) as u64
-            };
+            let last = read_time(history.packed_times, last_index);
             assert(now >= last, "Posting time moved backwards");
         }
-        if history.count == POST_LIMIT {
-            let oldest_pair = history.timestamp_pairs[index / 2];
-            let oldest = if index % 2 == 0 {
-                (oldest_pair & U64_MASK) as u64
-            } else {
-                (oldest_pair >> 64) as u64
-            };
-            assert(now >= oldest, "Posting time moved backwards");
-            assert(now - oldest >= POST_WINDOW_SECONDS, "24-hour post limit reached");
-        } else {
-            history.count += 1;
+        let mut used: u32 = 0;
+        for i in 0..POST_LIMIT {
+            if i < history.count {
+                let time = read_time(history.packed_times, i);
+                if now >= time & now - time < POST_WINDOW_SECONDS { used += 1; }
+            }
         }
-        let pair = history.timestamp_pairs[index / 2];
-        history.timestamp_pairs[index / 2] = if index % 2 == 0 {
-            (pair & (U64_MASK << 64)) | (now as u128)
-        } else {
-            (pair & U64_MASK) | ((now as u128) << 64)
-        };
+        assert(used < quota, "24-hour post limit reached");
+        history.packed_times = write_time(history.packed_times, index, now);
+        if history.count < POST_LIMIT { history.count += 1; }
         history.next_index = (index + 1) % POST_LIMIT;
         self.storage.histories.at(owner).insert(history).deliver(
             MessageDelivery::onchain_constrained(),
@@ -179,6 +233,33 @@ pub contract DFBillboard {
             packed[i] = value;
         }
         self.enqueue_self._publish(packed, length);
+    }
+
+    #[external("private")]
+    fn withdraw() {
+        let owner = self.msg_sender();
+        let now = self.context.get_anchor_block_header().timestamp();
+        let notes = self.storage.stakes.at(owner).pop_notes(
+            NoteGetterOptions::<StakeNote, 3, Field, Field>::new().set_limit(1),
+        );
+        assert(notes.len() > 0, "No stake to withdraw");
+        let stake = notes.get_unchecked(0);
+        assert(now >= stake.last_post, "Posting time moved backwards");
+        assert((stake.last_post == 0) | (now - stake.last_post >= POST_WINDOW_SECONDS),
+            "Wait 24 hours after the last post");
+        let header = self.context.get_anchor_block_header();
+        let portal_field = public_storage_historical_read(
+            header, self.storage.l1_portal.get_storage_slot(), self.context.this_address(),
+        );
+        let portal = EthAddress::from_field(portal_field);
+        self.enqueue_self._withdraw_public(portal, withdrawal_message(stake.depositor, stake.amount));
+    }
+
+    #[external("public")]
+    #[only_self]
+    fn _withdraw_public(portal: EthAddress, content: Field) {
+        assert(portal == self.storage.l1_portal.read(), "Wrong portal");
+        self.context.message_portal(portal, content);
     }
 
     #[external("public")]

@@ -17,7 +17,7 @@ import { checkNetwork, digest, publicRpc, readPrivateJson } from './state.mjs';
 
 const root = new URL('../../', import.meta.url);
 const boardFile = new URL('df-billboard/target/df_billboard-DFBillboard.json', root);
-const inboxFile = new URL('.local/billboard-l1-out/BillboardInbox.sol/BillboardInbox.json', root);
+const portalFile = new URL('.local/billboard-l1-out/BillboardPortal.sol/BillboardPortal.json', root);
 
 export async function connect(config) {
   publicRpc(config.nodeUrl);
@@ -35,17 +35,17 @@ export async function connect(config) {
     assert.equal((await rollup.getInbox()).toLowerCase(), config.inboxAddress.toLowerCase());
     const text = fs.readFileSync(boardFile);
     const artifact = loadContractArtifact(JSON.parse(text));
-    const inboxText = fs.readFileSync(inboxFile);
-    const inbox = JSON.parse(inboxText);
+    const portalText = fs.readFileSync(portalFile);
+    const portal = JSON.parse(portalText);
     const sponsor = await getContractInstanceFromInstantiationParams(SponsoredFPCContract.artifact, { salt: Fr.ZERO });
     const deployedSponsor = await node.getContract(sponsor.address);
     assert.equal(deployedSponsor?.currentContractClassId.toString(), sponsor.currentContractClassId.toString(), 'Canonical Sponsored FPC is missing or its class changed');
     const sponsorBalance = await getFeeJuiceBalance(sponsor.address, node);
     const binding = {
       config, boardArtifactHash: digest(text), boardClassId: (await getContractClassFromArtifact(artifact)).id.toString(),
-      inboxArtifactHash: digest(inboxText), sponsoredFpc: sponsor.address.toString(),
+      portalArtifactHash: digest(portalText), sponsoredFpc: sponsor.address.toString(),
     };
-    return { node, provider, artifact, inbox, sponsor, sponsorBalance, binding, close: () => provider.destroy() };
+    return { node, provider, artifact, portal, sponsor, sponsorBalance, binding, close: () => provider.destroy() };
   } catch (error) {
     provider.destroy();
     throw error;
@@ -53,7 +53,7 @@ export async function connect(config) {
 }
 
 export function adapters(context, journal, keyFile, createWallet = (node, options) => EmbeddedWallet.create(node, options)) {
-  const { node, provider, artifact, inbox, sponsor, binding } = context;
+  const { node, provider, artifact, portal, sponsor, binding } = context;
   const config = binding.config;
   const l1 = {
     async prepare() {
@@ -64,7 +64,7 @@ export function adapters(context, journal, keyFile, createWallet = (node, option
         assert.match(credentials.l1PrivateKey, /^0x[0-9a-fA-F]{64}$/);
         signer = new Wallet(credentials.l1PrivateKey, provider);
       } catch { throw new Error('Invalid l1PrivateKey in the private key file; value omitted'); }
-      const factory = new ContractFactory(inbox.abi, inbox.bytecode.object, signer);
+      const factory = new ContractFactory(portal.abi, portal.bytecode.object, signer);
       const request = await signer.populateTransaction(await factory.getDeployTransaction(config.rollupAddress, config.rollupVersion));
       assert.equal(request.chainId, 11155111n);
       const raw = await signer.signTransaction(request);
@@ -77,7 +77,7 @@ export function adapters(context, journal, keyFile, createWallet = (node, option
       assert.equal(tx.value, 0n);
       assert.equal(tx.hash, stage.hash);
       assert.equal(getCreateAddress({ from: tx.from, nonce: tx.nonce }), stage.address);
-      const expected = await new ContractFactory(inbox.abi, inbox.bytecode.object).getDeployTransaction(config.rollupAddress, config.rollupVersion);
+      const expected = await new ContractFactory(portal.abi, portal.bytecode.object).getDeployTransaction(config.rollupAddress, config.rollupVersion);
       assert.equal(tx.data, expected.data, 'Saved L1 transaction differs from the deployment plan');
     },
     async receipt(stage) {
@@ -94,9 +94,10 @@ export function adapters(context, journal, keyFile, createWallet = (node, option
       assert.equal(receipt.contractAddress?.toLowerCase(), stage.address.toLowerCase());
       const code = await provider.getCode(stage.address);
       assert.notEqual(code, '0x');
-      const entry = new EvmContract(stage.address, inbox.abi, provider);
+      const entry = new EvmContract(stage.address, portal.abi, provider);
       assert.equal((await entry.INBOX()).toLowerCase(), config.inboxAddress.toLowerCase());
       assert.equal(String(await entry.ROLLUP_VERSION()), config.rollupVersion);
+      assert.equal(await entry.MAX_STAKE(), 2_000_000_000_000_000n);
       const hash = keccak256(code);
       if (stage.runtimeCodeHash) assert.equal(hash, stage.runtimeCodeHash, 'L1 bytecode changed');
       return { runtimeCodeHash: hash, blockNumber: receipt.blockNumber };
@@ -123,7 +124,7 @@ export function adapters(context, journal, keyFile, createWallet = (node, option
       try {
         const manager = await wallet.createSchnorrInitializerlessAccount(Fr.fromString(account.secret), Fr.fromString(account.salt), Fq.fromString(account.signingKey));
         await wallet.registerContract(sponsor, SponsoredFPCContract.artifact);
-        const deploy = Contract.deploy(wallet, artifact, [EthAddress.fromString(journal.state.l1.address)], 'constructor_with_inbox', { salt: Fr.fromString(account.boardSalt), deployer: manager.address });
+        const deploy = Contract.deploy(wallet, artifact, [EthAddress.fromString(journal.state.l1.address)], 'constructor_with_portal', { salt: Fr.fromString(account.boardSalt), deployer: manager.address });
         prepared = { address: (await deploy.getInstance()).address.toString() };
         try {
           await deploy.send({ from: manager.address, fee: await getBillboardFeeOptions(node, new SponsoredFeePaymentMethod(sponsor.address), GasFees) });
@@ -151,16 +152,54 @@ export function adapters(context, journal, keyFile, createWallet = (node, option
       const address = AztecAddress.fromStringUnsafe(stage.address);
       const instance = await node.getContract(address);
       assert.equal(instance?.currentContractClassId.toString(), binding.boardClassId, 'Board class does not match compiled artifact');
-      const sender = await node.getPublicStorageAt('latest', address, artifact.storageLayout.l1_inbox.slot);
-      assert.equal(sender.toBigInt(), BigInt(journal.state.l1.address), 'Board points to a different L1 entry');
+      const sender = await node.getPublicStorageAt('latest', address, artifact.storageLayout.l1_portal.slot);
+      assert.equal(sender.toBigInt(), BigInt(journal.state.l1.address), 'Board points to a different L1 portal');
       return { blockNumber: Number(receipt.blockNumber) };
     },
   };
-  return { l1, l2 };
+  const bind = {
+    async prepare() {
+      assert(keyFile, 'Portal binding needs --key-file (private JSON with l1PrivateKey; mode 600)');
+      const credentials = readPrivateJson(keyFile);
+      let signer;
+      try { signer = new Wallet(credentials.l1PrivateKey, provider); }
+      catch { throw new Error('Invalid l1PrivateKey in the private key file; value omitted'); }
+      assert.equal(signer.address.toLowerCase(), Transaction.from(journal.state.l1.raw).from.toLowerCase(), 'Portal deployer changed');
+      const entry = new EvmContract(journal.state.l1.address, portal.abi, signer);
+      const request = await signer.populateTransaction(await entry.bindBoard.populateTransaction(journal.state.l2.address));
+      assert.equal(request.chainId, 11155111n);
+      const raw = await signer.signTransaction(request);
+      return { address: journal.state.l1.address, hash: keccak256(raw), raw };
+    },
+    async validate(stage) {
+      const tx = Transaction.from(stage.raw);
+      assert.equal(tx.hash, stage.hash);
+      assert.equal(tx.chainId, 11155111n);
+      assert.equal(tx.to?.toLowerCase(), journal.state.l1.address.toLowerCase());
+      assert.equal(tx.value, 0n);
+      assert.equal(tx.from.toLowerCase(), Transaction.from(journal.state.l1.raw).from.toLowerCase());
+      assert.equal(tx.data, new EvmContract(journal.state.l1.address, portal.abi).interface.encodeFunctionData('bindBoard', [journal.state.l2.address]));
+    },
+    async receipt(stage) {
+      const receipt = await provider.getTransactionReceipt(stage.hash);
+      return receipt && await receipt.confirmations() >= 2 ? receipt : null;
+    },
+    async broadcast(stage) {
+      if (!await provider.getTransaction(stage.hash)) await provider.broadcastTransaction(stage.raw);
+    },
+    wait: stage => provider.waitForTransaction(stage.hash, 2, 180_000),
+    async verify(stage, receipt) {
+      assert.equal(receipt.status, 1, 'Portal binding reverted');
+      const entry = new EvmContract(journal.state.l1.address, portal.abi, provider);
+      assert.equal((await entry.board()).toLowerCase(), journal.state.l2.address.toLowerCase(), 'Portal points to a different board');
+      return { blockNumber: receipt.blockNumber };
+    },
+  };
+  return { l1, l2, bind };
 }
 
 export async function verifyDeployment(journal, networkAdapters) {
-  for (const name of ['l1', 'l2']) {
+  for (const name of ['l1', 'l2', 'bind']) {
     const stage = journal.state[name];
     assert(stage?.confirmed, `${name} deployment is incomplete; resume deployment first`);
     const adapter = networkAdapters[name];
