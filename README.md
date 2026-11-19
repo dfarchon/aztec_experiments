@@ -1,9 +1,10 @@
-# DFArchon Billboard
+# Notch
 
-A standalone public message board on Aztec. Anyone can read without a wallet.
-Posting supports an Aztec wallet or MetaMask. MetaMask users pay Sepolia L1 gas
-per post; Sponsored FPC covers L2 execution. Both paths publish to the same
-Aztec board. The site shows public posts without a Settings page or local
+Notch is a standalone public message board on Aztec. Each post leaves a mark
+without displaying its author's address. Anyone can read without a wallet.
+Posting uses MetaMask for refundable L1 stake. Each 0.0005 ETH unlocks five
+posts in a rolling 24 hours, up to 20 posts at 0.002 ETH. A browser-created
+Aztec account publishes privately; Sponsored FPC covers L2 execution. The site shows public posts without a Settings page or local
 content filters.
 
 [Public testnet site](https://df-billboard-testnet.netlify.app/) · [Product design and usage](df-billboard/README.md) · [Deployment guide](df-billboard/DEPLOYMENT.md)
@@ -12,7 +13,7 @@ content filters.
 
 | Path | Purpose |
 | --- | --- |
-| [`df-billboard/`](df-billboard/) | Current Aztec contract, L1 request contract, tests, and deployment notes |
+| [`df-billboard/`](df-billboard/) | Current Aztec board, L1 stake portal, tests, and deployment notes |
 | [`apps/src/df-billboard/`](apps/src/df-billboard/) | Current React and TypeScript website |
 | [`scripts/`](scripts/) | Build, test, local chain, and testnet release scripts |
 | [`billboard/`](billboard/) | Earlier deposit-and-censor experiment; not used by the current website |

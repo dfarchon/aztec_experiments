@@ -1,7 +1,7 @@
-# Public testnet deployment
+# Notch public testnet deployment
 
 The website is static on Vercel or Netlify. Contracts are deployed from your computer,
-not from the hosting provider. The two contracts are **BillboardInbox on Ethereum Sepolia**, then
+not from the hosting provider. The two contracts are **BillboardPortal on Ethereum Sepolia**, then
 **DFBillboard on Aztec Testnet**. This does not deploy the Aztec protocol.
 
 ## 1. Build and inspect (no transactions)
@@ -53,7 +53,7 @@ It generates a separate Aztec deployment account locally and saves it before
 proving. It never uses the sandbox's predefined test accounts. The website's
 users create/connect their own accounts; this deployment key is not shipped.
 
-The default journal is `.local/testnet/deployment.json` (mode `600`, git-ignored).
+The default journal is `.local/testnet/stake-deployment.json` (mode `600`, git-ignored).
 It records network/artifact bindings, contract addresses, signed transaction
 bytes and hashes, the generated Aztec account, and confirmation checkpoints.
 The L1 private key is **not** copied into the journal.
@@ -71,7 +71,7 @@ npm run deploy:df:testnet -- deploy --broadcast
 If L1 has not yet been prepared, supply `--key-file` again. After it is prepared,
 recovery uses the saved signed transaction and does not read that key. The script
 waits for two L1 confirmations and an Aztec checkpoint, then checks the deployed
-class and the board's L1 Inbox binding. Repeating the command revalidates completed
+class and the board's L1 portal binding. Repeating the command revalidates completed
 stages without deploying replacements.
 
 - A transaction is persisted **before** broadcast. If the response is lost,
@@ -82,7 +82,7 @@ stages without deploying replacements.
   journal to get past an error.
 - A changed network or artifact is rejected. Keep the exact source revision,
   lockfile and compiled artifacts with your private deployment backup.
-- Concurrent runs are blocked by `deployment.json.lock`. After a process crash,
+- Concurrent runs are blocked by `stake-deployment.json.lock`. After a process crash,
   inspect the PID in that file and confirm no deployment is running before
   removing **only that lock file**, not the journal.
 
@@ -227,8 +227,8 @@ needed. Do not run `dev:df:harness` or `deploy:df:harness` in this mode: those
 commands manage the local chain and replace its deployment configuration.
 
 MetaMask uses Ethereum Sepolia (chain ID 11155111), not local Anvil; users pay
-Sepolia gas for each L1 request. Aztec wallets use Aztec Testnet and Sponsored
-FPC for L2 fees. Browser wallets use real proofs. Local posts and account
+Sepolia gas for deposits and withdrawals. A browser-created Aztec account
+uses real proofs and Sponsored FPC for L2 fees. Local posts and account
 selections are not migrated to the testnet board. The browser RPC client limits
 default batches to three calls for the public endpoint.
 
@@ -239,9 +239,8 @@ transactions. Never copy the private deployment journal or deployer key into
 
 ## Before inviting users
 
-Verify both wallet flows on the HTTPS preview, including real proof generation,
-Sponsored FPC payment, MetaMask Sepolia requests/resume, and reading the resulting
-messages. Check RPC CORS/accessibility and Worker isolation headers in a real
+Verify the MetaMask stake, private claim, sponsored post and withdrawal
+flows on the HTTPS preview, including recovery and reading the resulting posts. Check RPC CORS/accessibility and Worker isolation headers in a real
 browser. Local/mocked tests and a successful deployment are not a substitute for
 that public-testnet acceptance test. Review sponsor funding/availability and
 privacy limitations before describing the service as production-ready.
