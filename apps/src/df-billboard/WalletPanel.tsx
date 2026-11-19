@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "./Icon";
+import { type EthereumWallet, listEthereumWallets } from "./l1";
 import { LoadingIcon } from "./LoadingIcon";
 import { MAX_STAKE, postQuota, STAKE_UNIT } from "./stake-policy";
 import type { ViewProps } from "./types";
@@ -24,9 +25,13 @@ export function WalletPanel({ view, controller }: ViewProps) {
   const restore = useRef<HTMLInputElement>(null);
   const wasOpen = useRef(false);
   const [recoveryHash, setRecoveryHash] = useState("");
+  const [wallets, setWallets] = useState<EthereumWallet[]>([]);
+  const [walletsLoading, setWalletsLoading] = useState(true);
+  const [walletRefresh, setWalletRefresh] = useState(0);
+  const [selectedWallet, setSelectedWallet] = useState("");
   const amount = BigInt(view.stake.amount);
   const quota = postQuota(amount);
-  const connected = Boolean(view.stake.payer);
+  const connected = Boolean(view.stake.payer && view.stake.owner);
   const funded = amount > 0n;
   const step = !connected ? 1 : !funded ? 2 : 3;
   const unlockAt = Number(view.stake.lastPost) * 1000 + 86_400_000;
@@ -47,6 +52,24 @@ export function WalletPanel({ view, controller }: ViewProps) {
     document.addEventListener("keydown", escape);
     return () => document.removeEventListener("keydown", escape);
   }, [view.walletOpen, view.busy, controller]);
+  useEffect(() => {
+    if (!view.walletOpen || connected) return;
+    let active = true;
+    setWalletsLoading(true);
+    void listEthereumWallets()
+      .then((found) => {
+        if (active) setWallets(found);
+      })
+      .catch(() => {
+        if (active) setWallets([]);
+      })
+      .finally(() => {
+        if (active) setWalletsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [view.walletOpen, connected, walletRefresh]);
 
   return (
     <div className="wallet-anchor">
@@ -114,17 +137,55 @@ export function WalletPanel({ view, controller }: ViewProps) {
             </ol>
             {!connected ? (
               <div className="notch-wallet-body">
-                <p>Use an Ethereum wallet to open a private posting account.</p>
-                <button
-                  id="connect"
-                  type="button"
-                  className="notch-wallet-primary"
-                  disabled={view.busy || !view.stake.available}
-                  onClick={() => void controller.connect()}
-                >
-                  {view.connecting && <LoadingIcon />} Connect MetaMask{" "}
-                  <Icon name="arrow" />
-                </button>
+                {walletsLoading ? (
+                  <p>Finding wallets…</p>
+                ) : wallets.length ? (
+                  <div
+                    className="notch-wallet-choices"
+                    role="group"
+                    aria-label="Ethereum wallets"
+                  >
+                    {wallets.map((wallet) => (
+                      <button
+                        type="button"
+                        key={wallet.id}
+                        className="notch-wallet-choice"
+                        disabled={view.busy || !view.stake.available}
+                        onClick={() => {
+                          setSelectedWallet(wallet.id);
+                          void controller.connect(wallet.provider);
+                        }}
+                      >
+                        {view.connecting && selectedWallet === wallet.id ? (
+                          <LoadingIcon />
+                        ) : (
+                          <Icon name="wallet" />
+                        )}
+                        <span>{wallet.name}</span>
+                        <Icon name="arrow" />
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p>No Ethereum wallet found.</p>
+                )}
+                {!view.stake.available && (
+                  <p>
+                    {view.actionError?.label === "Load Notch"
+                      ? "Testnet unavailable."
+                      : "Waiting for the testnet…"}
+                  </p>
+                )}
+                {!walletsLoading && wallets.length === 0 && (
+                  <button
+                    type="button"
+                    className="notch-wallet-switch"
+                    disabled={view.busy}
+                    onClick={() => setWalletRefresh((value) => value + 1)}
+                  >
+                    Refresh wallets
+                  </button>
+                )}
               </div>
             ) : (
               <div className="notch-wallet-body">
@@ -137,11 +198,11 @@ export function WalletPanel({ view, controller }: ViewProps) {
                   <button
                     id="backupAccount"
                     type="button"
-                    className="notch-wallet-secondary"
+                    className="notch-wallet-primary"
                     disabled={view.busy}
                     onClick={() => downloadBackup({ controller })}
                   >
-                    Download private account backup
+                    Save account backup to stake
                   </button>
                 )}
                 {!funded && !view.stake.pendingDeposit && (
@@ -247,7 +308,7 @@ export function WalletPanel({ view, controller }: ViewProps) {
                   </>
                 ) : (
                   <>
-                    {amount < MAX_STAKE && (
+                    {view.stake.backedUp && amount < MAX_STAKE && (
                       <div
                         className="notch-stake-options"
                         aria-label="Add stake"
@@ -259,7 +320,7 @@ export function WalletPanel({ view, controller }: ViewProps) {
                             <button
                               type="button"
                               key={value}
-                              disabled={view.busy || !view.stake.backedUp}
+                              disabled={view.busy}
                               onClick={() =>
                                 void controller.deposit(value.toString())
                               }

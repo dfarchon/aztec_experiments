@@ -1,3 +1,5 @@
+import type { InjectedProvider } from "./l1.ts";
+
 export type RuleCategory =
   | "promotion"
   | "credential-request"
@@ -74,7 +76,7 @@ export interface BillboardController {
   ): void;
   setWalletPanel(open: boolean): void;
   accountBackup(): { filename: string; contents: string } | null;
-  connect(): Promise<void>;
+  connect(provider: InjectedProvider): Promise<void>;
   disconnect(): Promise<void>;
   resumeRequest(hash?: string, layer?: "l1" | "l2"): Promise<void>;
   deposit(amount: string): Promise<void>;

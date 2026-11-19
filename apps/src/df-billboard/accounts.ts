@@ -22,7 +22,7 @@ export function hasAccountKeys(value: unknown): value is AccountKeys {
   );
 }
 // Callers keep separate storage keys and PXE namespaces. Never derive Aztec
-// secrets from an EVM payer or merge the browser and MetaMask identities.
+// secrets from an EVM payer or merge the browser and L1 wallet identities.
 export function accountSetupOptions(
   sdk: Pick<RequestSDK, "Fq">,
   keys: AccountKeys,

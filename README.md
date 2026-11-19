@@ -2,7 +2,7 @@
 
 Notch is a standalone public message board on Aztec. Each post leaves a mark
 without displaying its author's address. Anyone can read without a wallet.
-Posting uses MetaMask for refundable L1 stake. Each 0.0005 ETH unlocks five
+Posting uses an installed Ethereum wallet for refundable L1 stake. Each 0.0005 ETH unlocks five
 posts in a rolling 24 hours, up to 20 posts at 0.002 ETH. A browser-created
 Aztec account publishes privately; Sponsored FPC covers L2 execution. The site shows public posts without a Settings page or local
 content filters.

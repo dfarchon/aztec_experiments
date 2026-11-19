@@ -177,7 +177,7 @@ test("the board renders a single disconnected composer and no wallet modal", () 
   controller.dispose();
 });
 
-test("the wallet shows three concise steps and only an L1 wallet entry", () => {
+test("the wallet waits for a ready private account before staking", () => {
   const base = createBillboardController();
   const view = {
     ...base.getSnapshot(),
@@ -194,11 +194,14 @@ test("the wallet shows three concise steps and only an L1 wallet entry", () => {
   assert.match(render(), /01<\/span>Connect/);
   assert.match(render(), /02<\/span>Stake/);
   assert.match(render(), /03<\/span>Post/);
-  assert.match(render(), /Connect MetaMask/);
+  assert.match(render(), /Finding wallets/);
   assert.doesNotMatch(
     render(),
-    /Aztec extension wallet|Browser wallet|<select/
+    /Aztec extension wallet|Download private account backup|<select/
   );
+  view.stake = { ...view.stake, payer: `0x${"1".repeat(40)}` };
+  assert.match(render(), /Finding wallets/);
+  assert.doesNotMatch(render(), /Download private account backup/);
   view.stake = {
     ...view.stake,
     payer: `0x${"1".repeat(40)}`,
@@ -209,7 +212,7 @@ test("the wallet shows three concise steps and only an L1 wallet entry", () => {
   assert.match(render(), /0.0005 ETH/);
   assert.match(render(), /5 posts \/ 24h/);
   assert.match(render(), /Ready to post/);
-  assert.doesNotMatch(render(), /Connect MetaMask/);
+  assert.doesNotMatch(render(), /Finding wallets/);
   base.dispose();
 });
 
@@ -342,17 +345,19 @@ test("wallet copy stays English and backup is a single account action", () => {
       backedUp: false,
     },
   };
-  const html = renderToStaticMarkup(
-    createElement(App, {
-      controller: { ...base, getSnapshot: () => view },
-    })
-  );
-  assert.match(html, /Download private account backup/);
+  const render = () =>
+    renderToStaticMarkup(
+      createElement(App, {
+        controller: { ...base, getSnapshot: () => view },
+      })
+    );
+  const html = render();
+  assert.match(html, /Save account backup to stake/);
   assert.match(html, /Restore backup/);
-  assert.doesNotMatch(
-    html,
-    /Aztec extension wallet|Browser wallet|\p{Script=Han}/u
-  );
+  assert.doesNotMatch(html, /notch-stake-options|\p{Script=Han}/u);
+  view.stake = { ...view.stake, backedUp: true };
+  assert.match(render(), /notch-stake-options/);
+  assert.doesNotMatch(render(), /Save account backup to stake/);
   base.dispose();
 });
 
@@ -485,7 +490,7 @@ test("post button shows the shared loading icon only during posting", () => {
   base.dispose();
 });
 
-test("the wallet trigger and connect action share a loading icon", () => {
+test("the wallet trigger shows a loading icon while connecting", () => {
   const base = createBillboardController();
   for (const connecting of [false, true]) {
     const view = {
@@ -501,10 +506,9 @@ test("the wallet trigger and connect action share a loading icon", () => {
       })
     );
     const trigger = html.match(/<button id="walletMenu"[\s\S]*?<\/button>/)[0];
-    const connect = html.match(/<button id="connect"[\s\S]*?<\/button>/)[0];
     assert.ok(trigger.includes(`aria-busy="${connecting}"`));
     assert.equal(trigger.includes('class="loading-icon"'), connecting);
-    assert.equal(connect.includes('class="loading-icon"'), connecting);
+    assert.match(html, /Finding wallets/);
   }
   base.dispose();
 });

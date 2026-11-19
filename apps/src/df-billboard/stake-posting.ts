@@ -18,7 +18,6 @@ import {
   writeStored,
 } from "./accounts.ts";
 import {
-  findMetaMask,
   switchEthereumChain,
   waitForWalletApproval,
   WALLET_APPROVAL_TIMEOUT_MS,
@@ -64,13 +63,14 @@ export function createStakePosting(config, a, emit, progress) {
     board,
     node,
     payment,
+    ready = false,
     disposed = false;
   let key = "";
   const snapshot = () =>
     emit({
       available: true,
-      payer,
-      owner: owner?.toString() || "",
+      payer: ready ? payer : "",
+      owner: ready ? owner?.toString() || "" : "",
       amount: saved?.amount || "0",
       pendingDeposit: Boolean(saved?.deposit),
       depositPrepared: Boolean(saved?.deposit && !saved.deposit.submitted),
@@ -481,65 +481,78 @@ export function createStakePosting(config, a, emit, progress) {
     }
   }
   const operations = {
-    async connect() {
-      if (!injected) {
-        injected = await findMetaMask();
-        injected.on?.("accountsChanged", () => {
-          payer = "";
-          snapshot();
-        });
-        injected.on?.("chainChanged", () => {
-          payer = "";
-          snapshot();
-        });
-      }
-      const request = injected.request({
-        method: accountRequest ? "eth_accounts" : "eth_requestAccounts",
-      });
-      if (!accountRequest) {
-        accountRequest = request;
-        void request
-          .finally(() => {
-            if (accountRequest === request) accountRequest = null;
-          })
-          .catch(() => {});
-      }
-      const accounts = await waitForWalletApproval(
-        request,
-        "connection",
-        WALLET_APPROVAL_TIMEOUT_MS
-      );
-      if (!accounts[0]) throw new Error("Wallet access was not authorized");
-      await switchEthereumChain(
-        injected,
-        `0x${l1.chainId.toString(16)}`,
-        l1.rpcUrl,
-        env
-      );
-      const provider = rpc();
-      try {
-        await verify(provider);
-      } finally {
-        provider.destroy();
-      }
-      payer = accounts[0];
-      key = `notch-stake/6.0.0/${config.board}/${payer.toLowerCase()}`;
-      saved = readStored(localStorage, key);
-      if (saved && saved.payer?.toLowerCase() !== payer.toLowerCase())
-        throw new Error("Saved private account belongs to another L1 wallet");
-      if (!saved) {
-        saved = {
-          ...createAccountKeys(a),
-          payer,
-          amount: "0",
-          backedUp: false,
-          deposit: null,
-          exit: null,
-        };
-        persist();
-      }
-      await setup();
+    async connect(selected) {
+      if (!selected || typeof selected.request !== "function")
+        throw new Error("Choose an Ethereum wallet first");
+      if (injected !== selected) accountRequest = null;
+      injected = selected;
+      ready = false;
       snapshot();
+      try {
+        const request = injected.request({
+          method: accountRequest ? "eth_accounts" : "eth_requestAccounts",
+        });
+        if (!accountRequest) {
+          accountRequest = request;
+          void request
+            .finally(() => {
+              if (accountRequest === request) accountRequest = null;
+            })
+            .catch(() => {});
+        }
+        const accounts = await waitForWalletApproval(
+          request,
+          "connection",
+          WALLET_APPROVAL_TIMEOUT_MS
+        );
+        if (!accounts[0]) throw new Error("Wallet access was not authorized");
+        await switchEthereumChain(
+          injected,
+          `0x${l1.chainId.toString(16)}`,
+          l1.rpcUrl,
+          env
+        );
+        const provider = rpc();
+        try {
+          await verify(provider);
+        } finally {
+          provider.destroy();
+        }
+        payer = accounts[0];
+        key = `notch-stake/6.0.0/${config.board}/${payer.toLowerCase()}`;
+        saved = readStored(localStorage, key);
+        if (saved && saved.payer?.toLowerCase() !== payer.toLowerCase())
+          throw new Error("Saved private account belongs to another L1 wallet");
+        if (!saved) {
+          saved = {
+            ...createAccountKeys(a),
+            payer,
+            amount: "0",
+            backedUp: false,
+            deposit: null,
+            exit: null,
+          };
+          persist();
+        }
+        await setup();
+        ready = true;
+        snapshot();
+        injected.on?.("accountsChanged", walletChanged);
+        injected.on?.("chainChanged", walletChanged);
+      } catch (error) {
+        ready = false;
+        board = null;
+        owner = null;
+        const previous = wallet;
+        wallet = null;
+        try {
+          await previous?.pxe?.stop?.();
+        } catch {
+          // Preserve the original connection failure.
+        }
+        snapshot();
+        throw error;
+      }
     },
     async deposit(amount) {
       if (!board || !saved) throw new Error("Connect your wallet first");
@@ -715,23 +728,36 @@ export function createStakePosting(config, a, emit, progress) {
       };
     },
     async disconnect() {
+      injected?.removeListener?.("accountsChanged", walletChanged);
+      injected?.removeListener?.("chainChanged", walletChanged);
+      injected = null;
+      accountRequest = null;
+      ready = false;
       payer = "";
-      await wallet?.pxe?.stop?.();
+      const previous = wallet;
       wallet = null;
       board = null;
       owner = null;
       saved = null;
       snapshot();
+      await previous?.pxe?.stop?.();
     },
     dispose() {
       disposed = true;
+      injected?.removeListener?.("accountsChanged", walletChanged);
+      injected?.removeListener?.("chainChanged", walletChanged);
       void wallet?.pxe?.stop?.().catch(() => {});
     },
   };
+  const walletChanged = () => {
+    void operations.disconnect().catch(() => {});
+  };
   return {
     ...operations,
-    connect: () =>
-      withWalletLock(`notch-stake:${config.board}`, operations.connect),
+    connect: (provider) =>
+      withWalletLock(`notch-stake:${config.board}`, () =>
+        operations.connect(provider)
+      ),
     deposit: (amount) =>
       withWalletLock(`notch-stake:${config.board}`, () =>
         operations.deposit(amount)

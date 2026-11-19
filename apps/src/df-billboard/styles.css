@@ -395,6 +395,27 @@ html[data-theme="light"] .ascii-clouds {
 .notch-wallet-body > button {
   width: 100%;
 }
+.notch-wallet-choices {
+  display: grid;
+  gap: 8px;
+}
+.notch-wallet-choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 14px;
+  border-color: var(--line);
+  background: var(--bg);
+  text-align: left;
+}
+.notch-wallet-choice:hover:not(:disabled) {
+  border-color: var(--accent-strong);
+  background: var(--accent-tint);
+}
+.notch-wallet-choice span {
+  flex: 1;
+}
 .notch-wallet-primary {
   display: flex;
   align-items: center;
@@ -441,10 +462,6 @@ html[data-theme="light"] .ascii-clouds {
   border: 0;
   color: var(--muted);
 }
-#connect {
-  width: 100%;
-  margin-top: 16px;
-}
 #verification {
   border: 1px solid var(--line);
   padding: 12px;
@@ -487,30 +504,26 @@ html[data-theme="light"] .ascii-clouds {
   border-bottom: 1px solid var(--line);
   margin-bottom: 14px;
 }
-#post,
-#connect {
+#post {
   background: rgb(240 160 192 / 8%);
   color: var(--heading);
   border-color: rgb(240 160 192 / 55%);
   border-radius: 0;
   box-shadow: 3px 3px 0 var(--line);
 }
-#post:hover:not(:disabled),
-#connect:hover:not(:disabled) {
+#post:hover:not(:disabled) {
   background: rgb(240 160 192 / 14%);
   color: var(--accent);
   border-color: rgb(240 160 192 / 85%);
   box-shadow: 3px 3px 0 var(--accent-strong);
 }
-html[data-theme="light"] #post,
-html[data-theme="light"] #connect {
+html[data-theme="light"] #post {
   background: var(--accent-strong);
   border-color: var(--accent-strong);
   color: #ffffff;
   box-shadow: 3px 3px 0 var(--line);
 }
-html[data-theme="light"] #post:hover:not(:disabled),
-html[data-theme="light"] #connect:hover:not(:disabled) {
+html[data-theme="light"] #post:hover:not(:disabled) {
   background: var(--accent);
   border-color: var(--accent);
   color: #ffffff;

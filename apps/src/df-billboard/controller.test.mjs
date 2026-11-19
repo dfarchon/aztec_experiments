@@ -18,6 +18,7 @@ const deployment = {
 };
 const payer = `0x${"1".repeat(40)}`;
 const owner = `0x${"2".repeat(64)}`;
+const selectedProvider = { request: async () => [] };
 const emptyStake = {
   available: true,
   payer,
@@ -67,8 +68,8 @@ function fixture(t, overrides = {}) {
     createAztecNodeClient: () => node,
   };
   const wallet = {
-    async connect() {
-      calls.push("connect");
+    async connect(provider) {
+      calls.push(["connect", provider]);
       emitStake(emptyStake);
     },
     async disconnect() {
@@ -163,13 +164,16 @@ test("public posts load without wallet code or an L1 connection", async (t) => {
   assert.deepEqual(calls, [["read", null]]);
 });
 
-test("the single L1 wallet opens a private account and stake unlocks posting", async (t) => {
+test("the selected L1 wallet opens a private account and stake unlocks posting", async (t) => {
   const { controller, calls } = fixture(t);
   await controller.initialize();
-  await controller.connect();
+  await controller.connect(selectedProvider);
   assert.equal(controller.getSnapshot().stake.payer, payer);
   assert.equal(controller.getSnapshot().canPost, false);
-  assert.deepEqual(calls.slice(1, 3), ["loadWalletRuntime", "connect"]);
+  assert.deepEqual(calls.slice(1, 3), [
+    "loadWalletRuntime",
+    ["connect", selectedProvider],
+  ]);
   await controller.deposit("500000000000000");
   assert.equal(controller.getSnapshot().stake.pendingDeposit, true);
   await controller.resumeRequest();
@@ -184,10 +188,32 @@ test("the single L1 wallet opens a private account and stake unlocks posting", a
   assert(calls.some((call) => Array.isArray(call) && call[0] === "post"));
 });
 
+test("a payer without a ready private account cannot advance to staking", async (t) => {
+  const { controller, emit } = fixture(t);
+  await controller.initialize();
+  await controller.connect(selectedProvider);
+  emit({ ...emptyStake, owner: "", amount: "500000000000000" });
+  assert.equal(controller.getSnapshot().connected, false);
+  assert.equal(controller.getSnapshot().canPost, false);
+});
+
+test("a failed public feed read does not block a ready L1 wallet", async (t) => {
+  const { controller } = fixture(t, {
+    readPostPage: async () => {
+      throw new Error("Feed RPC offline");
+    },
+  });
+  await controller.initialize();
+  assert.equal(controller.getSnapshot().actionError.label, "Load posts");
+  assert.equal(controller.getSnapshot().stake.available, true);
+  await controller.connect(selectedProvider);
+  assert.equal(controller.getSnapshot().connected, true);
+});
+
 test("a failed post keeps its draft and paid actions remain separate", async (t) => {
   const { controller, setPostError, calls } = fixture(t);
   await controller.initialize();
-  await controller.connect();
+  await controller.connect(selectedProvider);
   await controller.resumeRequest();
   controller.setField("message", "keep this");
   setPostError(Error("Proof failed"));
@@ -200,7 +226,7 @@ test("a failed post keeps its draft and paid actions remain separate", async (t)
 test("receipt recovery routes L1 and L2 hashes to the right operation", async (t) => {
   const { controller, calls } = fixture(t);
   await controller.initialize();
-  await controller.connect();
+  await controller.connect(selectedProvider);
   await controller.resumeRequest("0xl1", "l1");
   await controller.resumeRequest("0xl2", "l2");
   await controller.resumeWithdrawal("0xexit");
@@ -236,4 +262,5 @@ test("old manifests fail closed before the wallet runtime loads", async (t) => {
   await assert.rejects(controller.initialize(), /stake-enabled/);
   assert.equal(calls.includes("loadWalletRuntime"), false);
   assert.equal(controller.getSnapshot().canPost, false);
+  assert.equal(controller.getSnapshot().stake.available, false);
 });

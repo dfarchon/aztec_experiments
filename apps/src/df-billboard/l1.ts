@@ -2,13 +2,28 @@ import type { Eip1193Provider } from "ethers";
 
 import { type Environment, networkPolicy, validateRpc } from "./network.ts";
 
-type Injected = Eip1193Provider & {
+export type InjectedProvider = Eip1193Provider & {
   isMetaMask?: boolean;
   isRabby?: boolean;
-  providers?: Injected[];
+  isPhantom?: boolean;
+  isCoinbaseWallet?: boolean;
+  providers?: InjectedProvider[];
   on?(event: string, callback: () => void): void;
   removeListener?(event: string, callback: () => void): void;
 };
+export interface EthereumWallet {
+  id: string;
+  name: string;
+  provider: InjectedProvider;
+}
+
+function walletName(value: string) {
+  const name = value.trim().slice(0, 50);
+  if (/^rabby(?: wallet)?$/i.test(name)) return "Rabby";
+  if (/^metamask$/i.test(name)) return "MetaMask";
+  if (/^phantom(?: wallet)?$/i.test(name)) return "Phantom";
+  return name;
+}
 
 export const WALLET_APPROVAL_TIMEOUT_MS = 60_000;
 
@@ -26,7 +41,7 @@ export async function waitForWalletApproval<T>(
           () =>
             reject(
               new Error(
-                `MetaMask ${action} timed out. Approve or reject the pending request in MetaMask before retrying.`
+                `Wallet ${action} timed out. Approve or reject the pending request in your wallet before retrying.`
               )
             ),
           timeoutMs
@@ -36,7 +51,7 @@ export async function waitForWalletApproval<T>(
   } catch (error) {
     if ((error as { code?: number }).code === -32002)
       throw new Error(
-        "A MetaMask request is already pending. Approve or reject it in MetaMask before retrying."
+        "A wallet request is already pending. Approve or reject it in your wallet before retrying."
       );
     throw error;
   } finally {
@@ -44,37 +59,68 @@ export async function waitForWalletApproval<T>(
   }
 }
 
-export async function findMetaMask(): Promise<Injected> {
-  const provider = await new Promise<Injected | undefined>((resolve) => {
-    const found: Injected[] = [];
+export async function listEthereumWallets(): Promise<EthereumWallet[]> {
+  return new Promise((resolve) => {
+    const found: EthereumWallet[] = [];
+    const seen = new Set<InjectedProvider>();
+    const add = (id: string, name: string, provider?: InjectedProvider) => {
+      name = walletName(name);
+      if (
+        !provider ||
+        typeof provider.request !== "function" ||
+        seen.has(provider) ||
+        found.some((wallet) => wallet.name === name)
+      )
+        return;
+      seen.add(provider);
+      found.push({ id, name, provider });
+    };
     const announce = (event: Event) => {
       const detail = (
-        event as CustomEvent<{ info: { rdns: string }; provider: Injected }>
+        event as CustomEvent<{
+          info: { rdns: string; name: string; uuid: string };
+          provider: InjectedProvider;
+        }>
       ).detail;
-      if (detail?.info.rdns === "io.metamask") found.push(detail.provider);
+      if (detail?.info?.name)
+        add(
+          detail.info.uuid || detail.info.rdns,
+          detail.info.name,
+          detail.provider
+        );
     };
     window.addEventListener("eip6963:announceProvider", announce);
     window.dispatchEvent(new Event("eip6963:requestProvider"));
     setTimeout(() => {
       window.removeEventListener("eip6963:announceProvider", announce);
-      const injected = (window as Window & { ethereum?: Injected }).ethereum;
-      resolve(
-        found[0] ||
-          (injected?.providers || [injected]).find(
-            (item) => item?.isMetaMask && !item.isRabby
-          )
-      );
+      const injected = (window as Window & { ethereum?: InjectedProvider })
+        .ethereum;
+      for (const [index, provider] of [
+        ...(injected?.providers || []),
+        injected,
+      ].entries()) {
+        const name = provider?.isRabby
+          ? "Rabby"
+          : provider?.isPhantom
+            ? "Phantom"
+            : provider?.isCoinbaseWallet
+              ? "Coinbase Wallet"
+              : provider?.isMetaMask
+                ? "MetaMask"
+                : "Browser wallet";
+        add(
+          `injected-${index}`,
+          name === "Browser wallet" ? `${name} ${index + 1}` : name,
+          provider
+        );
+      }
+      resolve(found);
     }, 200);
   });
-  if (!provider)
-    throw new Error(
-      "MetaMask was not found. Open this site in a browser with the extension installed."
-    );
-  return provider;
 }
 
 export async function switchEthereumChain(
-  provider: Awaited<ReturnType<typeof findMetaMask>>,
+  provider: InjectedProvider,
   chainId: string,
   rpcUrl: string,
   env: Environment = "local",

@@ -76,11 +76,12 @@ export function createBillboardController(deps = {}): BillboardController {
     });
   }
   function publishStake(stake) {
+    const connected = Boolean(stake.payer && stake.owner);
     patch({
       stake,
-      connected: Boolean(stake.payer),
+      connected,
       canPost:
-        Boolean(stake.payer) &&
+        connected &&
         BigInt(stake.amount) > 0n &&
         !stake.pendingDeposit &&
         !stake.pendingExit,
@@ -171,7 +172,7 @@ export function createBillboardController(deps = {}): BillboardController {
     )
       throw new Error("This website needs a stake-enabled Notch deployment");
     if (!deployment.sponsoredFpc) throw new Error("Sponsored FPC is missing");
-    patch({ deployment, stake: { ...view.stake, available: true } });
+    patch({ deployment });
     publicNode = R().createAztecNodeClient(deployment.nodeUrl);
     const address = R().AztecAddress.fromStringUnsafe(deployment.board);
     const checks = await Promise.allSettled([
@@ -188,8 +189,15 @@ export function createBillboardController(deps = {}): BillboardController {
     )
       throw new Error("Board class does not match the deployment");
     readLayout = layout;
-    patch({ canRead: true });
-    await refresh(false);
+    patch({
+      canRead: true,
+      stake: { ...view.stake, available: true },
+    });
+    try {
+      await refresh(false);
+    } catch (error) {
+      fail(error, "Load posts");
+    }
   }
   function initializeOnce() {
     return (initializing ||= initialize()
@@ -212,7 +220,7 @@ export function createBillboardController(deps = {}): BillboardController {
       throw error;
     }));
   }
-  async function connect() {
+  async function connect(provider) {
     await prepareWallet();
     await checkChain();
     if (!stakePosting)
@@ -220,7 +228,7 @@ export function createBillboardController(deps = {}): BillboardController {
         deps.createStakePosting ||
         (await import("./stake-posting.ts")).createStakePosting
       )(deployment, A(), publishStake, progress);
-    await stakePosting.connect();
+    await stakePosting.connect(provider);
     patch({ walletOpen: true });
   }
   async function readFeed(older, reportProgress = true) {
@@ -290,7 +298,8 @@ export function createBillboardController(deps = {}): BillboardController {
     },
     setWalletPanel: (open) => patch({ walletOpen: open }),
     accountBackup: () => stakePosting?.backup() || null,
-    connect: () => action(connect, "Connect wallet", "connecting"),
+    connect: (provider) =>
+      action(() => connect(provider), "Connect wallet", "connecting"),
     disconnect: () =>
       action(async () => {
         await stakePosting?.disconnect();
