@@ -7,7 +7,7 @@ The website uses React, TypeScript and Vite. The header offers a theme switch an
 ## Posting and stake
 
 1. Choose an installed Ethereum wallet, such as MetaMask or Rabby, on Sepolia, then choose a stake amount. A previously authorized wallet may connect without another permission prompt. Use the same L1 address when returning to manage its stake.
-2. Download the recovery backup before confirming the L1 transaction. Keep it private: losing both the backup and browser storage can make the stake unrecoverable. Deposit in 0.0005 ETH increments to the BillboardPortal on Sepolia. Each L1 address may have at most 0.002 ETH staked. Top-ups immediately raise the rolling 24-hour quota.
+2. Confirm a deposit in 0.0005 ETH increments to the BillboardPortal on Sepolia. Each L1 address may have at most 0.002 ETH staked. Top-ups immediately raise the rolling 24-hour quota. A recovery backup is optional; keep it private if you download one. Without a backup, losing browser storage can make the stake unrecoverable.
 3. The browser privately claims each L1 deposit on Aztec. The L1 deposit event contains a secret hash, amount and payer address, but no post or Aztec account address. Sponsored FPC pays the L2 execution fee.
 4. Write and publish from the private Aztec account. Text and time are public on Aztec. A private note tracks the rolling quota and last post.
 5. Withdraw the full stake after 24 hours from the last post. If no post was made, withdrawal is available immediately. An Aztec exit proof releases the ETH from the L1 portal; the L1 withdrawal transaction pays Sepolia gas.
@@ -25,7 +25,7 @@ The private Aztec account is not cryptographically derived from or publicly regi
 
 ## Recovery
 
-The wallet dialog keeps a pending deposit or withdrawal visible. A backup includes the private account key and any pending operation. Before paying on L1, download the latest backup. After a timeout, resume the saved operation and verify its receipt instead of making another deposit. If a wallet or RPC loses a transaction response, enter the existing transaction hash. Switching L1 wallets does not merge their stake or private accounts.
+The wallet dialog keeps a pending deposit or withdrawal visible. An optional backup includes the private account key and any pending operation. If you use backups, download the latest one after choosing a stake amount. After a timeout, resume the saved operation and verify its receipt instead of making another deposit. If a wallet or RPC loses a transaction response, enter the existing transaction hash. Switching L1 wallets does not merge their stake or private accounts.
 
 ## Development
 

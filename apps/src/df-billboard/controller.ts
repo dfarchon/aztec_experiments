@@ -44,7 +44,6 @@ export function createBillboardController(deps = {}): BillboardController {
       claimNeedsHash: false,
       pendingExit: false,
       exitNeedsHash: false,
-      backedUp: false,
       lastPost: "0",
     },
     progress: null,
@@ -308,7 +307,7 @@ export function createBillboardController(deps = {}): BillboardController {
     deposit: (amount) =>
       action(async () => {
         await stakePosting?.deposit(amount);
-        return "Save recovery before staking";
+        return "Stake ready to confirm";
       }, "Prepare stake"),
     resumeRequest: (hash, layer) =>
       action(

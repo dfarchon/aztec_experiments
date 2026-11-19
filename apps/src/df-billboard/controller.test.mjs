@@ -30,7 +30,6 @@ const emptyStake = {
   claimNeedsHash: false,
   pendingExit: false,
   exitNeedsHash: false,
-  backedUp: true,
   lastPost: "0",
 };
 

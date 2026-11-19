@@ -206,7 +206,6 @@ test("the wallet waits for a ready private account before staking", () => {
     ...view.stake,
     payer: `0x${"1".repeat(40)}`,
     owner: `0x${"2".repeat(64)}`,
-    backedUp: true,
     amount: "500000000000000",
   };
   assert.match(render(), /0.0005 ETH/);
@@ -227,7 +226,6 @@ test("pending stake and withdrawal recovery stay inside the wallet", () => {
       owner: `0x${"2".repeat(64)}`,
       pendingDeposit: true,
       depositNeedsHash: true,
-      backedUp: true,
     },
   };
   const render = () =>
@@ -333,7 +331,7 @@ test("operation toast only shows completed results outside the board", () => {
   base.dispose();
 });
 
-test("stake choices appear after connection and recovery is saved before payment", () => {
+test("stake choices appear after connection and backup stays optional", () => {
   const base = createBillboardController();
   const view = {
     ...base.getSnapshot(),
@@ -342,7 +340,6 @@ test("stake choices appear after connection and recovery is saved before payment
       ...base.getSnapshot().stake,
       payer: `0x${"1".repeat(40)}`,
       owner: `0x${"2".repeat(64)}`,
-      backedUp: false,
     },
   };
   const render = () =>
@@ -354,6 +351,7 @@ test("stake choices appear after connection and recovery is saved before payment
   const html = render();
   assert.match(html, /Stake to post|Connected/);
   assert.match(html, /Restore backup/);
+  assert.match(html, /Download backup \(optional\)/);
   assert.match(html, /notch-stake-options/);
   assert.doesNotMatch(html, /\p{Script=Han}/u);
   view.stake = {
@@ -362,7 +360,8 @@ test("stake choices appear after connection and recovery is saved before payment
     depositPrepared: true,
   };
   const prepared = render();
-  assert.match(prepared, /Download backup &amp; confirm stake/);
+  assert.match(prepared, /Confirm stake/);
+  assert.match(prepared, /Download backup \(optional\)/);
   assert.doesNotMatch(prepared, /notch-stake-options/);
   base.dispose();
 });

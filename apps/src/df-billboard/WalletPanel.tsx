@@ -230,7 +230,7 @@ export function WalletPanel({ view, controller }: ViewProps) {
                 {view.stake.pendingDeposit ? (
                   <>
                     {view.stake.depositPrepared && (
-                      <p>Download the recovery backup before paying on L1.</p>
+                      <p>Confirm the stake in your L1 wallet.</p>
                     )}
                     {(view.stake.depositNeedsHash ||
                       view.stake.claimNeedsHash) && (
@@ -261,8 +261,6 @@ export function WalletPanel({ view, controller }: ViewProps) {
                           !/^0x[\da-f]{64}$/i.test(recoveryHash))
                       }
                       onClick={() => {
-                        if (view.stake.depositPrepared)
-                          downloadBackup({ controller });
                         void controller.resumeRequest(
                           view.stake.depositNeedsHash ||
                             view.stake.claimNeedsHash
@@ -273,7 +271,7 @@ export function WalletPanel({ view, controller }: ViewProps) {
                       }}
                     >
                       {view.stake.depositPrepared
-                        ? "Download backup & confirm stake"
+                        ? "Confirm stake"
                         : "Continue deposit"}{" "}
                       <Icon name="arrow" />
                     </button>
@@ -350,6 +348,14 @@ export function WalletPanel({ view, controller }: ViewProps) {
                     )}
                   </>
                 )}
+                <button
+                  type="button"
+                  className="notch-wallet-switch"
+                  disabled={view.busy}
+                  onClick={() => downloadBackup({ controller })}
+                >
+                  Download backup (optional)
+                </button>
                 <button
                   type="button"
                   className="notch-wallet-switch"

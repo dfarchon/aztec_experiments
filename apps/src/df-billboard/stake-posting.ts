@@ -82,7 +82,6 @@ export function createStakePosting(config, a, emit, progress) {
       ),
       pendingExit: Boolean(saved?.exit),
       exitNeedsHash: Boolean(saved?.exit?.l2Attempted && !saved.exit.l2Tx),
-      backedUp: Boolean(saved?.backedUp),
       lastPost: saved?.lastPost || "0",
     });
   const persist = () => {
@@ -528,7 +527,6 @@ export function createStakePosting(config, a, emit, progress) {
             ...createAccountKeys(a),
             payer,
             amount: "0",
-            backedUp: false,
             deposit: null,
             exit: null,
           };
@@ -571,13 +569,10 @@ export function createStakePosting(config, a, emit, progress) {
         l2Tx: null,
         l2Attempted: false,
       };
-      saved.backedUp = false;
       persist();
     },
     async resume() {
       if (!saved?.deposit) throw new Error("No pending deposit");
-      if (!saved.backedUp)
-        throw new Error("Download your recovery backup before staking");
       if (!saved.deposit.submitted) await sendDeposit();
       else await confirmDeposit();
     },
@@ -699,7 +694,6 @@ export function createStakePosting(config, a, emit, progress) {
         signingKey: backup.signingKey,
         payer,
         amount: "0",
-        backedUp: true,
         deposit: backup.deposit || null,
         exit: backup.exit || null,
       };
@@ -708,8 +702,6 @@ export function createStakePosting(config, a, emit, progress) {
     },
     backup() {
       if (!saved || !owner) return null;
-      saved.backedUp = true;
-      persist();
       return {
         filename: `notch-account-${owner.toString().slice(0, 10)}.json`,
         contents: JSON.stringify(

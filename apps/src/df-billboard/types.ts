@@ -38,7 +38,6 @@ export interface BillboardView extends EditableFields {
     claimNeedsHash: boolean;
     pendingExit: boolean;
     exitNeedsHash: boolean;
-    backedUp: boolean;
     lastPost: string;
   };
   busy: boolean;
