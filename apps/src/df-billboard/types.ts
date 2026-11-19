@@ -33,6 +33,7 @@ export interface BillboardView extends EditableFields {
     owner: string;
     amount: string;
     pendingDeposit: boolean;
+    pendingAmount: string;
     depositPrepared: boolean;
     depositNeedsHash: boolean;
     claimNeedsHash: boolean;
@@ -79,6 +80,7 @@ export interface BillboardController {
   disconnect(): Promise<void>;
   resumeRequest(hash?: string, layer?: "l1" | "l2"): Promise<void>;
   deposit(amount: string): Promise<void>;
+  changeStakeAmount(): Promise<void>;
   withdrawStake(): Promise<void>;
   resumeWithdrawal(hash?: string): Promise<void>;
   importStakeBackup(file: File): Promise<void>;

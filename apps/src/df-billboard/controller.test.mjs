@@ -25,6 +25,7 @@ const emptyStake = {
   owner,
   amount: "0",
   pendingDeposit: false,
+  pendingAmount: "0",
   depositPrepared: false,
   depositNeedsHash: false,
   claimNeedsHash: false,
@@ -77,7 +78,16 @@ function fixture(t, overrides = {}) {
     },
     async deposit(amount) {
       calls.push(["deposit", amount]);
-      emitStake({ ...emptyStake, pendingDeposit: true, depositPrepared: true });
+      emitStake({
+        ...emptyStake,
+        pendingDeposit: true,
+        pendingAmount: amount,
+        depositPrepared: true,
+      });
+    },
+    async changeAmount() {
+      calls.push("changeAmount");
+      emitStake(emptyStake);
     },
     async resume() {
       calls.push("resume");
@@ -175,6 +185,11 @@ test("the selected L1 wallet opens a private account and stake unlocks posting",
   ]);
   await controller.deposit("500000000000000");
   assert.equal(controller.getSnapshot().stake.pendingDeposit, true);
+  assert.equal(controller.getSnapshot().stake.pendingAmount, "500000000000000");
+  await controller.changeStakeAmount();
+  assert.equal(controller.getSnapshot().stake.pendingDeposit, false);
+  assert(calls.includes("changeAmount"));
+  await controller.deposit("1000000000000000");
   await controller.resumeRequest();
   assert.equal(controller.getSnapshot().canPost, true);
   controller.setField("message", "new post");

@@ -55,7 +55,6 @@ export function createStakePosting(config, a, emit, progress) {
   const policy = networkPolicy(env);
   const l1 = config.l1Stake;
   let injected,
-    accountRequest,
     payer = "",
     saved,
     wallet,
@@ -73,6 +72,7 @@ export function createStakePosting(config, a, emit, progress) {
       owner: ready ? owner?.toString() || "" : "",
       amount: saved?.amount || "0",
       pendingDeposit: Boolean(saved?.deposit),
+      pendingAmount: saved?.deposit?.amount || "0",
       depositPrepared: Boolean(saved?.deposit && !saved.deposit.submitted),
       depositNeedsHash: Boolean(
         saved?.deposit?.submitted && !saved.deposit.l1Tx
@@ -358,9 +358,11 @@ export function createStakePosting(config, a, emit, progress) {
         "Deposit was already submitted. Recover its transaction hash."
       );
     await assertPayer();
+    progress("Checking the L2 sponsor…");
     await fee();
     const provider = rpc();
     try {
+      progress("Checking the L1 stake…");
       const portal = await verify(provider);
       const previous = await portal.queryFilter(
         portal.filters.Deposited(payer, null, null, null, job.secretHash),
@@ -377,19 +379,28 @@ export function createStakePosting(config, a, emit, progress) {
       const value = BigInt(job.amount);
       if ((await portal.deposits(payer)) + value > MAX_STAKE)
         throw new Error("This L1 wallet already reached the 0.002 ETH cap");
-      const signer = await new BrowserProvider(injected, "any", {
-        cacheTimeout: -1,
-      }).getSigner();
+      progress("Checking wallet account…");
+      const signer = await waitForWalletApproval(
+        new BrowserProvider(injected, "any", { cacheTimeout: -1 }).getSigner(),
+        "account access"
+      );
       if ((await signer.getAddress()).toLowerCase() !== payer.toLowerCase())
         throw new Error("Wallet changed");
       const entry = portal.connect(signer);
-      await entry.deposit.estimateGas(job.secretHash, { value });
+      progress("Checking stake gas…");
+      await waitForWalletApproval(
+        entry.deposit.estimateGas(job.secretHash, { value }),
+        "stake gas estimate"
+      );
       // Preserve the prepared secret before asking the wallet to spend ETH.
       job.submitted = true;
       persist();
       progress("Confirm the stake in your wallet…");
       try {
-        const tx = await entry.deposit(job.secretHash, { value });
+        const tx = await waitForWalletApproval(
+          entry.deposit(job.secretHash, { value }),
+          "stake confirmation"
+        );
         job.l1Tx = tx.hash;
         persist();
       } catch (error) {
@@ -483,24 +494,12 @@ export function createStakePosting(config, a, emit, progress) {
     async connect(selected) {
       if (!selected || typeof selected.request !== "function")
         throw new Error("Choose an Ethereum wallet first");
-      if (injected !== selected) accountRequest = null;
       injected = selected;
       ready = false;
       snapshot();
       try {
-        const request = injected.request({
-          method: accountRequest ? "eth_accounts" : "eth_requestAccounts",
-        });
-        if (!accountRequest) {
-          accountRequest = request;
-          void request
-            .finally(() => {
-              if (accountRequest === request) accountRequest = null;
-            })
-            .catch(() => {});
-        }
         const accounts = await waitForWalletApproval(
-          request,
+          injected.request({ method: "eth_requestAccounts" }),
           "connection",
           WALLET_APPROVAL_TIMEOUT_MS
         );
@@ -569,6 +568,15 @@ export function createStakePosting(config, a, emit, progress) {
         l2Tx: null,
         l2Attempted: false,
       };
+      persist();
+    },
+    async changeAmount() {
+      const job = saved?.deposit;
+      if (!job || job.submitted || job.l1Tx || job.l2Attempted)
+        throw new Error(
+          "This stake may already be on L1. Finish or recover it before changing the amount."
+        );
+      saved.deposit = null;
       persist();
     },
     async resume() {
@@ -724,7 +732,6 @@ export function createStakePosting(config, a, emit, progress) {
       injected?.removeListener?.("accountsChanged", walletChanged);
       injected?.removeListener?.("chainChanged", walletChanged);
       injected = null;
-      accountRequest = null;
       ready = false;
       payer = "";
       const previous = wallet;
@@ -755,6 +762,8 @@ export function createStakePosting(config, a, emit, progress) {
       withWalletLock(`notch-stake:${config.board}`, () =>
         operations.deposit(amount)
       ),
+    changeAmount: () =>
+      withWalletLock(`notch-stake:${config.board}`, operations.changeAmount),
     resume: () =>
       withWalletLock(`notch-stake:${config.board}`, operations.resume),
     recoverDeposit: (hash) =>

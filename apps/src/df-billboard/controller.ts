@@ -39,6 +39,7 @@ export function createBillboardController(deps = {}): BillboardController {
       owner: "",
       amount: "0",
       pendingDeposit: false,
+      pendingAmount: "0",
       depositPrepared: false,
       depositNeedsHash: false,
       claimNeedsHash: false,
@@ -309,6 +310,8 @@ export function createBillboardController(deps = {}): BillboardController {
         await stakePosting?.deposit(amount);
         return "Stake ready to confirm";
       }, "Prepare stake"),
+    changeStakeAmount: () =>
+      action(() => stakePosting?.changeAmount(), "Change stake amount"),
     resumeRequest: (hash, layer) =>
       action(
         () =>

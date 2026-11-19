@@ -448,6 +448,26 @@ html[data-theme="light"] .ascii-clouds {
   color: var(--heading);
   font-size: 15px;
 }
+.notch-wallet-pending {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  font: 12px var(--font-mono);
+  color: var(--muted);
+}
+.notch-wallet-pending strong {
+  flex: 1;
+  color: var(--heading);
+  font-size: 14px;
+}
+.notch-wallet-pending button {
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 0;
+  color: var(--accent);
+  white-space: nowrap;
+}
 .notch-stake-options {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -464,6 +484,16 @@ html[data-theme="light"] .ascii-clouds {
   width: auto !important;
   border: 0;
   color: var(--muted);
+}
+.notch-wallet-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.notch-wallet-actions .notch-wallet-switch {
+  width: 100% !important;
+  min-width: 0;
+  padding-inline: 8px;
 }
 #verification {
   border: 1px solid var(--line);

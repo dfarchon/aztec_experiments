@@ -351,18 +351,35 @@ test("stake choices appear after connection and backup stays optional", () => {
   const html = render();
   assert.match(html, /Stake to post|Connected/);
   assert.match(html, /Restore backup/);
-  assert.match(html, /Download backup \(optional\)/);
+  assert.match(html, /notch-wallet-actions/);
+  assert.match(html, /Download backup/);
   assert.match(html, /notch-stake-options/);
   assert.doesNotMatch(html, /\p{Script=Han}/u);
   view.stake = {
     ...view.stake,
     pendingDeposit: true,
+    pendingAmount: "500000000000000",
     depositPrepared: true,
   };
   const prepared = render();
   assert.match(prepared, /Confirm stake/);
-  assert.match(prepared, /Download backup \(optional\)/);
+  assert.match(prepared, /To stake/);
+  assert.match(prepared, /0\.0005/);
+  assert.match(prepared, /Change amount/);
+  assert.match(prepared, /Download backup/);
   assert.doesNotMatch(prepared, /notch-stake-options/);
+  view.busy = true;
+  view.progress = {
+    label: "Confirm the stake in your wallet…",
+    completed: false,
+    failed: false,
+  };
+  assert.match(render(), /Processing stake/);
+  assert.match(render(), /Confirm the stake in your wallet/);
+  view.busy = false;
+  view.progress = null;
+  view.stake = { ...view.stake, depositPrepared: false };
+  assert.doesNotMatch(render(), /Change amount/);
   base.dispose();
 });
 

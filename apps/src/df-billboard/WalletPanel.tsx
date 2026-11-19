@@ -229,8 +229,24 @@ export function WalletPanel({ view, controller }: ViewProps) {
                 )}
                 {view.stake.pendingDeposit ? (
                   <>
-                    {view.stake.depositPrepared && (
-                      <p>Confirm the stake in your L1 wallet.</p>
+                    <div className="notch-wallet-pending">
+                      <span>To stake</span>
+                      <strong>
+                        {(Number(view.stake.pendingAmount) / 1e18).toFixed(4)}
+                        &nbsp;ETH
+                      </strong>
+                      {view.stake.depositPrepared && (
+                        <button
+                          type="button"
+                          disabled={view.busy}
+                          onClick={() => void controller.changeStakeAmount()}
+                        >
+                          Change amount
+                        </button>
+                      )}
+                    </div>
+                    {view.busy && view.progress && !view.progress.completed && (
+                      <p role="status">{view.progress.label}</p>
                     )}
                     {(view.stake.depositNeedsHash ||
                       view.stake.claimNeedsHash) && (
@@ -270,10 +286,18 @@ export function WalletPanel({ view, controller }: ViewProps) {
                         );
                       }}
                     >
-                      {view.stake.depositPrepared
-                        ? "Confirm stake"
-                        : "Continue deposit"}{" "}
-                      <Icon name="arrow" />
+                      {view.busy ? (
+                        <>
+                          <LoadingIcon /> Processing stake…
+                        </>
+                      ) : (
+                        <>
+                          {view.stake.depositPrepared
+                            ? "Confirm stake"
+                            : "Continue deposit"}{" "}
+                          <Icon name="arrow" />
+                        </>
+                      )}
                     </button>
                   </>
                 ) : view.stake.pendingExit ? (
@@ -348,22 +372,24 @@ export function WalletPanel({ view, controller }: ViewProps) {
                     )}
                   </>
                 )}
-                <button
-                  type="button"
-                  className="notch-wallet-switch"
-                  disabled={view.busy}
-                  onClick={() => downloadBackup({ controller })}
-                >
-                  Download backup (optional)
-                </button>
-                <button
-                  type="button"
-                  className="notch-wallet-switch"
-                  disabled={view.busy}
-                  onClick={() => void controller.disconnect()}
-                >
-                  Switch wallet
-                </button>
+                <div className="notch-wallet-actions">
+                  <button
+                    type="button"
+                    className="notch-wallet-switch"
+                    disabled={view.busy}
+                    onClick={() => downloadBackup({ controller })}
+                  >
+                    Download backup
+                  </button>
+                  <button
+                    type="button"
+                    className="notch-wallet-switch"
+                    disabled={view.busy}
+                    onClick={() => void controller.disconnect()}
+                  >
+                    Switch wallet
+                  </button>
+                </div>
               </div>
             )}
           </section>
