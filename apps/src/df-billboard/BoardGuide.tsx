@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-const seenKey = "df-billboard:board-guide:v1";
+const seenKey = "df-billboard:board-guide:v2";
 
 export function BoardGuide() {
   const attempted = useRef(false);

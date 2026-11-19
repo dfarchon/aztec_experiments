@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import type { Theme } from "./theme";
 
 // Adapted from dfarchon/onchain-reality/src/components/AsciiClouds.tsx.
-// Keep the original noise field, palette, and pointer influence.
+// Keep the original noise field and palette; make pointer feedback readable here.
 const PERM = new Uint8Array(512);
 {
   const p = Uint8Array.from({ length: 256 }, (_, i) => i);
@@ -14,6 +14,9 @@ const PERM = new Uint8Array(512);
   for (let i = 0; i < 512; i++) PERM[i] = p[i & 255];
 }
 const CHARS = ".,·:;-=+*%#@&";
+const CHAR_WIDTH = 8.68;
+const CHAR_HEIGHT = 14.7;
+const POINTER_RADIUS = 8;
 const LAYERS = [
   { speed: 0.025, scale: 1.8, seed: 0, threshold: 0.4, alpha: 0.55 },
   { speed: 0.05, scale: 2.4, seed: 50, threshold: 0.36, alpha: 0.7 },
@@ -66,7 +69,8 @@ export function AsciiClouds({ theme }: { theme: Theme }) {
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
-    let timer: ReturnType<typeof setTimeout>;
+    let frame = 0;
+    let lastDraw = 0;
     let width = 0;
     let height = 0;
     let cols = 0;
@@ -80,27 +84,28 @@ export function AsciiClouds({ theme }: { theme: Theme }) {
     function onMouseMove(event: MouseEvent) {
       mouseX = event.clientX;
       mouseY = event.clientY;
-      if (motion.matches) restart();
+      if (motion.matches) draw();
     }
 
     function draw() {
       if (!canvas || !ctx || document.hidden) return;
       const time = motion.matches ? 0 : performance.now() * 0.001;
       if ((mouseX - previousX) ** 2 + (mouseY - previousY) ** 2 > 1) {
-        const centerCol = Math.round(mouseX / 8.68);
-        const centerRow = Math.round(mouseY / 14.7);
+        const centerCol = Math.round(mouseX / CHAR_WIDTH);
+        const centerRow = Math.round(mouseY / CHAR_HEIGHT);
         for (
-          let row = Math.max(0, centerRow - 6);
-          row <= Math.min(rows - 1, centerRow + 6);
+          let row = Math.max(0, centerRow - POINTER_RADIUS);
+          row <= Math.min(rows - 1, centerRow + POINTER_RADIUS);
           row++
         ) {
           for (
-            let col = Math.max(0, centerCol - 6);
-            col <= Math.min(cols - 1, centerCol + 6);
+            let col = Math.max(0, centerCol - POINTER_RADIUS);
+            col <= Math.min(cols - 1, centerCol + POINTER_RADIUS);
             col++
           ) {
             const distance =
-              ((col - centerCol) ** 2 + (row - centerRow) ** 2) / 36;
+              ((col - centerCol) ** 2 + (row - centerRow) ** 2) /
+              POINTER_RADIUS ** 2;
             if (distance < 1) {
               const strength = (1 - distance) ** 2;
               const index = row * cols + col;
@@ -119,8 +124,8 @@ export function AsciiClouds({ theme }: { theme: Theme }) {
       ctx.textBaseline = "top";
       for (let row = 0; row < rows; row++) {
         for (let col = 0; col < cols; col++) {
-          const x = col * 8.68;
-          const y = row * 14.7;
+          const x = col * CHAR_WIDTH;
+          const y = row * CHAR_HEIGHT;
           // The opaque board covers most of the screen. Do not render behind it.
           if (
             panel &&
@@ -161,20 +166,25 @@ export function AsciiClouds({ theme }: { theme: Theme }) {
             0.5;
           const index = row * cols + col;
           const effect = influence[index];
-          influence[index] *= 0.985;
-          const final = Math.max(base * 0.35, density) * (1 - effect * 0.85);
+          influence[index] *= 0.92;
+          const final =
+            Math.max(base * 0.35, density) * (1 - effect * 0.85) +
+            (theme === "dark" ? effect * 0.32 : 0);
           const bright = 0.5 + final * light * 0.5;
           const opacity =
             density > 0.01 ? lerp(0.5, alpha, density) : 0.3 + base * 0.3;
-          let red = lerp(lerp(240, 255, bright), 160, effect * 0.5);
-          let green = lerp(lerp(180, 220, bright), 235, effect * 0.5);
-          let blue = lerp(lerp(210, 245, bright), 255, effect * 0.5);
+          let red = lerp(240, 255, bright);
+          let green = lerp(180, 220, bright);
+          let blue = lerp(210, 245, bright);
           if (theme === "light") {
             red = lerp(red, 198, 0.44);
             green = lerp(green, 78, 0.44);
             blue = lerp(blue, 148, 0.44);
           }
-          ctx.fillStyle = `rgba(${Math.round(red)},${Math.round(green)},${Math.round(blue)},${Math.min(1, opacity * (theme === "light" ? 1.22 : 1) + effect * 0.3)})`;
+          red = lerp(red, theme === "light" ? 116 : 130, effect * 0.8);
+          green = lerp(green, theme === "light" ? 42 : 238, effect * 0.8);
+          blue = lerp(blue, theme === "light" ? 82 : 255, effect * 0.8);
+          ctx.fillStyle = `rgba(${Math.round(red)},${Math.round(green)},${Math.round(blue)},${Math.min(1, opacity * (theme === "light" ? 1.22 : 1) + effect * 0.4)})`;
           ctx.fillText(
             CHARS[
               Math.min(CHARS.length - 1, Math.floor(final * (CHARS.length - 1)))
@@ -184,36 +194,42 @@ export function AsciiClouds({ theme }: { theme: Theme }) {
           );
         }
       }
-      if (!motion.matches) timer = setTimeout(draw, 125);
     }
-    function restart() {
-      clearTimeout(timer);
-      draw();
+    function animate(now: number) {
+      if (now - lastDraw >= 50) {
+        draw();
+        lastDraw = now;
+      }
+      frame = requestAnimationFrame(animate);
     }
     function resize() {
       if (!canvas || !ctx) return;
       width = window.innerWidth;
       height = window.innerHeight;
-      cols = Math.ceil(width / 8.68) + 1;
-      rows = Math.ceil(height / 14.7) + 1;
+      cols = Math.ceil(width / CHAR_WIDTH) + 1;
+      rows = Math.ceil(height / CHAR_HEIGHT) + 1;
       influence = new Float32Array(cols * rows);
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = width * dpr;
       canvas.height = height * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      restart();
+      draw();
     }
     resize();
+    if (!motion.matches) frame = requestAnimationFrame(animate);
     window.addEventListener("resize", resize);
     window.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("visibilitychange", restart);
-    motion.addEventListener("change", restart);
+    const onMotionChange = () => {
+      cancelAnimationFrame(frame);
+      if (motion.matches) draw();
+      else frame = requestAnimationFrame(animate);
+    };
+    motion.addEventListener("change", onMotionChange);
     return () => {
-      clearTimeout(timer);
+      cancelAnimationFrame(frame);
       window.removeEventListener("resize", resize);
       window.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("visibilitychange", restart);
-      motion.removeEventListener("change", restart);
+      motion.removeEventListener("change", onMotionChange);
     };
   }, [theme]);
   return <canvas ref={canvasRef} className="ascii-clouds" aria-hidden="true" />;

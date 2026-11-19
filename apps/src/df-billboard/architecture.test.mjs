@@ -13,7 +13,6 @@ import {
   networkPolicy,
   validateChain,
   validateRpc,
-  waitForInbox,
 } from "./network.ts";
 
 test("shared account helpers keep identities, namespaces and recovery writes isolated", () => {
@@ -99,56 +98,6 @@ test("network policies fail closed on RPC, version, rollup and proof mismatches"
       );
     assert.throws(() => validateChain(env, config, info, "other"));
   }
-});
-
-test("public inbox waits never advance time and timeout remains retryable", async () => {
-  let advanced = 0,
-    reads = 0;
-  const advance = async () => {
-    advanced++;
-  };
-  await waitForInbox(
-    "testnet",
-    async () => ++reads === 2,
-    advance,
-    () => {},
-    () => false,
-    async () => {}
-  );
-  assert.equal(advanced, 0);
-  await assert.rejects(
-    waitForInbox(
-      "testnet",
-      async () => false,
-      advance,
-      () => {},
-      () => false,
-      async () => {}
-    ),
-    /Resume later without paying again/
-  );
-  assert.equal(advanced, 0);
-  reads = 0;
-  await waitForInbox(
-    "local",
-    async () => ++reads === 2,
-    advance,
-    () => {},
-    () => false,
-    async () => {}
-  );
-  assert.equal(advanced, 1);
-  await assert.rejects(
-    waitForInbox(
-      "testnet",
-      async () => true,
-      advance,
-      () => {},
-      () => true,
-      async () => {}
-    ),
-    /session closed/
-  );
 });
 
 function feedFixture(total) {
@@ -320,21 +269,10 @@ test("feed cache is bounded and does not cross node instances", async () => {
   );
 });
 
-test("feed batches read newest first and publish only complete prefixes before the full page", async () => {
-  const f = controlledBatchFixture(4),
-    progress = [];
+test("feed batches read newest first and return only a complete page", async () => {
+  const f = controlledBatchFixture(4);
   let settled = false;
-  const result = readPostPage(
-    f.sdk,
-    f.node,
-    "board",
-    f.layout,
-    undefined,
-    undefined,
-    (posts, total) => {
-      progress.push({ ids: posts.map((post) => post.id), total });
-    }
-  ).then((page) => {
+  const result = readPostPage(f.sdk, f.node, "board", f.layout).then((page) => {
     settled = true;
     return page;
   });
@@ -345,34 +283,22 @@ test("feed batches read newest first and publish only complete prefixes before t
   );
   await f.batches[1].resolve();
   await flushFeedReads();
-  assert.deepEqual(
-    progress,
-    [],
-    "older completed posts wait for the newest post"
-  );
+  assert.equal(settled, false);
   assert.deepEqual(
     f.batches.map((batch) => batch.id),
     [3, 2, 1]
   );
   await f.batches[0].resolve();
   await flushFeedReads();
-  assert.deepEqual(progress, [{ ids: [2, 3], total: 4 }]);
   assert.equal(
     settled,
     false,
-    "first posts are available while the page is still loading"
+    "the page waits for all posts before publishing"
   );
   await f.batches[2].resolve();
   await f.batches[3].resolve();
   const page = await result;
-  assert.deepEqual(
-    progress.map(({ ids }) => ids),
-    [
-      [2, 3],
-      [1, 2, 3],
-      [0, 1, 2, 3],
-    ]
-  );
+  assert.equal(settled, true);
   assert.deepEqual(
     page.posts.map((post) => post.id),
     [0, 1, 2, 3]
@@ -389,15 +315,11 @@ test("feed batches read newest first and publish only complete prefixes before t
   }
 });
 
-test("failed batches drain without late progress and retry the same cursor without duplicate posts", async () => {
+test("failed batches drain and retry the same cursor without duplicate posts", async () => {
   const f = controlledBatchFixture(15),
     reader = createFeedReader(),
-    cursor = { block: 42, total: 15, before: 5 },
-    progress = [];
-  const read = () =>
-    reader(f.sdk, f.node, "board", f.layout, cursor, (posts) =>
-      progress.push(posts.map((post) => post.id))
-    );
+    cursor = { block: 42, total: 15, before: 5 };
+  const read = () => reader(f.sdk, f.node, "board", f.layout, cursor);
   let settled = false;
   const failure = assert.rejects(read(), /batch failed/).then(() => {
     settled = true;
@@ -405,7 +327,6 @@ test("failed batches drain without late progress and retry the same cursor witho
   await flushFeedReads();
   await f.batches[0].resolve();
   await flushFeedReads();
-  assert.deepEqual(progress, [[4]]);
   assert.deepEqual(
     f.batches.map((batch) => batch.id),
     [4, 3, 2]
@@ -417,19 +338,9 @@ test("failed batches drain without late progress and retry the same cursor witho
   await f.batches[1].resolve();
   await failure;
   assert.equal(f.active(), 0);
-  assert.deepEqual(
-    progress,
-    [[4]],
-    "late successful reads do not publish after an error"
-  );
   assert.deepEqual(cursor, { block: 42, total: 15, before: 5 });
   const retry = read();
   await flushFeedReads();
-  assert.deepEqual(
-    progress.at(-1),
-    [3, 4],
-    "retry immediately publishes validated cached posts"
-  );
   assert.deepEqual(
     f.batches.slice(3).map((batch) => batch.id),
     [2, 1]
@@ -452,17 +363,8 @@ test("failed batches drain without late progress and retry the same cursor witho
 });
 
 test("batched posts with nonzero message padding are never displayed as valid text", async () => {
-  const f = controlledBatchFixture(1),
-    progress = [];
-  const result = readPostPage(
-    f.sdk,
-    f.node,
-    "board",
-    f.layout,
-    undefined,
-    undefined,
-    (posts) => progress.push(posts)
-  );
+  const f = controlledBatchFixture(1);
+  const result = readPostPage(f.sdk, f.node, "board", f.layout);
   await flushFeedReads();
   await f.batches[0].resolve((values) => [
     ...values.slice(0, -1),
@@ -470,7 +372,6 @@ test("batched posts with nonzero message padding are never displayed as valid te
   ]);
   const { posts } = await result;
   assert.deepEqual(posts, [{ id: 0, decodeError: true }]);
-  assert.deepEqual(progress, [posts]);
 });
 
 test("completing a partially cached page returns posts before old cache entries are evicted", async () => {
@@ -502,7 +403,7 @@ test("completing a partially cached page returns posts before old cache entries 
   );
 });
 
-test("publication timestamps share the post batch, pagination snapshot and cache", async () => {
+test("publication timestamps share the post batch, snapshot and cache", async () => {
   const f = feedFixture(12);
   f.layout.post_timestamps = { slot: "time" };
   const read = f.node.getPublicStorageAt;

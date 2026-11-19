@@ -389,14 +389,14 @@ test("initial controller graph excludes wallet modules and stays below 150 KB", 
     .join("\n");
   assert.doesNotMatch(
     initialInputs,
-    /metamask-posting|node_modules\/ethers\/|@aztec-foundation|wallet-runtime\.js/
+    /stake-posting|node_modules\/ethers\/|@aztec-foundation|wallet-runtime\.js/
   );
   assert(
     [...seen].reduce((sum, file) => sum + outputs[file].bytes, 0) < 150_000
   );
   assert(
     Object.values(outputs).some((file) =>
-      file.entryPoint?.endsWith("/metamask-posting.ts")
+      file.entryPoint?.endsWith("/stake-posting.ts")
     )
   );
 });

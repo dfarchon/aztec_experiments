@@ -33,8 +33,7 @@ export function startBoardGuide(seenKey: string) {
         element: "#walletMenu",
         popover: {
           title: "Connect a wallet",
-          description:
-            "Choose an Aztec wallet or MetaMask when you want to post.",
+          description: "Connect MetaMask and stake before you post.",
         },
       },
       {

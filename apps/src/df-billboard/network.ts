@@ -10,7 +10,7 @@ export function networkPolicy(env: Environment) {
     ? {
         chainId: 31337,
         realProofs: false,
-        chainName: "Billboard Local Anvil",
+        chainName: "Notch Local Anvil",
         currency: "Local ETH",
       }
     : {
@@ -55,32 +55,5 @@ export function validateChain(
   )
     throw new Error(
       "Deployment does not match the selected chain. Check version, rollup and proof mode."
-    );
-}
-// Local time travel is available only after the caller verifies the local chain.
-// Public networks are read-only while waiting; timeout preserves the paid request.
-export async function waitForInbox(
-  env: Environment,
-  ready: () => Promise<boolean>,
-  advanceLocal: () => Promise<unknown>,
-  progress: (text: string) => void,
-  cancelled: () => boolean,
-  sleep = (ms: number) =>
-    new Promise<void>((resolve) => setTimeout(resolve, ms))
-) {
-  const attempts = env === "local" ? 20 : 3;
-  for (let i = 0; i < attempts; i++) {
-    if (cancelled())
-      throw new Error(
-        "Posting session closed. Resume the saved request later."
-      );
-    if (await ready()) return;
-    progress("Waiting for the request to reach Aztec…");
-    if (env === "local") await advanceLocal();
-    await sleep(env === "local" ? 1000 : 5000);
-  }
-  if (cancelled() || !(await ready()))
-    throw new Error(
-      "Request is not ready on Aztec. Resume later without paying again."
     );
 }

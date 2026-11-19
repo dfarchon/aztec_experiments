@@ -1,11 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { Icon } from "./Icon";
 import { LoadingIcon } from "./LoadingIcon";
-import { RequestRecovery } from "./RequestRecovery";
-import { Select } from "./Select";
-import type { BillboardController, ViewProps, WalletMode } from "./types";
+import { MAX_STAKE, postQuota, STAKE_UNIT } from "./stake-policy";
+import type { ViewProps } from "./types";
 
-function downloadBackup(controller: BillboardController) {
+function downloadBackup({ controller }: Pick<ViewProps, "controller">) {
   const backup = controller.accountBackup();
   if (!backup) return;
   const url = URL.createObjectURL(
@@ -19,347 +19,288 @@ function downloadBackup(controller: BillboardController) {
 }
 
 export function WalletPanel({ view, controller }: ViewProps) {
-  const anchor = useRef<HTMLDivElement>(null);
-  const menu = useRef<HTMLButtonElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
   const close = useRef<HTMLButtonElement>(null);
+  const restore = useRef<HTMLInputElement>(null);
   const wasOpen = useRef(false);
-  const locked = view.busy || view.connected || view.pendingConnection;
-  const mode = view.walletMode;
-  const browserWallet = !["extension", "metamask"].includes(mode);
-  const connectLabel =
-    mode === "metamask"
-      ? "Connect MetaMask"
-      : mode === "extension"
-        ? `Connect ${view.providers[Number(view.provider)]?.name || "Aztec extension wallet"}`
-        : mode === "create"
-          ? "Create & connect Aztec account"
-          : mode === "import"
-            ? "Import & connect Aztec account"
-            : "Connect browser wallet";
+  const [recoveryHash, setRecoveryHash] = useState("");
+  const amount = BigInt(view.stake.amount);
+  const quota = postQuota(amount);
+  const connected = Boolean(view.stake.payer);
+  const funded = amount > 0n;
+  const step = !connected ? 1 : !funded ? 2 : 3;
+  const unlockAt = Number(view.stake.lastPost) * 1000 + 86_400_000;
+  const withdrawLocked =
+    Number(view.stake.lastPost) > 0 && Date.now() < unlockAt;
 
   useEffect(() => {
     if (view.walletOpen) close.current?.focus();
-    else if (wasOpen.current) menu.current?.focus();
+    else if (wasOpen.current) trigger.current?.focus();
     wasOpen.current = view.walletOpen;
   }, [view.walletOpen]);
   useEffect(() => {
     if (!view.walletOpen) return;
-    const outside = (event: PointerEvent) => {
-      if (
-        event.target instanceof Node &&
-        !anchor.current?.contains(event.target) &&
-        !view.busy
-      )
-        controller.setWalletPanel(false);
-    };
     const escape = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !view.busy)
         controller.setWalletPanel(false);
     };
-    document.addEventListener("pointerdown", outside);
     document.addEventListener("keydown", escape);
-    return () => {
-      document.removeEventListener("pointerdown", outside);
-      document.removeEventListener("keydown", escape);
-    };
+    return () => document.removeEventListener("keydown", escape);
   }, [view.walletOpen, view.busy, controller]);
 
   return (
-    <div className="wallet-anchor" ref={anchor}>
+    <div className="wallet-anchor">
       <button
         id="walletMenu"
-        ref={menu}
+        ref={trigger}
         type="button"
+        className={`header-control header-action${connected ? " connected" : ""}`}
         disabled={view.busy}
-        className={`header-action${view.connected ? " connected" : ""}`}
         aria-busy={view.connecting}
         aria-expanded={view.walletOpen}
         aria-controls="walletPanel"
         onClick={() => controller.setWalletPanel(!view.walletOpen)}
       >
-        {view.connecting ? (
-          <LoadingIcon />
-        ) : (
-          <span className="wallet-icon" aria-hidden="true">
-            ◈
-          </span>
-        )}
+        {view.connecting ? <LoadingIcon /> : <Icon name="wallet" />}
         <span id="walletMenuText">
-          {view.address
-            ? `${view.address.slice(0, 8)}…${view.address.slice(-6)}`
+          {connected
+            ? `${view.stake.payer.slice(0, 8)}…${view.stake.payer.slice(-6)}`
             : "Connect wallet"}
         </span>
       </button>
-      <section
-        id="walletPanel"
-        className="wallet-popover"
-        aria-label={view.connected ? "My wallet" : "Connect a wallet"}
-        hidden={!view.walletOpen}
-      >
-        <div className="popover-head">
-          <h2>{view.connected ? "My wallet" : "Connect a wallet"}</h2>
-          <button
-            id="walletClose"
-            ref={close}
-            type="button"
-            aria-label="Close wallet panel"
-            disabled={view.busy}
-            onClick={() => controller.setWalletPanel(false)}
+      {view.walletOpen && (
+        <div
+          className="notch-wallet-backdrop"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget && !view.busy)
+              controller.setWalletPanel(false);
+          }}
+        >
+          <section
+            id="walletPanel"
+            className="notch-wallet-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Connect your wallet"
           >
-            ×
-          </button>
-        </div>
-        <div hidden={view.connected}>
-          <label htmlFor="walletMode">Connection method</label>
-          <Select
-            id="walletMode"
-            value={browserWallet ? "browser" : mode}
-            disabled={locked}
-            onChange={(value) =>
-              controller.setField(
-                "walletMode",
-                value === "browser"
-                  ? view.savedAccounts.length
-                    ? "local"
-                    : "create"
-                  : (value as WalletMode)
-              )
-            }
-            options={[
-              {
-                value: "metamask",
-                label: "MetaMask · Pay L1 gas",
-                disabled: !view.request.available,
-              },
-              {
-                value: "extension",
-                label: "Aztec extension wallet · L2 fees sponsored",
-              },
-              { value: "browser", label: "Browser wallet" },
-            ]}
-          />
-          <div hidden={mode !== "metamask"} className="small">
-            Each post requires a zero-value Ethereum transaction. You pay L1
-            gas; Sponsored FPC pays L2 fees. An Aztec account is prepared in
-            this browser automatically. Your L1 payer address is public.
-          </div>
-          {!view.request.available && (
-            <p className="small">
-              MetaMask requires a board deployed with an L1 entry.
-            </p>
-          )}
-          <div id="localOptions" hidden={!browserWallet}>
-            <label htmlFor="browserAccountAction">Browser account</label>
-            <Select
-              id="browserAccountAction"
-              hidden={!browserWallet}
-              value={mode}
-              disabled={locked}
-              onChange={(value) =>
-                controller.setField("walletMode", value as WalletMode)
-              }
-              options={[
-                {
-                  value: "local",
-                  label: "Use saved account",
-                  disabled: !view.savedAccounts.length,
-                },
-                { value: "create", label: "Create account" },
-                { value: "import", label: "Import backup" },
-              ]}
-            />
-            <div id="savedOptions" hidden={mode !== "local"}>
-              <label htmlFor="savedAccount">Saved accounts</label>
-              <Select
-                id="savedAccount"
-                hidden={mode !== "local"}
-                value={view.savedAccount}
-                disabled={locked}
-                onChange={(value) => controller.setField("savedAccount", value)}
-                options={
-                  view.savedAccounts.length
-                    ? view.savedAccounts.map((account) => ({
-                        value: account.address,
-                        label: `${account.label || "Aztec account"} · ${account.address.slice(0, 10)}…${account.address.slice(-6)}`,
-                      }))
-                    : [
-                        {
-                          value: "",
-                          label: "No saved accounts",
-                          disabled: true,
-                        },
-                      ]
-                }
-              />
-            </div>
-            <div id="createOptions" hidden={mode !== "create"}>
-              <label htmlFor="accountLabel">Account name (optional)</label>
-              <input
-                id="accountLabel"
-                type="text"
-                maxLength={32}
-                placeholder="e.g. My browser account"
-                disabled={locked}
-                value={view.accountLabel}
-                onChange={(event) =>
-                  controller.setField("accountLabel", event.target.value)
-                }
-              />
-              <p className="small">
-                Creates a Schnorr account in this browser. Keys are stored
-                locally without encryption. Download a backup after creation and
-                do not use a shared computer.
-              </p>
-            </div>
-            <div id="importOptions" hidden={mode !== "import"}>
-              <label htmlFor="accountFile">Aztec account JSON backup</label>
-              <input
-                key={view.fileVersion}
-                id="accountFile"
-                type="file"
-                accept=".json,application/json"
-                disabled={locked}
-                onChange={(event) =>
-                  controller.setField(
-                    "accountFile",
-                    event.target.files?.[0] || null
-                  )
-                }
-              />
-              <p className="small">
-                The file is read locally and never uploaded.
-              </p>
-            </div>
-          </div>
-          <div id="extensionOptions" hidden={mode !== "extension"}>
-            <p className="small">
-              Install an Aztec wallet extension such as Nulo and select the
-              matching Aztec network ({" "}
-              <code>{view.deployment?.nodeUrl || "http://127.0.0.1:5180"}</code>
-              ).
-            </p>
-            <div className="row">
+            <div className="notch-wallet-head">
+              <h2>Connect your wallet</h2>
               <button
-                id="scan"
-                className="secondary"
+                ref={close}
                 type="button"
-                disabled={locked || !view.deployment}
-                onClick={controller.scan}
+                aria-label="Close wallet panel"
+                disabled={view.busy}
+                onClick={() => controller.setWalletPanel(false)}
               >
-                Scan again
+                ×
               </button>
-              <Select
-                id="provider"
-                aria-label="Aztec extension wallet"
-                hidden={view.providers.length < 2}
-                disabled={locked}
-                value={view.provider}
-                onChange={(value) => controller.setField("provider", value)}
-                options={view.providers.map((provider, index) => ({
-                  value: String(index),
-                  label: provider.name,
-                }))}
-              />
             </div>
-            <div id="extensionStatus" className="small" role="status">
-              {view.extensionStatus}
-            </div>
-            <div id="verification" hidden={!view.verification}>
-              <p>Check that these emojis match those shown in your wallet:</p>
-              <div id="emoji">{view.emoji}</div>
-              <div className="row">
-                <button
-                  id="confirmWallet"
-                  type="button"
-                  disabled={view.busy || !view.pendingConnection}
-                  aria-busy={view.connecting}
-                  onClick={controller.confirmWallet}
+            <ol className="notch-wallet-steps" aria-label="Posting steps">
+              {["Connect", "Stake", "Post"].map((label, index) => (
+                <li
+                  key={label}
+                  className={
+                    step === index + 1
+                      ? "active"
+                      : step > index + 1
+                        ? "done"
+                        : ""
+                  }
                 >
-                  {view.connecting && <LoadingIcon />}
-                  Emojis match · Continue
-                </button>
+                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  {label}
+                </li>
+              ))}
+            </ol>
+            {!connected ? (
+              <div className="notch-wallet-body">
+                <p>Use an Ethereum wallet to open a private posting account.</p>
                 <button
-                  id="cancelWallet"
+                  id="connect"
                   type="button"
-                  disabled={view.busy || !view.pendingConnection}
-                  onClick={controller.cancelWallet}
+                  className="notch-wallet-primary"
+                  disabled={view.busy || !view.stake.available}
+                  onClick={() => void controller.connect()}
                 >
-                  Cancel
+                  {view.connecting && <LoadingIcon />} Connect MetaMask{" "}
+                  <Icon name="arrow" />
                 </button>
               </div>
-            </div>
-            <div
-              id="grantedAccountOptions"
-              hidden={view.grantedAccounts.length < 2}
-            >
-              <label htmlFor="grantedAccount">Authorized accounts</label>
-              <Select
-                id="grantedAccount"
-                value={view.grantedAccount}
-                disabled={view.busy}
-                onChange={(value) =>
-                  void controller.selectGrantedAccount(value)
-                }
-                options={view.grantedAccounts}
-              />
-            </div>
-          </div>
-          <button
-            id="connect"
-            type="button"
-            disabled={
-              locked ||
-              !view.deployment ||
-              (mode === "local" && !view.savedAccounts.length) ||
-              (mode === "metamask" && !view.request.available)
-            }
-            aria-busy={view.connecting}
-            onClick={controller.connect}
-          >
-            {view.connecting && <LoadingIcon />}
-            {connectLabel}
-          </button>
-        </div>
-        <RequestRecovery view={view} controller={controller} />
-        {view.connected && (
-          <div className="wallet-account-actions">
-            {mode === "metamask" && (
-              <p className="small">
-                Browser keys are stored unencrypted. Keep this browser&apos;s
-                site data until pending posts finish.
-              </p>
-            )}
-            <button
-              id="copyAddress"
-              disabled={view.busy || !view.address}
-              onClick={controller.copyAddress}
-            >
-              {view.copied ? "Copied" : "Copy address"}
-            </button>
-            {view.hasLocalAccount && (
-              <>
+            ) : (
+              <div className="notch-wallet-body">
+                <div className="notch-wallet-balance">
+                  <span>Staked</span>
+                  <strong>{(Number(amount) / 1e18).toFixed(4)} ETH</strong>
+                  <span>{quota} posts / 24h</span>
+                </div>
+                {!view.stake.backedUp && (
+                  <button
+                    id="backupAccount"
+                    type="button"
+                    className="notch-wallet-secondary"
+                    disabled={view.busy}
+                    onClick={() => downloadBackup({ controller })}
+                  >
+                    Download private account backup
+                  </button>
+                )}
+                {!funded && !view.stake.pendingDeposit && (
+                  <>
+                    <input
+                      ref={restore}
+                      className="sr-only"
+                      type="file"
+                      accept=".json,application/json"
+                      aria-label="Restore private account backup"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) void controller.importStakeBackup(file);
+                        event.target.value = "";
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="notch-wallet-switch"
+                      disabled={view.busy}
+                      onClick={() => restore.current?.click()}
+                    >
+                      Restore backup
+                    </button>
+                  </>
+                )}
+                {view.stake.pendingDeposit ? (
+                  <>
+                    {(view.stake.depositNeedsHash ||
+                      view.stake.claimNeedsHash) && (
+                      <input
+                        aria-label={
+                          view.stake.claimNeedsHash
+                            ? "Existing Aztec claim transaction hash"
+                            : "Existing L1 deposit transaction hash"
+                        }
+                        placeholder={
+                          view.stake.claimNeedsHash
+                            ? "Aztec claim transaction hash"
+                            : "L1 deposit transaction hash"
+                        }
+                        value={recoveryHash}
+                        onChange={(event) =>
+                          setRecoveryHash(event.target.value)
+                        }
+                      />
+                    )}
+                    <button
+                      type="button"
+                      className="notch-wallet-primary"
+                      disabled={
+                        view.busy ||
+                        ((view.stake.depositNeedsHash ||
+                          view.stake.claimNeedsHash) &&
+                          !/^0x[\da-f]{64}$/i.test(recoveryHash))
+                      }
+                      onClick={() => {
+                        if (view.stake.depositPrepared)
+                          downloadBackup({ controller });
+                        void controller.resumeRequest(
+                          view.stake.depositNeedsHash ||
+                            view.stake.claimNeedsHash
+                            ? recoveryHash
+                            : undefined,
+                          view.stake.claimNeedsHash ? "l2" : "l1"
+                        );
+                      }}
+                    >
+                      {view.stake.depositPrepared
+                        ? "Save recovery & stake"
+                        : "Continue deposit"}{" "}
+                      <Icon name="arrow" />
+                    </button>
+                  </>
+                ) : view.stake.pendingExit ? (
+                  <>
+                    {view.stake.exitNeedsHash && (
+                      <input
+                        aria-label="Existing Aztec withdrawal transaction hash"
+                        placeholder="Aztec withdrawal transaction hash"
+                        value={recoveryHash}
+                        onChange={(event) =>
+                          setRecoveryHash(event.target.value)
+                        }
+                      />
+                    )}
+                    <button
+                      type="button"
+                      className="notch-wallet-primary"
+                      disabled={
+                        view.busy ||
+                        (view.stake.exitNeedsHash &&
+                          !/^0x[\da-f]{64}$/i.test(recoveryHash))
+                      }
+                      onClick={() =>
+                        void controller.resumeWithdrawal(
+                          view.stake.exitNeedsHash ? recoveryHash : undefined
+                        )
+                      }
+                    >
+                      Complete withdrawal <Icon name="arrow" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {amount < MAX_STAKE && (
+                      <div
+                        className="notch-stake-options"
+                        aria-label="Add stake"
+                      >
+                        {[1n, 2n, 4n]
+                          .map((units) => units * STAKE_UNIT)
+                          .filter((value) => amount + value <= MAX_STAKE)
+                          .map((value) => (
+                            <button
+                              type="button"
+                              key={value}
+                              disabled={view.busy || !view.stake.backedUp}
+                              onClick={() =>
+                                void controller.deposit(value.toString())
+                              }
+                            >
+                              +{(Number(value) / 1e18).toString()} ETH
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                    {funded && (
+                      <>
+                        <p className="notch-wallet-ready">
+                          Ready to post. Close this panel and write below.
+                        </p>
+                        <button
+                          type="button"
+                          className="notch-wallet-secondary"
+                          disabled={view.busy || withdrawLocked}
+                          onClick={() => void controller.withdrawStake()}
+                        >
+                          {withdrawLocked
+                            ? "Withdraw 24h after your last post"
+                            : "Withdraw stake"}
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
                 <button
-                  id="backupAccount"
+                  type="button"
+                  className="notch-wallet-switch"
                   disabled={view.busy}
-                  onClick={() => downloadBackup(controller)}
+                  onClick={() => void controller.disconnect()}
                 >
-                  Download backup
+                  Switch wallet
                 </button>
-                <p className="small">
-                  Back up this browser account before clearing site data. Keep
-                  the backup private.
-                </p>
-              </>
+              </div>
             )}
-            <button
-              disabled={view.busy}
-              onClick={() => void controller.disconnect()}
-            >
-              Switch wallet
-            </button>
-          </div>
-        )}
-      </section>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

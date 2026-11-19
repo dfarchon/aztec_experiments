@@ -35,7 +35,6 @@ export interface FeedCursor {
   total: number;
   before: number;
 }
-type FeedProgress = (posts: PostData[], total: number) => void;
 export async function mapLimited<T, R>(
   items: T[],
   read: (item: T) => Promise<R>,
@@ -71,26 +70,24 @@ export function createFeedReader() {
     node: FeedNode,
     board: string,
     layout: Layout,
-    cursor?: FeedCursor,
-    onProgress?: FeedProgress
+    cursor?: FeedCursor
   ) => {
     if (node !== previousNode) {
       cache.clear();
       previousNode = node;
     }
-    return readPostPage(sdk, node, board, layout, cursor, cache, onProgress);
+    return readPostPage(sdk, node, board, layout, cursor, cache);
   };
 }
-// All pages use the same snapshot. The caller only commits the returned cursor
-// after a successful read, so failed pages can be retried without gaps.
+// All batches use the same snapshot. The caller only commits the returned cursor
+// after a successful read, so failed batches can be retried without gaps.
 export async function readPostPage(
   sdk: FeedSDK,
   node: FeedNode,
   board: string,
   layout: Layout,
   cursor?: FeedCursor,
-  cache = new Map<string, PostData>(),
-  onProgress?: FeedProgress
+  cache = new Map<string, PostData>()
 ) {
   const address = sdk.AztecAddress.fromStringUnsafe(board);
   const block = cursor?.block ?? (await node.getBlockNumber());
@@ -113,78 +110,55 @@ export async function readPostPage(
   );
   const key = (id: number) => `${board}:${block}:${id}`;
   const missing = ids.filter((id) => !cache.has(key(id)));
-  let published = 0;
-  function publishProgress() {
-    if (!onProgress) return;
-    const ready: PostData[] = [];
-    // Emit only a complete newest-first prefix, even if batches finish out of order.
-    for (const id of ids) {
-      const post = cache.get(key(id));
-      if (!post) break;
-      ready.push({ ...post });
-    }
-    if (ready.length > published) {
-      published = ready.length;
-      onProgress(ready.reverse(), total);
-    }
-  }
-  publishProgress();
-  let failed = false;
   try {
     await mapLimited(
       missing,
       async (id) => {
-        try {
-          const slots = await Promise.all([
+        const slots = await Promise.all([
+          sdk.deriveStorageSlotInMap(
+            layout.post_lengths.slot,
+            new sdk.Fr(BigInt(id))
+          ),
+          ...Array.from({ length: 17 }, (_, i) =>
             sdk.deriveStorageSlotInMap(
-              layout.post_lengths.slot,
-              new sdk.Fr(BigInt(id))
-            ),
-            ...Array.from({ length: 17 }, (_, i) =>
-              sdk.deriveStorageSlotInMap(
-                layout.post_data.slot,
-                new sdk.Fr(BigInt(id * 17 + i))
-              )
-            ),
-            ...(layout.post_timestamps
-              ? [
-                  sdk.deriveStorageSlotInMap(
-                    layout.post_timestamps.slot,
-                    new sdk.Fr(BigInt(id))
-                  ),
-                ]
-              : []),
-          ]);
-          const values = node.getPublicStorageMany
-            ? await node.getPublicStorageMany(block, address, slots)
-            : await mapLimited(slots, read);
-          let post: PostData;
-          try {
-            post = {
-              id,
-              text: decodeDFMessage(
-                values.slice(1, 18),
-                Number(values[0].toBigInt())
-              ),
-            };
-          } catch {
-            post = { id, decodeError: true };
-          }
-          if (layout.post_timestamps) {
-            const timestamp = Number(values[18].toBigInt());
-            if (
-              Number.isSafeInteger(timestamp) &&
-              timestamp > 0 &&
-              timestamp <= 8_640_000_000_000
+              layout.post_data.slot,
+              new sdk.Fr(BigInt(id * 17 + i))
             )
-              post.publishedAt = timestamp;
-          }
-          cache.set(key(id), post);
-          if (!failed) publishProgress();
-        } catch (error) {
-          failed = true;
-          throw error;
+          ),
+          ...(layout.post_timestamps
+            ? [
+                sdk.deriveStorageSlotInMap(
+                  layout.post_timestamps.slot,
+                  new sdk.Fr(BigInt(id))
+                ),
+              ]
+            : []),
+        ]);
+        const values = node.getPublicStorageMany
+          ? await node.getPublicStorageMany(block, address, slots)
+          : await mapLimited(slots, read);
+        let post: PostData;
+        try {
+          post = {
+            id,
+            text: decodeDFMessage(
+              values.slice(1, 18),
+              Number(values[0].toBigInt())
+            ),
+          };
+        } catch {
+          post = { id, decodeError: true };
         }
+        if (layout.post_timestamps) {
+          const timestamp = Number(values[18].toBigInt());
+          if (
+            Number.isSafeInteger(timestamp) &&
+            timestamp > 0 &&
+            timestamp <= 8_640_000_000_000
+          )
+            post.publishedAt = timestamp;
+        }
+        cache.set(key(id), post);
       },
       node.getPublicStorageMany ? 2 : 1
     );

@@ -4,7 +4,6 @@ import { AsciiClouds } from "./AsciiClouds";
 import { BoardGuide } from "./BoardGuide";
 import { Brand } from "./Brand";
 import { Feed } from "./Feed";
-import { Hint } from "./Hint";
 import { Icon } from "./Icon";
 import { LoadingIcon } from "./LoadingIcon";
 import { NotificationToasts } from "./NotificationToasts";
@@ -21,8 +20,7 @@ export function App({ controller }: { controller: BillboardController }) {
   );
   const bytes = new TextEncoder().encode(view.message).length;
   const theme = useTheme();
-  const pendingPost =
-    view.walletMode === "metamask" && Boolean(view.request.pending);
+  const pendingStake = view.stake.pendingDeposit || view.stake.pendingExit;
   return (
     <div className="billboard-app">
       <AsciiClouds theme={theme} />
@@ -55,59 +53,46 @@ export function App({ controller }: { controller: BillboardController }) {
               rows={2}
               placeholder="Leave a message…"
               value={view.message}
-              disabled={view.busy || pendingPost}
+              disabled={view.busy || pendingStake}
               onChange={(event) =>
                 controller.setField("message", event.target.value)
               }
             />
             <div className="compose-footer">
-              <div className="compose-cost">
-                <span className="sponsored-label">
-                  {view.walletMode === "metamask"
-                    ? "You pay L1 gas · L2 sponsored"
-                    : "L2 fees sponsored"}
-                </span>
-                <Hint label="About posting">
-                  Posts are public and stored onchain. The author address is not
-                  shown, but network metadata may allow correlation. Up to 512
-                  UTF-8 bytes and 10 posts per rolling 24 hours. Posting
-                  requires an available sponsor.
-                </Hint>
-                <span
-                  id="bytes"
-                  className={bytes > 512 ? "over-limit" : ""}
-                  role="status"
-                >
-                  {bytes} / 512 bytes
-                </span>
-              </div>
+              <span
+                id="bytes"
+                className={bytes > 512 ? "over-limit" : ""}
+                role="status"
+              >
+                {bytes} / 512 bytes
+              </span>
               <button
                 id="post"
                 type="button"
                 aria-busy={view.posting}
                 aria-label={
-                  pendingPost
-                    ? "Continue pending post in wallet"
+                  pendingStake
+                    ? "Complete the pending wallet action"
                     : !view.busy && !view.connected
                       ? "Connect to post"
                       : undefined
                 }
                 disabled={
                   view.busy ||
-                  (view.connected &&
-                    !pendingPost &&
-                    (!view.canPost || !bytes || bytes > 512))
+                  (view.connected && view.canPost && (!bytes || bytes > 512))
                 }
                 onClick={() =>
-                  pendingPost || !view.connected
+                  pendingStake || !view.connected || !view.canPost
                     ? controller.setWalletPanel(true)
                     : void controller.post()
                 }
               >
                 {view.posting ? (
                   "Posting…"
-                ) : pendingPost ? (
-                  "Continue post"
+                ) : pendingStake ? (
+                  "Continue in wallet"
+                ) : view.connected && !view.canPost ? (
+                  "Stake to post"
                 ) : view.connected ? (
                   "Post"
                 ) : (

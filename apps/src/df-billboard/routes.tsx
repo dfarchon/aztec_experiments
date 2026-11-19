@@ -6,7 +6,7 @@ const BoardRoute = lazy(() => import("./BoardRoute"));
 export function SiteRoutes() {
   const location = useLocation();
   useEffect(() => {
-    document.title = "Billboard · DFArchon";
+    document.title = "Notch · DFArchon";
     if (!location.hash) window.scrollTo(0, 0);
   }, [location.pathname, location.hash]);
   return (
@@ -35,7 +35,7 @@ export function SiteRoutes() {
           element={
             <main className="shell">
               <h1>Page not found</h1>
-              <Link to="/">Back to Billboard</Link>
+              <Link to="/">Back to Notch</Link>
             </main>
           }
         />

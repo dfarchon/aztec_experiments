@@ -1,17 +1,9 @@
-import type { RequestView } from "./request-view";
-
 export type RuleCategory =
   | "promotion"
   | "credential-request"
   | "token-claim-link"
   | "adult-solicitation"
   | "repeated-solicitation";
-export type WalletMode =
-  | "local"
-  | "create"
-  | "import"
-  | "extension"
-  | "metamask";
 export interface PostData {
   id: number | string;
   publishedAt?: number;
@@ -30,42 +22,38 @@ export interface Progress {
   failed: boolean;
 }
 export interface EditableFields {
-  walletMode: WalletMode;
-  savedAccount: string;
-  accountLabel: string;
-  accountFile: File | null;
-  provider: string;
   message: string;
 }
 export interface BillboardView extends EditableFields {
-  request: RequestView;
+  stake: {
+    available: boolean;
+    payer: string;
+    owner: string;
+    amount: string;
+    pendingDeposit: boolean;
+    depositPrepared: boolean;
+    depositNeedsHash: boolean;
+    claimNeedsHash: boolean;
+    pendingExit: boolean;
+    exitNeedsHash: boolean;
+    backedUp: boolean;
+    lastPost: string;
+  };
   busy: boolean;
   connecting: boolean;
   posting: boolean;
   connected: boolean;
-  address: string;
   canRead: boolean;
   canPost: boolean;
-  hasLocalAccount: boolean;
   walletOpen: boolean;
-  fileVersion: number;
-  savedAccounts: { address: string; label: string }[];
-  providers: { id: string; name: string }[];
-  pendingConnection: boolean;
-  verification: boolean;
-  emoji: string;
-  grantedAccounts: { value: string; label: string }[];
-  grantedAccount: string;
   deployment: {
     nodeUrl: string;
     board: string;
     sponsoredFpc: string;
-    l1?: { rpcUrl: string; publisher: string };
+    l1Stake: { rpcUrl: string; portal: string };
   } | null;
   progress: Progress | null;
   actionError: { label: string; message: string; guidance: string } | null;
-  extensionStatus: string;
-  copied: boolean;
   logs: { id: number; message: string; type: string; time: string }[];
   posts: PostData[];
   feedLoaded: boolean;
@@ -85,15 +73,14 @@ export interface BillboardController {
     value: EditableFields[K]
   ): void;
   setWalletPanel(open: boolean): void;
-  copyAddress(): Promise<void>;
   accountBackup(): { filename: string; contents: string } | null;
   connect(): Promise<void>;
   disconnect(): Promise<void>;
-  resumeRequest(hash?: string): Promise<void>;
-  scan(): Promise<void>;
-  confirmWallet(): Promise<void>;
-  cancelWallet(): void;
-  selectGrantedAccount(value: string): Promise<void>;
+  resumeRequest(hash?: string, layer?: "l1" | "l2"): Promise<void>;
+  deposit(amount: string): Promise<void>;
+  withdrawStake(): Promise<void>;
+  resumeWithdrawal(hash?: string): Promise<void>;
+  importStakeBackup(file: File): Promise<void>;
   post(): Promise<void>;
   refresh(): Promise<void>;
   loadOlder(): Promise<void>;

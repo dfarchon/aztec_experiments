@@ -1,19 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 
-import { POST_PAGE_SIZE as PAGE_SIZE } from "./feed-reader";
 import { Icon } from "./Icon";
 import { PostTime } from "./PostTime";
 import type { ViewProps } from "./types";
 
-export function pageNumbers(current: number, total: number) {
-  const numbers = new Set([1, total, current - 1, current, current + 1]);
-  return [...numbers]
-    .filter((page) => page >= 1 && page <= total)
-    .sort((a, b) => a - b);
+function FeedSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="feed-skeleton" aria-hidden="true">
+      {Array.from({ length: rows }, (_, index) => (
+        <div className="feed-skeleton-row" key={index}>
+          <span className="feed-skeleton-meta" />
+          <span className="feed-skeleton-line" />
+          <span className="feed-skeleton-line" />
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function Feed({ view, controller }: ViewProps) {
-  const [page, setPage] = useState(1);
   const [now, setNow] = useState(Date.now);
   const hasTimestamps = view.posts.some((post) => post.publishedAt != null);
   useEffect(() => {
@@ -22,27 +27,54 @@ export function Feed({ view, controller }: ViewProps) {
     const timer = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(timer);
   }, [hasTimestamps]);
-  const root = useRef<HTMLElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  const sentinel = useRef<HTMLDivElement>(null);
+  const lastRequested = useRef("");
   const posts = view.posts;
   const sorted = [...posts].sort((a, b) => Number(b.id) - Number(a.id));
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
-  const current = Math.min(page, totalPages);
-  const offset = (current - 1) * PAGE_SIZE;
-  const numbers = pageNumbers(current, totalPages);
-
-  function resetPage() {
-    setPage(1);
-  }
-  function navigate(next: number) {
-    setPage(next);
-    root.current?.querySelector(".feed-scroll")?.scrollTo({ top: 0 });
-  }
+  const refreshing =
+    view.feedLoaded &&
+    view.feedLoading &&
+    view.progress?.label === "Loading recent posts…";
   useEffect(() => {
-    resetPage();
+    scroller.current?.scrollTo({ top: 0 });
   }, [view.feedRevision]);
+  useEffect(() => {
+    if (refreshing) scroller.current?.scrollTo({ top: 0 });
+  }, [refreshing]);
+  useEffect(() => {
+    if (
+      !view.feedLoaded ||
+      !view.hasOlderPosts ||
+      view.feedLoading ||
+      view.busy ||
+      !scroller.current ||
+      !sentinel.current
+    )
+      return;
+    const key = `${view.feedRevision}:${posts.length}`;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting || lastRequested.current === key) return;
+        lastRequested.current = key;
+        void controller.loadOlder();
+      },
+      { root: scroller.current, rootMargin: "0px 0px 96px 0px" }
+    );
+    observer.observe(sentinel.current);
+    return () => observer.disconnect();
+  }, [
+    controller,
+    posts.length,
+    view.busy,
+    view.feedLoaded,
+    view.feedLoading,
+    view.feedRevision,
+    view.hasOlderPosts,
+  ]);
 
   return (
-    <section className="card feed-card" ref={root}>
+    <section className="card feed-card">
       <button
         id="refresh"
         type="button"
@@ -56,6 +88,7 @@ export function Feed({ view, controller }: ViewProps) {
       </button>
       <div
         className="feed-scroll"
+        ref={scroller}
         tabIndex={0}
         role="region"
         aria-label="Posts"
@@ -67,93 +100,63 @@ export function Feed({ view, controller }: ViewProps) {
           role="status"
           aria-live="polite"
         >
-          {view.feedLoading
-            ? `Loading posts… ${posts.length} / ${view.totalPosts} loaded`
-            : view.feedLoaded
-              ? `${posts.length} loaded posts · Page ${current} of ${totalPages}`
-              : "Waiting to load public posts"}
+          {refreshing
+            ? "Refreshing posts…"
+            : view.feedLoading
+              ? `Loading posts… ${posts.length} / ${view.totalPosts} loaded`
+              : view.feedLoaded
+                ? `${posts.length} of ${view.totalPosts} posts loaded`
+                : "Waiting to load public posts"}
         </div>
-        {view.feedLoaded && sorted.length === 0 && (
+        {view.feedLoaded && sorted.length === 0 && !view.feedLoading && (
           <div className="empty-state">
             <h2>No posts yet</h2>
           </div>
         )}
-        {!view.feedLoaded && posts.length === 0 && (
-          <div className="empty-state" role="status">
-            <p>
-              {view.canRead ? "Loading posts…" : "Connecting to the board…"}
-            </p>
+        {!refreshing && (
+          <ol id="feed" aria-label="Public posts">
+            {sorted.map((post) => (
+              <li className="post-row" key={post.id}>
+                <article data-post-id={post.id}>
+                  <div className="post-meta">
+                    <span className="post-number">#{post.id}</span>
+                    {post.publishedAt != null && (
+                      <PostTime timestamp={post.publishedAt} now={now} />
+                    )}
+                  </div>
+                  <div className="post-text">
+                    {post.decodeError
+                      ? "This onchain message could not be decoded as UTF-8."
+                      : post.text}
+                  </div>
+                </article>
+              </li>
+            ))}
+          </ol>
+        )}
+        {((!view.feedLoaded && !view.actionError) ||
+          refreshing ||
+          (view.feedLoading && posts.length === 0)) && <FeedSkeleton />}
+        {view.hasOlderPosts && (
+          <div className="feed-sentinel" ref={sentinel}>
+            {view.feedLoading &&
+              view.feedLoaded &&
+              view.progress?.label === "Loading older posts…" && (
+                <FeedSkeleton rows={1} />
+              )}
+            {view.actionError?.label === "Load older posts" &&
+              !view.feedLoading && (
+                <button
+                  type="button"
+                  disabled={view.busy}
+                  onClick={() => void controller.loadOlder()}
+                >
+                  Retry loading posts
+                </button>
+              )}
           </div>
         )}
-        <ol id="feed" aria-label="Public posts" start={offset + 1}>
-          {sorted.slice(offset, offset + PAGE_SIZE).map((post) => (
-            <li className="post-row" key={post.id}>
-              <article data-post-id={post.id}>
-                <div className="post-meta">
-                  <span className="post-number">#{post.id}</span>
-                  {post.publishedAt != null && (
-                    <PostTime timestamp={post.publishedAt} now={now} />
-                  )}
-                </div>
-                <div className="post-text">
-                  {post.decodeError
-                    ? "This onchain message could not be decoded as UTF-8."
-                    : post.text}
-                </div>
-              </article>
-            </li>
-          ))}
-        </ol>
       </div>
-      {(view.feedLoaded || posts.length > 0) &&
-        (sorted.length > 0 || view.hasOlderPosts) && (
-          <div className="feed-footer">
-            <span className="page-range">
-              {posts.length} / {view.totalPosts} loaded
-              {view.feedLoading && " · Loading…"}
-              {sorted.length > 0 &&
-                ` · ${offset + 1}–${Math.min(offset + PAGE_SIZE, sorted.length)} shown`}
-            </span>
-            {view.hasOlderPosts && current === totalPages && (
-              <button
-                disabled={view.busy || view.feedLoading}
-                onClick={() => void controller.loadOlder()}
-              >
-                Load older posts
-              </button>
-            )}
-            <nav className="feed-pagination" aria-label="Post pagination">
-              <button
-                disabled={current === 1}
-                onClick={() => navigate(current - 1)}
-                aria-label="Previous page"
-              >
-                ←
-              </button>
-              {numbers.map((number, index) => (
-                <span className="page-slot" key={number}>
-                  {index > 0 && number - numbers[index - 1] > 1 && (
-                    <span className="page-gap">…</span>
-                  )}
-                  <button
-                    aria-label={`Page ${number}`}
-                    aria-current={number === current ? "page" : undefined}
-                    onClick={() => navigate(number)}
-                  >
-                    {number}
-                  </button>
-                </span>
-              ))}
-              <button
-                disabled={current === totalPages}
-                onClick={() => navigate(current + 1)}
-                aria-label="Next page"
-              >
-                →
-              </button>
-            </nav>
-          </div>
-        )}
     </section>
   );
 }

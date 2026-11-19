@@ -13,7 +13,7 @@ import { createBillboardController } from "./controller.ts";
 const compiled = await build({
   stdin: {
     contents:
-      "export { PostTime, formatPostTime } from './PostTime.tsx'; export { App } from './App.tsx'; export { Feed, pageNumbers } from './Feed.tsx'; export { Select } from './Select.tsx';",
+      "export { PostTime, formatPostTime } from './PostTime.tsx'; export { App } from './App.tsx'; export { Feed } from './Feed.tsx'; export { Select } from './Select.tsx';",
     resolveDir: fileURLToPath(new URL(".", import.meta.url)),
   },
   bundle: true,
@@ -34,31 +34,73 @@ new Function("require", "module", "exports", compiled.outputFiles[0].text)(
   module,
   module.exports
 );
-const { App, Feed, pageNumbers, Select, PostTime, formatPostTime } =
-  module.exports;
+const { App, Feed, Select, PostTime, formatPostTime } = module.exports;
 const renderToStaticMarkup = (element) =>
   renderMarkup(createElement(StaticRouter, { location: "/" }, element));
 
-test("a partially loaded feed shows posts and progress without an empty overlay", () => {
+test("the initial feed shows a skeleton until its first page is complete", () => {
   const controller = createBillboardController();
   const view = {
     ...controller.getSnapshot(),
-    posts: [{ id: 24, text: "First completed post" }],
     canRead: true,
     feedLoading: true,
-    totalPosts: 25,
   };
   const html = renderToStaticMarkup(createElement(Feed, { view, controller }));
   assert.match(html, /aria-busy="true"/);
-  assert.match(html, /data-post-id="24"/);
-  assert.match(html, /First completed post/);
-  assert.match(html, /Loading posts… 1 \/ 25 loaded/);
-  assert.match(html, /1 \/ 25 loaded · Loading…/);
+  assert.doesNotMatch(html, /data-post-id=/);
+  assert.match(html, /class="feed-skeleton" aria-hidden="true"/);
+  assert.equal((html.match(/class="feed-skeleton-row"/g) || []).length, 3);
+  assert.match(html, /Loading posts… 0 \/ 0 loaded/);
+  assert.doesNotMatch(html, /shown/);
   assert.match(html, /id="refresh"[^>]*disabled/);
   assert.doesNotMatch(
     html,
     /class="empty-state"|No posts yet|Load older posts/
   );
+  controller.dispose();
+});
+
+test("feed uses skeletons only while content is missing or older posts load", () => {
+  const controller = createBillboardController();
+  const base = controller.getSnapshot();
+  const render = (view) =>
+    renderToStaticMarkup(createElement(Feed, { view, controller }));
+  assert.match(render(base), /class="feed-skeleton" aria-hidden="true"/);
+  const loaded = {
+    ...base,
+    feedLoaded: true,
+    posts: [{ id: 1, text: "Still visible" }],
+  };
+  assert.doesNotMatch(render(loaded), /class="feed-skeleton"/);
+  const refreshing = render({
+    ...loaded,
+    feedLoading: true,
+    hasOlderPosts: true,
+    progress: { label: "Loading recent posts…", completed: false },
+  });
+  assert.doesNotMatch(refreshing, /Still visible|data-post-id=/);
+  assert.match(refreshing, /Refreshing posts…/);
+  assert.equal(
+    (refreshing.match(/class="feed-skeleton-row"/g) || []).length,
+    3
+  );
+  const emptyRefresh = render({ ...loaded, posts: [], feedLoading: true });
+  assert.match(emptyRefresh, /class="feed-skeleton"/);
+  assert.doesNotMatch(emptyRefresh, /No posts yet/);
+  const older = render({
+    ...loaded,
+    feedLoading: true,
+    hasOlderPosts: true,
+    progress: { label: "Loading older posts…", completed: false },
+  });
+  assert.match(older, /Still visible/);
+  assert.equal((older.match(/class="feed-skeleton-row"/g) || []).length, 1);
+  const failedRefresh = render({
+    ...loaded,
+    actionError: { label: "Refresh posts", message: "offline", guidance: "" },
+  });
+  assert.match(failedRefresh, /Still visible/);
+  assert.doesNotMatch(failedRefresh, /class="feed-skeleton"/);
   controller.dispose();
 });
 
@@ -123,103 +165,88 @@ test("shared select labels its list and preserves disabled and selected options"
   assert.doesNotMatch(html, /<select/);
 });
 
-test("React renders the wallet, composer and disconnected action guards", () => {
+test("the board renders a single disconnected composer and no wallet modal", () => {
   const controller = createBillboardController();
   const html = renderToStaticMarkup(createElement(App, { controller }));
   assert.match(html, /id="walletMenu"/);
-  assert.match(html, /aria-label="Switch to light theme"/);
-  assert.match(html, /DFARCHON/);
-  assert.doesNotMatch(html, /Settings|About ↗/);
-  assert.match(html, /aria-label="Public posts"/);
-  assert.doesNotMatch(html, /billboard-readme.md|About ↗/);
-  assert.doesNotMatch(
-    html,
-    /href="\/reports"|\u8bbe\u8ba1\u4e0e\u6d4b\u8bd5 →/
-  );
-  assert.match(html, /id="walletPanel"[^>]*hidden/);
-  assert.doesNotMatch(html, /id="join"|Core\.initialize_player|PlayerStorage/);
-  assert.doesNotMatch(html, /id="post"[^>]*disabled/);
-  assert.match(html, /Connect to post/);
+  assert.doesNotMatch(html, /id="walletPanel"/);
   assert.match(html, /id="post"[^>]*aria-label="Connect to post"/);
-  assert.match(
-    html,
-    /class="post-connect-label-mobile" aria-hidden="true">Connect<\/span>/
-  );
-  assert.match(html, /id="refresh"[^>]*disabled/);
-  assert.match(html, /0 \/ 512 bytes/);
+  assert.equal((html.match(/id="message"/g) || []).length, 1);
+  assert.match(html, /NOTCH/);
   assert.doesNotMatch(html, /\p{Script=Han}/u);
   controller.dispose();
 });
 
-test("one wallet menu offers MetaMask and Aztec without a second composer", () => {
+test("the wallet shows three concise steps and only an L1 wallet entry", () => {
   const base = createBillboardController();
   const view = {
     ...base.getSnapshot(),
     walletOpen: true,
-    walletMode: "metamask",
-    request: { available: true, payer: "", pending: null },
+    stake: { ...base.getSnapshot().stake, available: true },
   };
-  const html = renderToStaticMarkup(
-    createElement(App, { controller: { ...base, getSnapshot: () => view } })
-  );
-  assert.match(html, /role="combobox"/);
-  assert.match(html, /MetaMask · Pay L1 gas/);
-  assert.match(html, /Aztec extension wallet · L2 fees sponsored/);
+  const render = () =>
+    renderToStaticMarkup(
+      createElement(App, {
+        controller: { ...base, getSnapshot: () => view },
+      })
+    );
+  assert.match(render(), /role="dialog" aria-modal="true"/);
+  assert.match(render(), /01<\/span>Connect/);
+  assert.match(render(), /02<\/span>Stake/);
+  assert.match(render(), /03<\/span>Post/);
+  assert.match(render(), /Connect MetaMask/);
   assert.doesNotMatch(
-    html,
-    /<select|testing only|testOptions|panel-address|id="localStatus"/
+    render(),
+    /Aztec extension wallet|Browser wallet|<select/
   );
-  assert.match(html, /Connect MetaMask/);
-  assert.match(html, /You pay L1 gas · L2 sponsored/);
-  assert.equal((html.match(/id="message"/g) || []).length, 1);
-  assert.doesNotMatch(html, /href="\/l1-post-lab"|l1-post-text/);
-  assert.match(html, /id="localOptions" hidden/);
+  view.stake = {
+    ...view.stake,
+    payer: `0x${"1".repeat(40)}`,
+    owner: `0x${"2".repeat(64)}`,
+    backedUp: true,
+    amount: "500000000000000",
+  };
+  assert.match(render(), /0.0005 ETH/);
+  assert.match(render(), /5 posts \/ 24h/);
+  assert.match(render(), /Ready to post/);
+  assert.doesNotMatch(render(), /Connect MetaMask/);
   base.dispose();
 });
 
-test("MetaMask recovery stays in the wallet without a duplicate activity page", () => {
+test("pending stake and withdrawal recovery stay inside the wallet", () => {
   const base = createBillboardController();
   const view = {
     ...base.getSnapshot(),
-    walletMode: "metamask",
-    connected: true,
     walletOpen: true,
-    address: "0xpayer",
-    canPost: false,
-    message: "pending",
-    request: {
-      available: true,
-      payer: "0xpayer",
-      pending: { text: "pending", l1Tx: "0xpaid" },
+    stake: {
+      ...base.getSnapshot().stake,
+      payer: `0x${"1".repeat(40)}`,
+      owner: `0x${"2".repeat(64)}`,
+      pendingDeposit: true,
+      depositNeedsHash: true,
+      backedUp: true,
     },
   };
   const render = () =>
     renderToStaticMarkup(
-      createElement(App, { controller: { ...base, getSnapshot: () => view } })
+      createElement(App, {
+        controller: { ...base, getSnapshot: () => view },
+      })
     );
-  assert.match(render(), /Continue post/);
-  assert.match(
-    render(),
-    /id="post"[^>]*aria-label="Continue pending post in wallet"/
-  );
-  assert.doesNotMatch(render(), /id="post"[^>]*disabled/);
-  assert.match(render(), /class="request-recovery"/);
-  assert.doesNotMatch(
-    render(),
-    /nav-activity|Publishing activity|Pending post · Resume without another L1 payment/
-  );
-  assert.match(render(), /Switch wallet/);
-  assert.doesNotMatch(render(), /class="panel-address"/);
-  view.request.pending.l1Tx = undefined;
-  assert.match(render(), /aria-label="L1 transaction hash"/);
-  assert.match(render(), /Check existing transaction/);
-  view.request.pending.l1Tx = "0xpaid";
-  view.request.pending.l2Attempted = true;
-  assert.match(render(), /aria-label="L2 transaction hash"/);
-  view.posting = true;
-  assert.match(render(), /Posting…/);
-  assert.doesNotMatch(render(), /class="request-recovery"/);
-  assert.doesNotMatch(render(), /Continue post/);
+  assert.match(render(), /L1 deposit transaction hash/);
+  assert.match(render(), /Continue deposit/);
+  view.stake = { ...view.stake, depositNeedsHash: false, claimNeedsHash: true };
+  assert.match(render(), /Aztec claim transaction hash/);
+  view.stake = {
+    ...view.stake,
+    pendingDeposit: false,
+    claimNeedsHash: false,
+    pendingExit: true,
+    exitNeedsHash: true,
+  };
+  assert.match(render(), /Aztec withdrawal transaction hash/);
+  assert.match(render(), /Complete withdrawal/);
+  assert.doesNotMatch(render(), /Activity|Unfinished post/);
   base.dispose();
 });
 
@@ -231,9 +258,13 @@ test("Onchain Reality shell keeps the wallet above the board", () => {
   const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
   assert.doesNotMatch(header, /Settings|About/);
   assert.match(header, /id="walletMenu"/);
-  assert.match(header, /id="walletMenu"[^>]*class="header-action"/);
-  assert.match(header, /DFARCHON/);
-  assert.doesNotMatch(header, /orbit-mark|brand-mark/);
+  assert.match(header, /class="header-control theme-toggle"/);
+  assert.match(
+    header,
+    /id="walletMenu"[^>]*class="header-control header-action"/
+  );
+  assert.match(header, /NOTCH/);
+  assert.match(header, /class="brand-mark"/);
   assert.match(html, /id="main-content" class="product-main" tabindex="-1"/);
   assert.match(html, /class="board-content is-board"/);
   assert.match(html, /class="board-page"/);
@@ -269,6 +300,8 @@ test("operation toast only shows completed results outside the board", () => {
     null,
     { label: "Connecting wallet", completed: false },
     { label: "Preparing post", completed: false },
+    { label: "Refresh posts completed", completed: true },
+    { label: "Load older posts completed", completed: true },
     { label: "Post completed", completed: true },
     { label: "Post failed", completed: true, failed: true },
   ]) {
@@ -279,7 +312,13 @@ test("operation toast only shows completed results outside the board", () => {
       html.indexOf("</footer>") < html.indexOf('id="operationProgress"')
     );
     const toast = html.slice(html.indexOf('id="operationProgress"'));
-    if (!progress?.completed) assert.match(toast, /hidden=""/);
+    if (
+      !progress?.completed ||
+      ["Refresh posts completed", "Load older posts completed"].includes(
+        progress.label
+      )
+    )
+      assert.match(toast, /hidden=""/);
     else {
       assert.doesNotMatch(toast, /hidden=""/);
       assert.ok(toast.includes(progress.label));
@@ -291,95 +330,33 @@ test("operation toast only shows completed results outside the board", () => {
   base.dispose();
 });
 
-test("account actions live in the wallet without Ethereum copy controls", () => {
+test("wallet copy stays English and backup is a single account action", () => {
   const base = createBillboardController();
   const view = {
     ...base.getSnapshot(),
-    connected: true,
-    address: "0x123456789",
-    hasLocalAccount: true,
     walletOpen: true,
+    stake: {
+      ...base.getSnapshot().stake,
+      payer: `0x${"1".repeat(40)}`,
+      owner: `0x${"2".repeat(64)}`,
+      backedUp: false,
+    },
   };
-  const controller = { ...base, getSnapshot: () => view };
-  const html = renderToStaticMarkup(createElement(App, { controller }));
-  const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
-  assert.match(header, /My wallet/);
-  assert.match(header, /id="copyAddress"/);
-  assert.match(header, /id="backupAccount"/);
-  assert.match(header, /Keep the backup private/);
-  assert.doesNotMatch(html, /id="accountBar"/);
-  assert.doesNotMatch(html, /publishToL1|Ethereum cop|publish-l1/);
-  assert.doesNotMatch(html, /class="preferences-page"|id="mergeDuplicates"/);
+  const html = renderToStaticMarkup(
+    createElement(App, {
+      controller: { ...base, getSnapshot: () => view },
+    })
+  );
+  assert.match(html, /Download private account backup/);
+  assert.match(html, /Restore backup/);
+  assert.doesNotMatch(
+    html,
+    /Aztec extension wallet|Browser wallet|\p{Script=Han}/u
+  );
   base.dispose();
 });
 
-test("wallet selector has three methods and nests browser account actions", () => {
-  const base = createBillboardController();
-  for (const mode of ["metamask", "extension", "local", "create", "import"]) {
-    const view = { ...base.getSnapshot(), walletMode: mode };
-    const html = renderToStaticMarkup(
-      createElement(App, {
-        controller: { ...base, getSnapshot: () => view },
-      })
-    );
-    const options = [
-      ...html.matchAll(
-        /<div id="walletMode-options-\d+"[^>]*><span>(.*?)<\/span>/g
-      ),
-    ];
-    assert.equal(options.length, 3);
-    const methods = options.map((option) => option[1]).join(" ");
-    for (const name of ["MetaMask", "Aztec extension wallet", "Browser wallet"])
-      assert.ok(methods.includes(name));
-    assert.doesNotMatch(
-      methods,
-      /Create account|Import backup|Use saved account/
-    );
-    if (["metamask", "extension"].includes(mode)) {
-      assert.match(html, /id="localOptions" hidden/);
-    } else {
-      assert.doesNotMatch(html, /id="localOptions" hidden/);
-      assert.match(html, /id="browserAccountAction"/);
-      assert.match(html, /Create account/);
-      assert.match(html, /Import backup/);
-    }
-  }
-  base.dispose();
-});
-
-test("wallet modes use English-only interface copy", () => {
-  const base = createBillboardController();
-  try {
-    for (const walletMode of [
-      "local",
-      "create",
-      "import",
-      "extension",
-      "metamask",
-    ]) {
-      const view = {
-        ...base.getSnapshot(),
-        walletMode,
-        walletOpen: true,
-      };
-      const controller = { ...base, getSnapshot: () => view };
-      const html = renderToStaticMarkup(createElement(App, { controller }));
-      assert.doesNotMatch(html, /\p{Script=Han}/u, walletMode);
-      assert.match(html, /Your L1 payer address is public/);
-    }
-  } finally {
-    base.dispose();
-  }
-});
-
-test("pagination bounds page links for empty, short and large feeds", () => {
-  assert.deepEqual(pageNumbers(1, 1), [1]);
-  assert.deepEqual(pageNumbers(1, 3), [1, 2, 3]);
-  assert.deepEqual(pageNumbers(50, 100), [1, 49, 50, 51, 100]);
-  assert.deepEqual(pageNumbers(100, 100), [1, 99, 100]);
-});
-
-test("feed starts with the newest 10 posts and numbered pagination", () => {
+test("feed renders loaded posts newest first with a scroll sentinel", () => {
   const controller = createBillboardController();
   const html = renderToStaticMarkup(
     createElement(Feed, {
@@ -387,6 +364,8 @@ test("feed starts with the newest 10 posts and numbered pagination", () => {
       view: {
         ...controller.getSnapshot(),
         feedLoaded: true,
+        hasOlderPosts: true,
+        totalPosts: 35,
         posts: Array.from({ length: 25 }, (_, id) => ({
           id,
           text: `Post ${id}`,
@@ -399,16 +378,32 @@ test("feed starts with the newest 10 posts and numbered pagination", () => {
   );
   assert.deepEqual(
     ids,
-    Array.from({ length: 10 }, (_, i) => 24 - i)
+    Array.from({ length: 25 }, (_, i) => 24 - i)
   );
-  assert.match(html, /Page 1 of 3/);
-  assert.match(html, /aria-label="Post pagination"/);
-  // Pagination is a sibling of the scrolling list, not part of its contents.
-  assert.match(html, /<\/ol><\/div><div class="feed-footer">/);
-  assert.match(html, /aria-label="Next page"/);
-  assert.doesNotMatch(html, /Anonymous|post-avatar|Load more|<details/);
+  assert.match(html, /class="feed-sentinel"/);
+  assert.doesNotMatch(
+    html,
+    /Page 1 of 3|Post pagination|Next page|Load older posts|post-avatar/
+  );
   assert.match(html, /id="refresh"[^>]*aria-label="Refresh posts"/);
   assert.doesNotMatch(html, /type="search"|Search loaded posts/);
+  const failed = renderToStaticMarkup(
+    createElement(Feed, {
+      controller,
+      view: {
+        ...controller.getSnapshot(),
+        feedLoaded: true,
+        hasOlderPosts: true,
+        posts: [{ id: 1, text: "Recent" }],
+        actionError: {
+          label: "Load older posts",
+          message: "offline",
+          guidance: "",
+        },
+      },
+    })
+  );
+  assert.match(failed, /Retry loading posts/);
   controller.dispose();
 });
 
@@ -443,7 +438,7 @@ test("load errors stay copyable without retry or duplicate failed progress", () 
   const view = {
     ...base.getSnapshot(),
     actionError: {
-      label: "Load Billboard",
+      label: "Load Notch",
       message: "HTTP 408",
       guidance: "Try again",
     },
@@ -490,28 +485,26 @@ test("post button shows the shared loading icon only during posting", () => {
   base.dispose();
 });
 
-test("wallet buttons show the shared loading icon only during connection", () => {
+test("the wallet trigger and connect action share a loading icon", () => {
   const base = createBillboardController();
   for (const connecting of [false, true]) {
     const view = {
       ...base.getSnapshot(),
       walletOpen: true,
-      busy: true,
+      busy: connecting,
       connecting,
+      stake: { ...base.getSnapshot().stake, available: true },
     };
     const html = renderToStaticMarkup(
       createElement(App, {
         controller: { ...base, getSnapshot: () => view },
       })
     );
-    for (const id of ["walletMenu", "connect", "confirmWallet"]) {
-      const button = html.match(
-        new RegExp(`<button id="${id}"[\\s\\S]*?</button>`)
-      )[0];
-      assert.ok(button.includes(`aria-busy="${connecting}"`));
-      assert.equal(button.includes('class="loading-icon"'), connecting);
-      assert.match(button, /disabled=""/);
-    }
+    const trigger = html.match(/<button id="walletMenu"[\s\S]*?<\/button>/)[0];
+    const connect = html.match(/<button id="connect"[\s\S]*?<\/button>/)[0];
+    assert.ok(trigger.includes(`aria-busy="${connecting}"`));
+    assert.equal(trigger.includes('class="loading-icon"'), connecting);
+    assert.equal(connect.includes('class="loading-icon"'), connecting);
   }
   base.dispose();
 });

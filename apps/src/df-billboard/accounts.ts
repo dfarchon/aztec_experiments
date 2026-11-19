@@ -1,4 +1,4 @@
-import type { RequestSDK } from "./l1-request-core";
+type RequestSDK = typeof import("../../../shared/sdk-entry.mjs");
 
 export interface AccountKeys {
   secretKey: string;

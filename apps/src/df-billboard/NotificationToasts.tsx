@@ -47,8 +47,11 @@ export function NotificationToasts({ view }: { view: BillboardView }) {
     }
   };
   // The error toast replaces the transient failed-progress notification.
+  const feedUpdated =
+    view.progress?.label === "Refresh posts completed" ||
+    view.progress?.label === "Load older posts completed";
   const progress =
-    view.progress?.completed && !(error && view.progress.failed)
+    view.progress?.completed && !feedUpdated && !(error && view.progress.failed)
       ? view.progress
       : null;
   useEffect(() => {
