@@ -36,6 +36,7 @@ export function Feed({ view, controller }: ViewProps) {
     view.feedLoaded &&
     view.feedLoading &&
     view.progress?.label === "Loading recent posts…";
+  const empty = view.feedLoaded && sorted.length === 0 && !view.feedLoading;
   useEffect(() => {
     scroller.current?.scrollTo({ top: 0 });
   }, [view.feedRevision]);
@@ -74,7 +75,7 @@ export function Feed({ view, controller }: ViewProps) {
   ]);
 
   return (
-    <section className="card feed-card">
+    <section className={`card feed-card${empty ? " is-empty" : ""}`}>
       <button
         id="refresh"
         type="button"
@@ -108,9 +109,9 @@ export function Feed({ view, controller }: ViewProps) {
                 ? `${posts.length} of ${view.totalPosts} posts loaded`
                 : "Waiting to load public posts"}
         </div>
-        {view.feedLoaded && sorted.length === 0 && !view.feedLoading && (
+        {empty && (
           <div className="empty-state">
-            <h2>No posts yet</h2>
+            <h2>No post yet</h2>
           </div>
         )}
         {!refreshing && (

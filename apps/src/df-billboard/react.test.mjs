@@ -53,10 +53,7 @@ test("the initial feed shows a skeleton until its first page is complete", () =>
   assert.match(html, /Loading posts… 0 \/ 0 loaded/);
   assert.doesNotMatch(html, /shown/);
   assert.match(html, /id="refresh"[^>]*disabled/);
-  assert.doesNotMatch(
-    html,
-    /class="empty-state"|No posts yet|Load older posts/
-  );
+  assert.doesNotMatch(html, /class="empty-state"|No post yet|Load older posts/);
   controller.dispose();
 });
 
@@ -66,6 +63,9 @@ test("feed uses skeletons only while content is missing or older posts load", ()
   const render = (view) =>
     renderToStaticMarkup(createElement(Feed, { view, controller }));
   assert.match(render(base), /class="feed-skeleton" aria-hidden="true"/);
+  const empty = render({ ...base, feedLoaded: true });
+  assert.match(empty, /class="card feed-card is-empty"/);
+  assert.match(empty, /No post yet/);
   const loaded = {
     ...base,
     feedLoaded: true,
@@ -86,7 +86,7 @@ test("feed uses skeletons only while content is missing or older posts load", ()
   );
   const emptyRefresh = render({ ...loaded, posts: [], feedLoading: true });
   assert.match(emptyRefresh, /class="feed-skeleton"/);
-  assert.doesNotMatch(emptyRefresh, /No posts yet/);
+  assert.doesNotMatch(emptyRefresh, /No post yet/);
   const older = render({
     ...loaded,
     feedLoading: true,
