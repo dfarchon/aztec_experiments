@@ -333,7 +333,7 @@ test("operation toast only shows completed results outside the board", () => {
   base.dispose();
 });
 
-test("wallet copy stays English and backup is a single account action", () => {
+test("stake choices appear after connection and recovery is saved before payment", () => {
   const base = createBillboardController();
   const view = {
     ...base.getSnapshot(),
@@ -352,12 +352,18 @@ test("wallet copy stays English and backup is a single account action", () => {
       })
     );
   const html = render();
-  assert.match(html, /Save account backup to stake/);
+  assert.match(html, /Stake to post|Connected/);
   assert.match(html, /Restore backup/);
-  assert.doesNotMatch(html, /notch-stake-options|\p{Script=Han}/u);
-  view.stake = { ...view.stake, backedUp: true };
-  assert.match(render(), /notch-stake-options/);
-  assert.doesNotMatch(render(), /Save account backup to stake/);
+  assert.match(html, /notch-stake-options/);
+  assert.doesNotMatch(html, /\p{Script=Han}/u);
+  view.stake = {
+    ...view.stake,
+    pendingDeposit: true,
+    depositPrepared: true,
+  };
+  const prepared = render();
+  assert.match(prepared, /Download backup &amp; confirm stake/);
+  assert.doesNotMatch(prepared, /notch-stake-options/);
   base.dispose();
 });
 

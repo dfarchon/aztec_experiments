@@ -6,8 +6,8 @@ The website uses React, TypeScript and Vite. The header offers a theme switch an
 
 ## Posting and stake
 
-1. Choose an installed Ethereum wallet, such as MetaMask or Rabby, on Sepolia and download the private account backup. Keep the backup private: losing both the backup and browser storage can make the stake unrecoverable. Use the same L1 address when returning to manage its stake.
-2. Deposit in 0.0005 ETH increments to the BillboardPortal on Sepolia. Each L1 address may have at most 0.002 ETH staked. Top-ups immediately raise the rolling 24-hour quota.
+1. Choose an installed Ethereum wallet, such as MetaMask or Rabby, on Sepolia, then choose a stake amount. A previously authorized wallet may connect without another permission prompt. Use the same L1 address when returning to manage its stake.
+2. Download the recovery backup before confirming the L1 transaction. Keep it private: losing both the backup and browser storage can make the stake unrecoverable. Deposit in 0.0005 ETH increments to the BillboardPortal on Sepolia. Each L1 address may have at most 0.002 ETH staked. Top-ups immediately raise the rolling 24-hour quota.
 3. The browser privately claims each L1 deposit on Aztec. The L1 deposit event contains a secret hash, amount and payer address, but no post or Aztec account address. Sponsored FPC pays the L2 execution fee.
 4. Write and publish from the private Aztec account. Text and time are public on Aztec. A private note tracks the rolling quota and last post.
 5. Withdraw the full stake after 24 hours from the last post. If no post was made, withdrawal is available immediately. An Aztec exit proof releases the ETH from the L1 portal; the L1 withdrawal transaction pays Sepolia gas.

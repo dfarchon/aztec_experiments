@@ -34,6 +34,11 @@ export function WalletPanel({ view, controller }: ViewProps) {
   const connected = Boolean(view.stake.payer && view.stake.owner);
   const funded = amount > 0n;
   const step = !connected ? 1 : !funded ? 2 : 3;
+  const title = !connected
+    ? "Connect your wallet"
+    : funded
+      ? "Ready to post"
+      : "Stake to post";
   const unlockAt = Number(view.stake.lastPost) * 1000 + 86_400_000;
   const withdrawLocked =
     Number(view.stake.lastPost) > 0 && Date.now() < unlockAt;
@@ -104,10 +109,10 @@ export function WalletPanel({ view, controller }: ViewProps) {
             className="notch-wallet-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="Connect your wallet"
+            aria-label={title}
           >
             <div className="notch-wallet-head">
-              <h2>Connect your wallet</h2>
+              <h2>{title}</h2>
               <button
                 ref={close}
                 type="button"
@@ -189,22 +194,15 @@ export function WalletPanel({ view, controller }: ViewProps) {
               </div>
             ) : (
               <div className="notch-wallet-body">
+                <p className="notch-wallet-connected">
+                  Connected · {view.stake.payer.slice(0, 8)}…
+                  {view.stake.payer.slice(-6)}
+                </p>
                 <div className="notch-wallet-balance">
                   <span>Staked</span>
                   <strong>{(Number(amount) / 1e18).toFixed(4)} ETH</strong>
                   <span>{quota} posts / 24h</span>
                 </div>
-                {!view.stake.backedUp && (
-                  <button
-                    id="backupAccount"
-                    type="button"
-                    className="notch-wallet-primary"
-                    disabled={view.busy}
-                    onClick={() => downloadBackup({ controller })}
-                  >
-                    Save account backup to stake
-                  </button>
-                )}
                 {!funded && !view.stake.pendingDeposit && (
                   <>
                     <input
@@ -231,6 +229,9 @@ export function WalletPanel({ view, controller }: ViewProps) {
                 )}
                 {view.stake.pendingDeposit ? (
                   <>
+                    {view.stake.depositPrepared && (
+                      <p>Download the recovery backup before paying on L1.</p>
+                    )}
                     {(view.stake.depositNeedsHash ||
                       view.stake.claimNeedsHash) && (
                       <input
@@ -272,7 +273,7 @@ export function WalletPanel({ view, controller }: ViewProps) {
                       }}
                     >
                       {view.stake.depositPrepared
-                        ? "Save recovery & stake"
+                        ? "Download backup & confirm stake"
                         : "Continue deposit"}{" "}
                       <Icon name="arrow" />
                     </button>
@@ -308,7 +309,7 @@ export function WalletPanel({ view, controller }: ViewProps) {
                   </>
                 ) : (
                   <>
-                    {view.stake.backedUp && amount < MAX_STAKE && (
+                    {amount < MAX_STAKE && (
                       <div
                         className="notch-stake-options"
                         aria-label="Add stake"

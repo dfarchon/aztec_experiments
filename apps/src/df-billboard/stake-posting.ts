@@ -556,8 +556,6 @@ export function createStakePosting(config, a, emit, progress) {
     },
     async deposit(amount) {
       if (!board || !saved) throw new Error("Connect your wallet first");
-      if (!saved.backedUp)
-        throw new Error("Download your private account backup before staking");
       if (saved.deposit || saved.exit)
         throw new Error("Finish the pending operation first");
       await assertPayer();
@@ -573,10 +571,13 @@ export function createStakePosting(config, a, emit, progress) {
         l2Tx: null,
         l2Attempted: false,
       };
+      saved.backedUp = false;
       persist();
     },
     async resume() {
       if (!saved?.deposit) throw new Error("No pending deposit");
+      if (!saved.backedUp)
+        throw new Error("Download your recovery backup before staking");
       if (!saved.deposit.submitted) await sendDeposit();
       else await confirmDeposit();
     },
