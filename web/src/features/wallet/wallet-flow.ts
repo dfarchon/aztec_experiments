@@ -22,6 +22,7 @@ import {
 } from "./aztec.ts";
 import { createDepositSecret } from "./deposit-secret.ts";
 import {
+  requestEthereumAccounts,
   switchEthereumChain,
   waitForWalletApproval,
   WALLET_APPROVAL_TIMEOUT_MS,
@@ -325,13 +326,13 @@ export function createWalletFlow(
       session = null;
       snapshot();
       try {
-        const accounts = (await waitForWalletApproval(
-          provider.request({
-            method: savedSession ? "eth_accounts" : "eth_requestAccounts",
-          }),
-          "connection",
-          WALLET_APPROVAL_TIMEOUT_MS
-        )) as string[];
+        const accounts = savedSession
+          ? await waitForWalletApproval<string[]>(
+              provider.request({ method: "eth_accounts" }),
+              "connection",
+              WALLET_APPROVAL_TIMEOUT_MS
+            )
+          : await requestEthereumAccounts(provider);
         if (savedSession) {
           const chain = (await provider.request({
             method: "eth_chainId",

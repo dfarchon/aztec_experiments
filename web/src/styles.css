@@ -381,7 +381,9 @@ html[data-theme="light"] .ascii-clouds {
   color: var(--muted);
 }
 .notch-wallet-connected {
+  margin: 0;
   font: 12px var(--font-mono);
+  color: var(--muted);
 }
 .notch-wallet-body > button {
   width: 100%;
@@ -435,6 +437,26 @@ html[data-theme="light"] .ascii-clouds {
 .notch-wallet-balance strong {
   color: var(--heading);
   font-size: 15px;
+}
+.notch-wallet-account {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.notch-wallet-stake {
+  display: grid;
+  gap: 8px;
+}
+.notch-wallet-stake-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.notch-wallet-balance.is-ready > span {
+  white-space: nowrap;
 }
 .notch-stake-options {
   display: grid;
@@ -501,6 +523,7 @@ html[data-theme="light"] .ascii-clouds {
 }
 .notch-wallet-topups > span,
 .notch-wallet-lock-note {
+  margin: 0;
   color: var(--muted);
   font-size: 12px;
 }
@@ -518,29 +541,35 @@ html[data-theme="light"] .ascii-clouds {
 .notch-wallet-ready-actions {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   margin-top: 8px;
 }
-.notch-wallet-ready-actions button {
+.notch-wallet-ready-actions button,
+.notch-wallet-disconnect,
+.notch-wallet-stake-value button {
   min-height: 36px;
-  padding: 6px 8px;
+  padding: 6px 12px;
   font-size: 12px;
   white-space: nowrap;
 }
-.notch-wallet-ready-actions .notch-wallet-disconnect {
-  margin-right: auto;
-  padding-inline: 0;
+.notch-wallet-disconnect {
   border-color: transparent;
   background: transparent;
   color: var(--muted);
 }
 @media (pointer: coarse) {
   .notch-wallet-ready-actions button,
+  .notch-wallet-disconnect,
+  .notch-wallet-stake-value button,
   .notch-stake-options.is-compact button {
     min-height: 44px;
   }
 }
 @media (max-width: 480px) {
+  .notch-wallet-account .notch-wallet-connected > span {
+    display: none;
+  }
   .notch-wallet-balance {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
@@ -554,15 +583,19 @@ html[data-theme="light"] .ascii-clouds {
     grid-column: 1 / -1;
     text-align: right;
   }
+  .notch-wallet-balance.is-ready {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .notch-wallet-balance.is-ready > span {
+    grid-column: auto;
+    text-align: left;
+  }
   .notch-wallet-ready-actions {
     gap: 6px;
   }
   .notch-wallet-ready-actions button {
     padding-inline: 6px;
     font-size: 11px;
-  }
-  .notch-wallet-ready-actions .notch-wallet-disconnect {
-    padding-inline: 0;
   }
 }
 .shell {

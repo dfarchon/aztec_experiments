@@ -3,8 +3,85 @@ import test from "node:test";
 
 import {
   listEthereumWallets,
+  requestEthereumAccounts,
   switchEthereumChain,
 } from "../../../web/src/features/wallet/l1.ts";
+
+test("manual connection requests account selection before reading an already authorized wallet", async () => {
+  const calls = [];
+  let accounts = ["previous-account"];
+  const selected = ["selected-account"];
+  const provider = {
+    async request(request) {
+      calls.push(request);
+      if (request.method === "wallet_requestPermissions") {
+        accounts = selected;
+        return [{ parentCapability: "eth_accounts" }];
+      }
+      if (request.method === "eth_accounts") return accounts;
+      throw new Error("Unexpected wallet request");
+    },
+  };
+  assert.deepEqual(await requestEthereumAccounts(provider), selected);
+  assert.deepEqual(calls, [
+    { method: "wallet_requestPermissions", params: [{ eth_accounts: {} }] },
+    { method: "eth_accounts" },
+  ]);
+});
+
+test("wallets without permission selection fall back to their normal connection request", async () => {
+  for (const code of [-32601, 4200]) {
+    const methods = [];
+    const provider = {
+      async request({ method }) {
+        methods.push(method);
+        if (method === "wallet_requestPermissions") throw { code };
+        assert.equal(method, "eth_requestAccounts");
+        return ["authorized-account"];
+      },
+    };
+    assert.deepEqual(await requestEthereumAccounts(provider), [
+      "authorized-account",
+    ]);
+    assert.deepEqual(methods, [
+      "wallet_requestPermissions",
+      "eth_requestAccounts",
+    ]);
+  }
+});
+
+test("rejected, pending and failed account selections never fall back to an old account", async () => {
+  for (const code of [4001, 4100, -32002, -32603]) {
+    const methods = [];
+    const provider = {
+      async request({ method }) {
+        methods.push(method);
+        throw Object.assign(new Error("Selection failed"), { code });
+      },
+    };
+    await assert.rejects(requestEthereumAccounts(provider), (error) =>
+      code === -32002
+        ? /already pending/.test(error.message)
+        : error.code === code
+    );
+    assert.deepEqual(methods, ["wallet_requestPermissions"]);
+  }
+});
+
+test("an unanswered account selection times out without reading the old account", async () => {
+  const methods = [];
+  const provider = {
+    request({ method }) {
+      methods.push(method);
+      return new Promise(() => {});
+    },
+  };
+  await assert.rejects(
+    requestEthereumAccounts(provider, 10),
+    /account selection timed out/
+  );
+  assert.deepEqual(methods, ["wallet_requestPermissions"]);
+});
 
 test("discovers announced and legacy L1 wallets without duplicates", async (t) => {
   const previous = globalThis.window;

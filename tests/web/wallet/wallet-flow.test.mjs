@@ -33,13 +33,15 @@ const config = {
 function provider() {
   return {
     request: async ({ method }) =>
-      method === "eth_requestAccounts" || method === "eth_accounts"
-        ? [payer]
-        : method === "eth_chainId"
-          ? "0x7a69"
-          : (() => {
-              throw new Error(`Unexpected wallet call: ${method}`);
-            })(),
+      method === "wallet_requestPermissions"
+        ? [{ parentCapability: "eth_accounts" }]
+        : method === "eth_requestAccounts" || method === "eth_accounts"
+          ? [payer]
+          : method === "eth_chainId"
+            ? "0x7a69"
+            : (() => {
+                throw new Error(`Unexpected wallet call: ${method}`);
+              })(),
   };
 }
 
@@ -253,6 +255,70 @@ test("silent connection only checks authorization and never requests approval or
     false
   );
   assert.equal(state.payer, "");
+  await posting.disconnect();
+});
+
+test("reconnecting selects a different L1 account without deleting the previous private account", async (t) => {
+  const values = installWalletGlobals(t);
+  const key = `notch-stake/6.0.0/${board}/${payer}`;
+  const original = JSON.stringify({
+    payer,
+    secretKey: "0x15",
+    salt: "9",
+    signingKey: "0x24",
+    amount: STAKE_UNIT.toString(),
+    remaining: 3,
+    deposit: null,
+    exit: null,
+  });
+  values.set(key, original);
+  const otherPayer = `0x${"3".repeat(40)}`;
+  let selected = payer;
+  let authorized = payer;
+  let state;
+  const posting = createWalletFlow(
+    config,
+    undefined,
+    (value) => {
+      state = value;
+    },
+    () => {}
+  );
+  const methods = [];
+  const injected = {
+    async request({ method }) {
+      methods.push(method);
+      if (method === "wallet_requestPermissions") {
+        authorized = selected;
+        return [{ parentCapability: "eth_accounts" }];
+      }
+      if (method === "eth_accounts") return [authorized];
+      if (method === "eth_chainId") return "0x7a69";
+      throw new Error(`Unexpected wallet call: ${method}`);
+    },
+  };
+  await posting.connect(injected);
+  assert.equal(state.payer, payer);
+  await posting.disconnect();
+  assert.equal(state.payer, "");
+  assert.equal(values.get(key), original);
+
+  selected = otherPayer;
+  methods.length = 0;
+  await posting.connect(injected);
+  assert.equal(state.payer, otherPayer);
+  assert.equal(state.amount, "0");
+  assert.equal(state.remaining, null);
+  assert.deepEqual(methods, [
+    "wallet_requestPermissions",
+    "eth_accounts",
+    "eth_chainId",
+  ]);
+  assert.equal(values.get(key), original);
+  assert.equal(
+    JSON.parse(values.get(`notch-stake/6.0.0/${board}/${otherPayer}`)).payer,
+    otherPayer
+  );
   await posting.disconnect();
 });
 

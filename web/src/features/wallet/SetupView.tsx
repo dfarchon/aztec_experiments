@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 
 import type { BillboardController, BillboardView } from "../../app/types.ts";
 import { Icon } from "../../ui/Icon.tsx";
@@ -17,15 +17,6 @@ interface SetupViewProps {
 
 export function SetupView({ view, controller, model }: SetupViewProps) {
   const importFile = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (!model.setupInProgress) return;
-    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warnBeforeLeaving);
-    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
-  }, [model.setupInProgress]);
 
   const chooseStake = (value: bigint) =>
     controller.selectStakeAmount(value.toString());
@@ -53,6 +44,13 @@ export function SetupView({ view, controller, model }: SetupViewProps) {
       <p className="notch-wallet-connected">
         Connected · {view.stake.payer.slice(0, 8)}…{view.stake.payer.slice(-6)}
       </p>
+      {!view.restoring && (
+        <p className="notch-wallet-warning" role="status">
+          {view.stake.claimNeedsHash && !view.busy
+            ? "Claim status is uncertain. Do not stake again. Keep this browser’s data and contact support to check the claim."
+            : "Keep this tab open until setup finishes. If interrupted, return in this browser to continue without staking again."}
+        </p>
+      )}
       {(model.ready || view.stake.pendingDeposit) && model.funded && (
         <div className="notch-wallet-balance">
           <span>Staked</span>
@@ -131,21 +129,8 @@ export function SetupView({ view, controller, model }: SetupViewProps) {
           </div>
         </>
       )}
-      {model.setupInProgress && (
-        <p className="notch-wallet-warning" role="status">
-          Keep this tab open until setup finishes. Closing or refreshing
-          interrupts setup. If interrupted, return in this browser to continue
-          without staking again.
-        </p>
-      )}
       {view.stake.pendingDeposit && (
         <>
-          {view.stake.claimNeedsHash && (
-            <p className="notch-wallet-warning" role="status">
-              Claim status is uncertain. Do not stake again. Keep this browser’s
-              data and contact support to check the claim.
-            </p>
-          )}
           <div
             className="notch-stake-options"
             role="group"

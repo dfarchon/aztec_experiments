@@ -172,6 +172,11 @@ test("the wallet stakes before private account initialization", () => {
   );
   view.stake = { ...view.stake, payer: `0x${"1".repeat(40)}` };
   assert.match(render(), /notch-stake-options/);
+  assert.match(render(), /Keep this tab open/);
+  assert.equal(
+    (render().match(/class="notch-wallet-warning"/g) || []).length,
+    1
+  );
   assert.doesNotMatch(render(), /Download private account backup/);
   view.stake = { ...view.stake, owner: `0x${"2".repeat(64)}` };
   assert.match(render(), /Stake &amp; set up/);
@@ -230,8 +235,18 @@ test("pending stake and withdrawal recovery stay inside the wallet", () => {
   };
   assert.doesNotMatch(render(), /Aztec claim transaction hash/);
   assert.match(render(), /Claim status is uncertain/);
+  assert.doesNotMatch(render(), /Keep this tab open/);
+  assert.equal(
+    (render().match(/class="notch-wallet-warning"/g) || []).length,
+    1
+  );
   view.busy = true;
   assert.match(render(), /Keep this tab open/);
+  assert.doesNotMatch(render(), /Claim status is uncertain/);
+  assert.equal(
+    (render().match(/class="notch-wallet-warning"/g) || []).length,
+    1
+  );
   assert.doesNotMatch(render(), /<h2>/);
   view.busy = false;
   view.stake = {
@@ -663,7 +678,7 @@ test("wallet trigger keeps its address while status changes", () => {
   controller.dispose();
 });
 
-test("Ready account actions stay compact and withdrawal remains locked after a post", () => {
+test("Ready account actions group connection, stake and posting while preserving withdrawal locks", () => {
   const controller = createBillboardController();
   const view = {
     ...controller.getSnapshot(),
@@ -689,6 +704,23 @@ test("Ready account actions stay compact and withdrawal remains locked after a p
   assert.match(html, /<button[^>]*aria-label="Withdraw stake"[^>]*disabled/);
   assert.match(html, /Export account/);
   assert.match(html, /Disconnect/);
+  const account = html.slice(
+    html.indexOf('class="notch-wallet-account"'),
+    html.indexOf('class="notch-wallet-balance is-ready"')
+  );
+  assert.match(account, /Disconnect/);
+  const balance = html.slice(
+    html.indexOf('class="notch-wallet-balance is-ready"'),
+    html.indexOf('class="notch-wallet-topups"')
+  );
+  assert.match(balance, /Withdraw/);
+  const footer = html.match(
+    /<div class="notch-wallet-ready-actions">[\s\S]*?<\/div>/
+  )[0];
+  assert.equal((footer.match(/<button/g) || []).length, 2);
+  assert.match(footer, /class="notch-wallet-secondary"[^>]*>Export account/);
+  assert.match(footer, /class="notch-wallet-primary"[^>]*>Ready to post/);
+  assert.doesNotMatch(footer, /Disconnect|Withdraw/);
   assert.doesNotMatch(html, /Close this panel and write below/);
   view.stake = { ...view.stake, amount: "2000000000000000", lastPost: "0" };
   assert.doesNotMatch(render(), /Add stake|Withdrawal available 24h/);

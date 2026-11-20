@@ -34,13 +34,49 @@ export function ReadyView({ view, controller, model }: ReadyViewProps) {
 
   return (
     <div className="notch-wallet-body">
-      <p className="notch-wallet-connected">
-        Connected · {view.stake.payer.slice(0, 8)}…{view.stake.payer.slice(-6)}
-      </p>
+      <div className="notch-wallet-account">
+        <p className="notch-wallet-connected">
+          <span>Connected · </span>
+          {view.stake.payer.slice(0, 8)}…{view.stake.payer.slice(-6)}
+        </p>
+        <button
+          type="button"
+          className="notch-wallet-disconnect"
+          disabled={view.busy}
+          onClick={() => void controller.disconnect()}
+        >
+          Disconnect
+        </button>
+      </div>
       {model.funded && (
-        <div className="notch-wallet-balance">
-          <span>Staked</span>
-          <strong>{formatEth(model.amount)} ETH</strong>
+        <div className="notch-wallet-balance is-ready">
+          <div className="notch-wallet-stake">
+            <span>Staked</span>
+            <div className="notch-wallet-stake-value">
+              <strong>{formatEth(model.amount)} ETH</strong>
+              {model.ready && !view.stake.pendingExit && (
+                <button
+                  type="button"
+                  className="notch-wallet-secondary"
+                  aria-label="Withdraw stake"
+                  title={
+                    model.withdrawLocked
+                      ? "Available 24h after your last post"
+                      : "Withdraw stake"
+                  }
+                  disabled={view.busy || model.withdrawLocked}
+                  onClick={() => void controller.withdrawStake()}
+                >
+                  Withdraw
+                </button>
+              )}
+            </div>
+            {model.withdrawLocked && !view.stake.pendingExit && (
+              <p className="notch-wallet-lock-note">
+                Withdrawal available 24h after your last post.
+              </p>
+            )}
+          </div>
           <span>
             {view.stake.remaining === null
               ? `${model.quota} posts / 24h`
@@ -110,41 +146,27 @@ export function ReadyView({ view, controller, model }: ReadyViewProps) {
                 </div>
               </div>
             )}
-            {model.withdrawLocked && (
-              <p className="notch-wallet-lock-note">
-                Withdrawal available 24h after your last post.
-              </p>
-            )}
             <div className="notch-wallet-ready-actions">
               <button
                 type="button"
-                className="notch-wallet-disconnect"
-                disabled={view.busy}
-                onClick={() => void controller.disconnect()}
-              >
-                Disconnect
-              </button>
-              <button
-                type="button"
                 className="notch-wallet-secondary"
-                aria-label="Withdraw stake"
-                title={
-                  model.withdrawLocked
-                    ? "Available 24h after your last post"
-                    : "Withdraw stake"
-                }
-                disabled={view.busy || model.withdrawLocked}
-                onClick={() => void controller.withdrawStake()}
+                disabled={view.busy}
+                onClick={() => downloadBackup(controller)}
               >
-                Withdraw
+                Export account
               </button>
               <button
                 type="button"
                 className="notch-wallet-primary"
                 disabled={view.busy}
-                onClick={() => downloadBackup(controller)}
+                onClick={() => {
+                  controller.setWalletPanel(false);
+                  requestAnimationFrame(() =>
+                    document.getElementById("message")?.focus()
+                  );
+                }}
               >
-                Export account
+                Ready to post <Icon name="arrow" />
               </button>
             </div>
           </>

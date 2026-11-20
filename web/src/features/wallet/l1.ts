@@ -64,6 +64,32 @@ export async function waitForWalletApproval<T>(
   }
 }
 
+export async function requestEthereumAccounts(
+  provider: InjectedProvider,
+  timeoutMs = WALLET_APPROVAL_TIMEOUT_MS
+): Promise<string[]> {
+  let method = "eth_accounts";
+  try {
+    await waitForWalletApproval(
+      provider.request({
+        method: "wallet_requestPermissions",
+        params: [{ eth_accounts: {} }],
+      }),
+      "account selection",
+      timeoutMs
+    );
+  } catch (error) {
+    const code = (error as { code?: number }).code;
+    if (code !== -32601 && code !== 4200) throw error;
+    method = "eth_requestAccounts";
+  }
+  return waitForWalletApproval<string[]>(
+    provider.request({ method }),
+    "connection",
+    timeoutMs
+  );
+}
+
 export async function listEthereumWallets(): Promise<EthereumWallet[]> {
   return new Promise((resolve) => {
     const found: EthereumWallet[] = [];

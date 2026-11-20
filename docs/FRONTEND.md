@@ -140,6 +140,21 @@ feed cache nor wallet UI state is persisted.
 5. The controller clears the draft only if it still equals the submitted text,
    then refreshes the public feed. A failed post preserves the draft.
 
+### Manual wallet connection
+
+Selecting a wallet calls `features/wallet/l1.ts::requestEthereumAccounts`.
+It requests the `eth_accounts` permission before reading the selected address,
+so MetaMask can show account selection even after an earlier authorization.
+Only unsupported-method errors fall back to `eth_requestAccounts`; rejection,
+a pending prompt, or timeout never reconnects an old account implicitly.
+Disconnect clears the site session and automatic-reconnect preference while
+preserving private account keys and pending transaction records.
+
+The setup view uses one persistent inline reminder. Normal proof preparation
+does not display an uncertain-claim warning; if setup stops with an unknown
+claim hash, that reminder is replaced by recovery guidance. It does not install
+a browser leave-page confirmation.
+
 ### A returning account
 
 1. `controller.ts::initialize` starts one `restoreSession` task.
