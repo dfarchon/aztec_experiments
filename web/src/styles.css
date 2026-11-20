@@ -433,13 +433,6 @@ html[data-theme="light"] .ascii-clouds {
 .notch-wallet-dialog button {
   border-radius: 0;
 }
-.notch-wallet-head,
-.notch-wallet-balance {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
 .notch-wallet-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 32px;
@@ -588,15 +581,50 @@ html[data-theme="light"] .ascii-clouds {
   background: var(--bg);
 }
 .notch-wallet-balance {
-  padding: 14px 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  font: 12px var(--font-mono);
+  padding: 20px;
+  border: 1px solid var(--line);
+  background: var(--accent-tint);
+}
+.notch-wallet-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+}
+.notch-wallet-stake,
+.notch-wallet-allowance {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 4px;
   color: var(--muted);
+  font-size: 12px;
 }
 .notch-wallet-balance strong {
   color: var(--heading);
-  font-size: 15px;
+  font: 600 22px/1.5 var(--font-mono);
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+.notch-wallet-allowance {
+  justify-items: end;
+}
+.notch-wallet-allowance strong {
+  color: var(--accent);
+}
+.notch-wallet-allowance strong span {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 400;
+}
+.notch-wallet-withdraw {
+  min-height: 32px;
+  padding: 2px 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 .notch-wallet-account {
   display: flex;
@@ -604,19 +632,6 @@ html[data-theme="light"] .ascii-clouds {
   align-items: center;
   justify-content: space-between;
   gap: 8px 16px;
-}
-.notch-wallet-stake {
-  display: grid;
-  gap: 8px;
-}
-.notch-wallet-stake-value {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-}
-.notch-wallet-balance.is-ready > span {
-  white-space: nowrap;
 }
 .notch-stake-options {
   display: grid;
@@ -673,11 +688,9 @@ html[data-theme="light"] .ascii-clouds {
   color: var(--muted);
 }
 .notch-wallet-topups {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 12px;
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
 }
 .notch-wallet-topups > span,
 .notch-wallet-lock-note {
@@ -685,41 +698,49 @@ html[data-theme="light"] .ascii-clouds {
   color: var(--muted);
   font-size: 12px;
 }
+.notch-wallet-lock-note {
+  margin-top: 12px;
+}
 .notch-stake-options.is-compact {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 .notch-stake-options.is-compact button {
-  min-height: 32px;
-  padding: 5px 10px;
+  flex: 1;
+  min-height: 36px;
+  padding: 6px 10px;
   border-color: var(--line);
   font-size: 11px;
+  white-space: nowrap;
 }
 .notch-wallet-ready-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 12px;
+  margin-top: 4px;
 }
 .notch-wallet-ready-actions button,
-.notch-wallet-disconnect,
-.notch-wallet-stake-value button {
+.notch-wallet-disconnect {
   min-height: 36px;
   padding: 6px 12px;
   font-size: 12px;
   white-space: nowrap;
 }
+.notch-wallet-ready-actions .notch-wallet-export,
 .notch-wallet-disconnect {
   border-color: transparent;
   background: transparent;
   color: var(--muted);
 }
+.notch-wallet-ready-actions .notch-wallet-export {
+  padding-inline: 0;
+}
 @media (pointer: coarse) {
   .notch-wallet-ready-actions button,
   .notch-wallet-disconnect,
-  .notch-wallet-stake-value button,
+  .notch-wallet-withdraw,
   .notch-stake-options.is-compact button {
     min-height: 44px;
   }
@@ -729,33 +750,23 @@ html[data-theme="light"] .ascii-clouds {
     display: none;
   }
   .notch-wallet-balance {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 6px 12px;
+    padding: 16px;
   }
   .notch-wallet-balance strong {
-    justify-self: end;
-    white-space: nowrap;
+    font-size: 20px;
   }
-  .notch-wallet-balance > span:last-child {
-    grid-column: 1 / -1;
-    text-align: right;
-  }
-  .notch-wallet-balance.is-ready {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .notch-wallet-balance.is-ready > span {
-    grid-column: auto;
-    text-align: left;
+  .notch-wallet-summary {
+    gap: 12px;
   }
   .notch-wallet-ready-actions {
-    gap: 6px;
+    gap: 8px;
   }
   .notch-wallet-ready-actions button {
-    padding-inline: 6px;
+    padding-inline: 8px;
     font-size: 11px;
   }
 }
+
 .shell {
   max-width: 1280px;
   margin: auto;

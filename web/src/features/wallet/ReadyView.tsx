@@ -51,15 +51,18 @@ export function ReadyView({ view, controller, model }: ReadyViewProps) {
         </button>
       </div>
       {model.funded && (
-        <div className="notch-wallet-balance is-ready">
-          <div className="notch-wallet-stake">
-            <span>Staked</span>
-            <div className="notch-wallet-stake-value">
+        <section
+          className="notch-wallet-balance"
+          aria-label="Stake and allowance"
+        >
+          <div className="notch-wallet-summary">
+            <div className="notch-wallet-stake">
+              <span>Staked</span>
               <strong>{formatEth(model.amount)} ETH</strong>
               {model.ready && !view.stake.pendingExit && (
                 <button
                   type="button"
-                  className="notch-wallet-secondary"
+                  className="notch-wallet-withdraw"
                   aria-label="Withdraw stake"
                   title={
                     model.withdrawLocked
@@ -73,18 +76,46 @@ export function ReadyView({ view, controller, model }: ReadyViewProps) {
                 </button>
               )}
             </div>
-            {model.withdrawLocked && !view.stake.pendingExit && (
-              <p className="notch-wallet-lock-note">
-                Withdrawal available 24h after your last post.
-              </p>
-            )}
+            <div className="notch-wallet-allowance">
+              <span>Posts left</span>
+              <strong>
+                {view.stake.remaining === null ? "—" : view.stake.remaining}
+                <span> / {model.quota}</span>
+              </strong>
+              <span>Rolling 24h</span>
+            </div>
           </div>
-          <span>
-            {view.stake.remaining === null
-              ? `${model.quota} posts / 24h`
-              : `${view.stake.remaining} / ${model.quota} posts left`}
-          </span>
-        </div>
+          {model.withdrawLocked && !view.stake.pendingExit && (
+            <p className="notch-wallet-lock-note">
+              Withdrawal available 24h after your last post.
+            </p>
+          )}
+          {model.ready &&
+            !view.stake.pendingExit &&
+            model.amount < MAX_STAKE && (
+              <div className="notch-wallet-topups">
+                <span>Add stake</span>
+                <div
+                  className="notch-stake-options is-compact"
+                  role="group"
+                  aria-label="Add stake"
+                >
+                  {STAKE_AMOUNTS.filter(
+                    (value) => model.amount + value <= MAX_STAKE
+                  ).map((value) => (
+                    <button
+                      type="button"
+                      key={value}
+                      disabled={view.busy}
+                      onClick={() => void controller.stake(value.toString())}
+                    >
+                      +{formatEth(value)} ETH
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+        </section>
       )}
       {view.stake.pendingExit ? (
         <>
@@ -127,29 +158,6 @@ export function ReadyView({ view, controller, model }: ReadyViewProps) {
       ) : (
         model.ready && (
           <>
-            {model.amount < MAX_STAKE && (
-              <div className="notch-wallet-topups">
-                <span>Add stake</span>
-                <div
-                  className="notch-stake-options is-compact"
-                  role="group"
-                  aria-label="Add stake"
-                >
-                  {STAKE_AMOUNTS.filter(
-                    (value) => model.amount + value <= MAX_STAKE
-                  ).map((value) => (
-                    <button
-                      type="button"
-                      key={value}
-                      disabled={view.busy}
-                      onClick={() => void controller.stake(value.toString())}
-                    >
-                      +{formatEth(value)} ETH
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
             {confirmExport && (
               <p className="notch-wallet-warning" role="status">
                 Contains private keys. Anyone with this file can control your
@@ -159,7 +167,7 @@ export function ReadyView({ view, controller, model }: ReadyViewProps) {
             <div className="notch-wallet-ready-actions">
               <button
                 type="button"
-                className="notch-wallet-secondary"
+                className="notch-wallet-secondary notch-wallet-export"
                 disabled={view.busy}
                 onClick={() => setConfirmExport(!confirmExport)}
               >

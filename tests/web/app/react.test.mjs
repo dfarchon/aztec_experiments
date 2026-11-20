@@ -203,9 +203,9 @@ test("the wallet stakes before private account initialization", () => {
     amount: "500000000000000",
   };
   assert.match(render(), /0.0005 ETH/);
-  assert.match(render(), /5 posts \/ 24h/);
+  assert.match(render(), /Posts left<\/span><strong>—<span> \/ 5<\/span>/);
   view.stake = { ...view.stake, remaining: 3 };
-  assert.match(render(), /3 \/ 5 posts left/);
+  assert.match(render(), /Posts left<\/span><strong>3<span> \/ 5<\/span>/);
   assert.match(render(), /Ready to post/);
   assert.match(render(), /Export account/);
   assert.doesNotMatch(render(), /Finding wallets/);
@@ -724,11 +724,11 @@ test("Ready account actions group connection, stake and posting while preserving
   assert.match(html, /Disconnect/);
   const account = html.slice(
     html.indexOf('class="notch-wallet-account"'),
-    html.indexOf('class="notch-wallet-balance is-ready"')
+    html.indexOf('class="notch-wallet-balance"')
   );
   assert.match(account, /Disconnect/);
   const balance = html.slice(
-    html.indexOf('class="notch-wallet-balance is-ready"'),
+    html.indexOf('class="notch-wallet-balance"'),
     html.indexOf('class="notch-wallet-topups"')
   );
   assert.match(balance, /Withdraw/);
@@ -736,7 +736,10 @@ test("Ready account actions group connection, stake and posting while preserving
     /<div class="notch-wallet-ready-actions">[\s\S]*?<\/div>/
   )[0];
   assert.equal((footer.match(/<button/g) || []).length, 2);
-  assert.match(footer, /class="notch-wallet-secondary"[^>]*>Export account/);
+  assert.match(
+    footer,
+    /class="notch-wallet-secondary notch-wallet-export"[^>]*>Export account/
+  );
   assert.match(footer, /class="notch-wallet-action-label">Ready to post/);
   assert.doesNotMatch(footer, /Disconnect|Withdraw/);
   assert.doesNotMatch(html, /Close this panel and write below/);
