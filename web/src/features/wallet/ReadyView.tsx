@@ -31,7 +31,6 @@ function downloadAccount(controller: BillboardController) {
 }
 
 export function ReadyView({ view, controller, model }: ReadyViewProps) {
-  const [recoveryHash, setRecoveryHash] = useState("");
   const [confirmExport, setConfirmExport] = useState(false);
 
   return (
@@ -50,15 +49,22 @@ export function ReadyView({ view, controller, model }: ReadyViewProps) {
           Disconnect
         </button>
       </div>
-      {model.funded && (
+      {(model.funded || view.stake.pendingExit) && (
         <section
           className="notch-wallet-balance"
           aria-label="Stake and allowance"
         >
           <div className="notch-wallet-summary">
             <div className="notch-wallet-stake">
-              <span>Staked</span>
-              <strong>{formatEth(model.amount)} ETH</strong>
+              <span>{view.stake.pendingExit ? "Withdrawing" : "Staked"}</span>
+              <strong>
+                {formatEth(
+                  view.stake.pendingExit
+                    ? BigInt(view.stake.exitAmount || view.stake.amount)
+                    : model.amount
+                )}{" "}
+                ETH
+              </strong>
               {model.ready && !view.stake.pendingExit && (
                 <button
                   type="button"
@@ -76,14 +82,16 @@ export function ReadyView({ view, controller, model }: ReadyViewProps) {
                 </button>
               )}
             </div>
-            <div className="notch-wallet-allowance">
-              <span>Posts left</span>
-              <strong>
-                {view.stake.remaining === null ? "—" : view.stake.remaining}
-                <span> / {model.quota}</span>
-              </strong>
-              <span>Rolling 24h</span>
-            </div>
+            {!view.stake.pendingExit && (
+              <div className="notch-wallet-allowance">
+                <span>Posts left</span>
+                <strong>
+                  {view.stake.remaining === null ? "—" : view.stake.remaining}
+                  <span> / {model.quota}</span>
+                </strong>
+                <span>Rolling 24h</span>
+              </div>
+            )}
           </div>
           {model.withdrawLocked && !view.stake.pendingExit && (
             <p className="notch-wallet-lock-note">
@@ -119,38 +127,57 @@ export function ReadyView({ view, controller, model }: ReadyViewProps) {
       )}
       {view.stake.pendingExit ? (
         <>
-          {view.stake.exitNeedsHash && (
-            <input
-              aria-label="Existing Aztec withdrawal transaction hash"
-              placeholder="Aztec withdrawal transaction hash"
-              value={recoveryHash}
-              onChange={(event) => setRecoveryHash(event.target.value)}
-            />
+          {view.stake.exitNeedsHash && !view.busy && (
+            <p className="notch-wallet-warning" role="status">
+              Withdrawal status is uncertain. Keep this browser’s data and
+              contact support before retrying.
+            </p>
+          )}
+          {!view.stake.exitNeedsHash && (
+            <p className="notch-wallet-withdrawal-note" role="status">
+              {view.stake.exitReady
+                ? "Your ETH is ready to claim. Confirm the transaction in your L1 wallet."
+                : view.stake.exitL1Submitted
+                  ? "Waiting for your L1 transaction to confirm."
+                  : "Claiming requires an Ethereum-verified proof and may take a while. You can close this panel and return later."}
+            </p>
+          )}
+          {view.stake.exitCheckError && !view.busy && (
+            <p className="notch-wallet-warning" role="status">
+              {view.stake.exitCheckError}
+            </p>
           )}
           <button
             type="button"
             className="notch-wallet-primary"
             disabled={
-              view.busy ||
-              (view.stake.exitNeedsHash &&
-                !/^0x[\da-f]{64}$/i.test(recoveryHash))
+              view.busy || !view.stake.exitReady || view.stake.exitNeedsHash
             }
-            onClick={() =>
-              void controller.resumeWithdrawal(
-                view.stake.exitNeedsHash ? recoveryHash : undefined
-              )
+            aria-busy={
+              view.busy || (!view.stake.exitReady && !view.stake.exitNeedsHash)
             }
+            onClick={() => void controller.resumeWithdrawal()}
           >
-            {view.busy ? (
+            {view.busy ||
+            (!view.stake.exitReady && !view.stake.exitNeedsHash) ? (
               <>
-                <LoadingIcon />{" "}
+                <LoadingIcon />
                 <span className="notch-wallet-action-label">
-                  {walletProgressLabel(view.progress?.label)}
+                  {view.busy
+                    ? walletProgressLabel(view.progress?.label)
+                    : view.stake.exitL1Submitted
+                      ? "Confirming withdrawal…"
+                      : "Waiting for proof…"}
                 </span>
               </>
             ) : (
               <>
-                Complete withdrawal <Icon name="arrow" />
+                <span className="notch-wallet-action-label">
+                  {view.stake.exitNeedsHash
+                    ? "Withdrawal needs attention"
+                    : "Claim ETH"}
+                </span>
+                {!view.stake.exitNeedsHash && <Icon name="arrow" />}
               </>
             )}
           </button>

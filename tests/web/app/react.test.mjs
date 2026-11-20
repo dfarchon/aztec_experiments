@@ -270,8 +270,18 @@ test("pending stake and withdrawal recovery stay inside the wallet", () => {
     pendingExit: true,
     exitNeedsHash: true,
   };
-  assert.match(render(), /Aztec withdrawal transaction hash/);
-  assert.match(render(), /Complete withdrawal/);
+  assert.doesNotMatch(render(), /Aztec withdrawal transaction hash|<input/);
+  assert.match(render(), /Withdrawal status is uncertain/);
+  assert.match(render(), /class="notch-wallet-primary" disabled=""/);
+  view.busy = true;
+  assert.doesNotMatch(render(), /Aztec withdrawal transaction hash|<input/);
+  assert.doesNotMatch(render(), /Withdrawal status is uncertain/);
+  assert.match(render(), /Withdrawing|Setting up/);
+  view.busy = false;
+  view.stake = { ...view.stake, exitNeedsHash: false, exitReady: true };
+  assert.doesNotMatch(render(), /Withdrawal status is uncertain/);
+  assert.doesNotMatch(render(), /class="notch-wallet-primary" disabled=""/);
+  assert.match(render(), /Claim ETH/);
   assert.doesNotMatch(render(), /Activity|Unfinished post/);
   base.dispose();
 });
@@ -820,5 +830,45 @@ test("existing stakes and unfinished setup share one Continue setup action witho
     restored,
     /notch-stake-options|Import|Restore with|Check L1 status|type="file"/
   );
+  base.dispose();
+});
+
+test("pending withdrawal stays at Ready after refresh and hides spendable quota", () => {
+  const base = createBillboardController();
+  const initial = base.getSnapshot();
+  const view = {
+    ...initial,
+    walletOpen: true,
+    stake: {
+      ...initial.stake,
+      payer: "0x" + "1".repeat(40),
+      amount: "0",
+      exitAmount: "500000000000000",
+      pendingExit: true,
+      setupComplete: true,
+      aztecReady: false,
+    },
+  };
+  const render = () =>
+    renderToStaticMarkup(
+      createElement(App, {
+        controller: { ...base, getSnapshot: () => view },
+      })
+    );
+  const waiting = render();
+  assert.match(
+    waiting,
+    /class="is-current" aria-current="step">[\s\S]*?step-indicator-label">Ready/
+  );
+  assert.match(waiting, /Withdrawing/);
+  assert.match(waiting, /0.0005 ETH/);
+  assert.match(waiting, /Waiting for proof/);
+  assert.match(waiting, /You can close this panel/);
+  assert.doesNotMatch(waiting, /Posts left|Add stake|transaction hash/);
+  view.busy = true;
+  assert.doesNotMatch(render(), /aria-label="Close wallet panel" disabled/);
+  view.busy = false;
+  view.stake.exitReady = true;
+  assert.match(render(), /Claim ETH/);
   base.dispose();
 });

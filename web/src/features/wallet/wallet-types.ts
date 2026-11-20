@@ -88,6 +88,10 @@ export interface WalletStakeState {
   claimNeedsHash: boolean;
   pendingExit: boolean;
   exitNeedsHash: boolean;
+  exitReady: boolean;
+  exitAmount: string;
+  exitCheckError: string | null;
+  exitL1Submitted: boolean;
   lastPost: string;
 }
 

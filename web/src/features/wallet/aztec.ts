@@ -359,8 +359,7 @@ export async function withdrawalProof(
   const receipt = await session.node.getTxReceipt(hash);
   if (String(receipt.executionResult) === "reverted")
     throw new Error("Aztec withdrawal reverted. Reconnect and try again.");
-  if (String(receipt.executionResult) !== "success")
-    throw new Error("Aztec withdrawal is pending. Complete it later.");
+  if (String(receipt.executionResult) !== "success") return null;
   const effect = await session.node.getTxEffect(hash);
   const index =
     effect?.data.l2ToL1Msgs.findIndex(
@@ -373,7 +372,5 @@ export async function withdrawalProof(
     effect.data.l2ToL1Msgs[index],
     index
   );
-  if (!witness)
-    throw new Error("Withdrawal proof is not ready. Complete it later.");
-  return witness;
+  return witness ?? null;
 }

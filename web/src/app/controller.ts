@@ -122,6 +122,10 @@ export function createBillboardController(
       claimNeedsHash: false,
       pendingExit: false,
       exitNeedsHash: false,
+      exitReady: false,
+      exitAmount: "0",
+      exitCheckError: null,
+      exitL1Submitted: false,
       lastPost: "0",
     },
     progress: null,
@@ -372,9 +376,8 @@ export function createBillboardController(
           if (result === false || disposed || generation !== sessionGeneration)
             return false;
           if (
-            view.stake.setupComplete &&
-            !view.stake.pendingDeposit &&
-            !view.stake.pendingExit
+            (view.stake.setupComplete || view.stake.pendingExit) &&
+            !view.stake.pendingDeposit
           ) {
             progress("Restoring account…");
             await initializeAztec();
@@ -416,9 +419,8 @@ export function createBillboardController(
       }
       patch({ walletOpen: true });
       if (
-        view.stake.setupComplete &&
-        !view.stake.pendingDeposit &&
-        !view.stake.pendingExit
+        (view.stake.setupComplete || view.stake.pendingExit) &&
+        !view.stake.pendingDeposit
       ) {
         patch({ restoring: true });
         progress("Restoring account…");
@@ -589,18 +591,24 @@ export function createBillboardController(
     withdrawStake: () =>
       action(async () => {
         await walletFlow?.withdraw();
+        return false;
       }, "Withdraw stake"),
     resumeWithdrawal: (hash?: string) =>
-      action(async () => {
-        if (!walletFlow) throw new Error("Connect your L1 wallet first");
-        const flow = walletFlow;
-        if (!view.stake.aztecReady && (await initializeAztec()) === false)
-          return false;
-        if (walletFlow !== flow || disposed)
-          throw new Error("Wallet session ended");
-        if (hash) await flow.recoverExit(hash);
-        else await flow.resumeExit();
-      }, "Complete withdrawal"),
+      action(
+        async () => {
+          if (!walletFlow) throw new Error("Connect your L1 wallet first");
+          const flow = walletFlow;
+          if (!view.stake.aztecReady && (await initializeAztec()) === false)
+            return false;
+          if (walletFlow !== flow || disposed)
+            throw new Error("Wallet session ended");
+          if (hash) await flow.recoverExit(hash);
+          else await flow.resumeExit();
+          return view.stake.pendingExit ? false : "Withdrawal completed";
+        },
+        "Complete withdrawal",
+        "restoring"
+      ),
     post: () => action(post, "Anonymous posting", "posting"),
     refresh: () => action(() => refresh(), "Refresh posts"),
     loadOlder: () => action(() => readFeed(true), "Load older posts"),

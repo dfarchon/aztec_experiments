@@ -710,3 +710,126 @@ test("a failed read-only stake check can retry without signing, paying or initia
   assert.equal(f.signatures, 0);
   assert.equal(f.sends, 0);
 });
+
+async function flushWithdrawalCheck() {
+  for (let i = 0; i < 15; i++) await new Promise(setImmediate);
+}
+
+async function withdrawalFixture(t) {
+  const { f, values } = fixture(t);
+  const flow = await f.open();
+  t.after(() => flow.dispose());
+  await flow.stake(STAKE_UNIT.toString());
+  await flow.initializeAztec({ sdk: { SDK_VERSION: "6.0.0" } });
+  f.proof = null;
+  f.proofChecks = 0;
+  f.l1Claims = 0;
+  f.startWithdrawal = async (
+    _session,
+    _config,
+    amount,
+    _owner,
+    before,
+    prepared
+  ) => {
+    before();
+    prepared("0x" + "9".repeat(64));
+    f.amount = 0n;
+    return { amount, l2Tx: "0x" + "9".repeat(64) };
+  };
+  f.withdrawalProof = async () => {
+    f.proofChecks++;
+    if (f.proofError) throw Error("RPC unavailable");
+    return f.proof;
+  };
+  f.sendWithdrawal = async () => {
+    f.l1Claims++;
+    return "0x" + "8".repeat(64);
+  };
+  f.verifyWithdrawalReceipt = async () => {
+    if (!f.confirmed) return false;
+    f.balance = 0n;
+    return true;
+  };
+  return { f, flow, values };
+}
+
+test("withdrawal waits without paying L1, polls proof, and claims only on request", async (t) => {
+  const { f, flow } = await withdrawalFixture(t);
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  await flow.withdraw();
+  await flushWithdrawalCheck();
+  assert.equal(f.state.pendingExit, true);
+  assert.equal(f.state.exitAmount, STAKE_UNIT.toString());
+  assert.equal(f.state.exitReady, false);
+  assert.equal(f.state.exitCheckError, null);
+  assert.equal(f.l1Claims, 0);
+  f.proof = { epochNumber: 1 };
+  t.mock.timers.tick(30000);
+  await flushWithdrawalCheck();
+  assert.equal(f.state.exitReady, true);
+  assert.equal(f.l1Claims, 0);
+  await flow.resumeExit();
+  await flushWithdrawalCheck();
+  assert.equal(f.l1Claims, 1);
+  assert.equal(f.state.exitL1Submitted, true);
+  assert.equal(f.state.pendingExit, true);
+  f.confirmed = true;
+  t.mock.timers.tick(30000);
+  await flushWithdrawalCheck();
+  assert.equal(f.state.pendingExit, false);
+  assert.equal(f.l1Claims, 1);
+  assert.equal(f.state.amount, "0");
+});
+
+test("withdrawal survives reconnect and polling errors without a second exit or payment", async (t) => {
+  const { f, flow } = await withdrawalFixture(t);
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  await flow.withdraw();
+  await flushWithdrawalCheck();
+  const payments = f.sends;
+  await flow.disconnect();
+  const checks = f.proofChecks;
+  t.mock.timers.tick(120000);
+  await flushWithdrawalCheck();
+  assert.equal(f.proofChecks, checks);
+  const restored = await f.open();
+  t.after(() => restored.dispose());
+  assert.equal(f.state.pendingExit, true);
+  f.proofError = true;
+  await restored.initializeAztec({ sdk: { SDK_VERSION: "6.0.0" } });
+  await flushWithdrawalCheck();
+  assert.match(f.state.exitCheckError, /Retrying automatically/);
+  assert.equal(f.state.pendingExit, true);
+  f.proofError = false;
+  f.proof = { epochNumber: 1 };
+  t.mock.timers.tick(60000);
+  await flushWithdrawalCheck();
+  assert.equal(f.state.exitReady, true);
+  assert.equal(f.state.exitCheckError, null);
+  assert.equal(f.sends, payments);
+  assert.equal(f.l1Claims, 0);
+  restored.dispose();
+  const finalChecks = f.proofChecks;
+  t.mock.timers.tick(120000);
+  await flushWithdrawalCheck();
+  assert.equal(f.proofChecks, finalChecks);
+});
+
+test("a late proof response cannot revive a disconnected withdrawal", async (t) => {
+  const { f, flow } = await withdrawalFixture(t);
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let resolveProof;
+  f.withdrawalProof = () =>
+    new Promise((resolve) => {
+      resolveProof = resolve;
+    });
+  await flow.withdraw();
+  assert(resolveProof);
+  await flow.disconnect();
+  resolveProof({ epochNumber: 1 });
+  await flushWithdrawalCheck();
+  assert.equal(f.state.payer, "");
+  assert.equal(f.state.exitReady, false);
+  assert.equal(f.l1Claims, 0);
+});

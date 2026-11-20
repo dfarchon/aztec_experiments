@@ -33,7 +33,7 @@ export function walletViewModel(view: BillboardView): WalletViewModel {
   const connected = Boolean(view.stake.payer);
   const funded = amount > 0n;
   const ready = funded && view.stake.aztecReady && !view.stake.pendingDeposit;
-  const panelLocked = view.busy && !view.restoring;
+  const panelLocked = view.busy && !view.restoring && !view.stake.pendingExit;
   const setupInProgress =
     connected &&
     view.busy &&
@@ -60,16 +60,26 @@ export function walletViewModel(view: BillboardView): WalletViewModel {
     ready,
     setupInProgress,
     stakeChoice: BigInt(view.stake.stakeChoice),
-    step: !connected ? 1 : ready ? 3 : 2,
+    step: !connected
+      ? 1
+      : view.stake.pendingExit ||
+          ready ||
+          (view.restoring && view.stake.setupComplete)
+        ? 3
+        : 2,
     title,
     walletLoading,
     walletStatus: walletLoading
       ? "Updating account"
       : ready && !view.stake.pendingExit
         ? "Account ready"
-        : connected
-          ? "Setup required"
-          : "Connect wallet",
+        : view.stake.pendingExit
+          ? view.stake.exitReady
+            ? "Ready to claim ETH"
+            : "Withdrawal pending"
+          : connected
+            ? "Setup required"
+            : "Connect wallet",
     withdrawLocked: Number(view.stake.lastPost) > 0 && Date.now() < unlockAt,
   };
 }

@@ -66,6 +66,68 @@ export function createWalletFlow(
   let storageKey = "";
   let disposed = false;
   let l1Amount: bigint | null = null;
+  let exitReady = false;
+  let exitCheckError: string | null = null;
+  let exitTimer: ReturnType<typeof setTimeout> | undefined;
+  let exitGeneration = 0;
+
+  function stopExitMonitor() {
+    clearTimeout(exitTimer);
+    exitGeneration++;
+    exitReady = false;
+    exitCheckError = null;
+  }
+
+  function startExitMonitor() {
+    stopExitMonitor();
+    const generation = exitGeneration;
+    const record = saved;
+    const active = session;
+    const job = record?.exit;
+    if (!record || !active || !job?.l2Tx) return;
+    let failures = 0;
+    const current = () =>
+      !disposed &&
+      generation === exitGeneration &&
+      saved === record &&
+      session === active &&
+      record.exit === job;
+    const check = async () => {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const result = await Promise.race([
+          job.l1Tx ? completeExit() : withdrawalProof(active, job.l2Tx!),
+          new Promise<never>((_, reject) => {
+            timeout = setTimeout(
+              () => reject(new Error("Withdrawal check timed out")),
+              15000
+            );
+          }),
+        ]);
+        if (!current()) return;
+        failures = 0;
+        exitCheckError = null;
+        exitReady = !job.l1Tx && Boolean(result);
+      } catch {
+        if (!current()) return;
+        failures++;
+        exitReady = false;
+        exitCheckError =
+          "Unable to check withdrawal status. Retrying automatically.";
+      } finally {
+        clearTimeout(timeout);
+        if (current()) {
+          snapshot();
+          if (!exitReady)
+            exitTimer = setTimeout(
+              () => void check(),
+              Math.min(30000 * 2 ** Math.min(failures, 2), 120000)
+            );
+        }
+      }
+    };
+    void check();
+  }
 
   const snapshot = () => {
     if (disposed || !saved) return;
@@ -95,6 +157,10 @@ export function createWalletFlow(
         saved.deposit?.l2Attempted && !saved.deposit.l2Tx
       ),
       pendingExit: Boolean(saved.exit),
+      exitReady,
+      exitAmount: saved.exit?.amount || "0",
+      exitCheckError,
+      exitL1Submitted: Boolean(saved.exit?.l1Tx),
       exitNeedsHash: Boolean(saved.exit?.l2Attempted && !saved.exit.l2Tx),
       lastPost: saved.lastPost || "0",
     });
@@ -127,6 +193,10 @@ export function createWalletFlow(
       claimNeedsHash: false,
       pendingExit: false,
       exitNeedsHash: false,
+      exitReady: false,
+      exitAmount: "0",
+      exitCheckError: null,
+      exitL1Submitted: false,
       lastPost: "0",
     });
   };
@@ -331,18 +401,34 @@ export function createWalletFlow(
       throw new Error(
         "Withdrawal transaction is not known. Recover its hash first."
       );
+    const record = saved;
+    const active = session;
+    const assertCurrent = () => {
+      assertRecord(record);
+      if (session !== active || record.exit !== job)
+        throw new Error("Wallet session ended");
+    };
     await assertPayer();
-    const witness = await withdrawalProof(session, job.l2Tx);
+    assertCurrent();
     const provider = createL1Provider(config);
     try {
       const portal = await verifyPortal(provider, config);
+      assertCurrent();
       if ((await portal.deposits(payer)) === 0n) {
+        assertCurrent();
+        stopExitMonitor();
         l1Amount = 0n;
         saved.exit = null;
         await refresh();
         return;
       }
       if (!job.l1Tx) {
+        const witness = await withdrawalProof(active, job.l2Tx);
+        assertCurrent();
+        if (!witness) {
+          exitReady = false;
+          return false;
+        }
         job.l1Tx = await sendWithdrawal(
           portal,
           injected!,
@@ -351,10 +437,13 @@ export function createWalletFlow(
           witness,
           progress
         );
+        assertCurrent();
         persist();
       }
       if (!(await verifyWithdrawalReceipt(provider, config, job.l1Tx)))
-        throw new Error("L1 withdrawal is pending. Complete it later.");
+        return false;
+      assertCurrent();
+      stopExitMonitor();
       saved.exit = null;
       l1Amount = await portal.deposits(payer);
       await refresh();
@@ -435,6 +524,7 @@ export function createWalletFlow(
     async connect(provider, savedSession) {
       if (!provider || typeof provider.request !== "function")
         throw new Error("Choose an Ethereum wallet first");
+      stopExitMonitor();
       injected = provider;
       l1Amount = null;
       session = null;
@@ -496,6 +586,7 @@ export function createWalletFlow(
         await refresh();
         if (saved.deposit) return confirmDeposit();
         await finishRecovery();
+        if (saved.exit) startExitMonitor();
         return true;
       }
       if (saved.deposit && !saved.deposit.messageKey)
@@ -545,6 +636,7 @@ export function createWalletFlow(
       }
       if (saved.deposit) return confirmDeposit();
       await finishRecovery();
+      if (saved.exit) startExitMonitor();
       return true;
     },
 
@@ -647,6 +739,7 @@ export function createWalletFlow(
       if (saved?.recoveryAmount && !saved.deposit) {
         await refresh();
         await finishRecovery();
+        if (saved.exit) startExitMonitor();
         return true;
       }
       if (!saved?.deposit) throw new Error("No pending deposit");
@@ -720,11 +813,16 @@ export function createWalletFlow(
         throw new Error("Withdrawal transaction was not recorded");
       exitRecord.l2Tx = result.l2Tx;
       persist();
-      await completeExit();
+      startExitMonitor();
     },
 
     async resumeExit() {
-      await completeExit();
+      stopExitMonitor();
+      try {
+        await completeExit();
+      } finally {
+        if (saved?.exit) startExitMonitor();
+      }
     },
 
     async recoverExit(hash) {
@@ -760,6 +858,7 @@ export function createWalletFlow(
     },
 
     async disconnect() {
+      stopExitMonitor();
       injected?.removeListener?.("accountsChanged", walletChanged);
       injected?.removeListener?.("chainChanged", walletChanged);
       injected = undefined;
@@ -771,6 +870,7 @@ export function createWalletFlow(
     },
 
     dispose() {
+      stopExitMonitor();
       disposed = true;
       injected?.removeListener?.("accountsChanged", walletChanged);
       injected?.removeListener?.("chainChanged", walletChanged);

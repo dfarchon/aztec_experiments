@@ -243,12 +243,24 @@ documented in `df-billboard/DEPLOYMENT.md`; it never deploys automatically.
 
 ## Resuming a withdrawal after reload
 
-`ReadyView` keeps the saved withdrawal action visible even before the browser
-Aztec session has been recreated. `controller.resumeWithdrawal` first calls
-`initializeAztec` if needed, then resumes the saved exit or recovers the supplied
-exit hash. Initialization reads the existing identity; it never prepares another
-stake or starts another Aztec withdrawal. If initialization fails, the saved exit
-remains pending and can be retried.
+Withdrawal has two stages: an Aztec exit followed by an explicit L1 claim.
+`withdraw` persists the exit transaction and starts a read-only proof monitor;
+it never requests an L1 payment. A missing witness is a pending state, not an
+error. Checks run every 30 seconds, with a 15-second request deadline and
+backoff up to 120 seconds after errors. Disconnect, account replacement and
+flow disposal invalidate the monitor and any late results.
+
+`ReadyView` keeps a pending exit at step three even before the browser Aztec
+session has been recreated. It shows the withdrawing amount instead of
+spendable quota. Silent reconnection restores the existing account and restarts
+monitoring without preparing another stake or Aztec exit. Waiting can continue
+with the dialog closed; after a page closes it resumes on the next visit.
+
+Once a proof is available, **Claim ETH** calls `controller.resumeWithdrawal`.
+The flow rechecks the proof and L1 balance before requesting the user's wallet
+confirmation. A saved L1 transaction is checked without resending it. The exit
+record is cleared only after confirmation or a zero portal balance. Missing
+transaction records show an inline warning; no transaction hash input is exposed.
 
 ## Resource ownership and cancellation
 

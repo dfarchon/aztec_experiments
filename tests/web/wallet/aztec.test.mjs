@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   claimDeposit,
   createAztecBoardSession,
+  withdrawalProof,
 } from "../../../web/src/features/wallet/aztec.ts";
 
 const config = {
@@ -333,4 +334,24 @@ test("cancellation during simulation prevents persisting or sending a claim", as
   assert.equal(writes, 0);
   assert.equal(f.job.l2Attempted, false);
   assert.equal(f.counts().sends, 0);
+});
+
+test("withdrawal proof absence is pending, while reverted transactions remain errors", async () => {
+  let executionResult = "success";
+  const session = {
+    runtime: { sdk: { TxHash: { fromString: (hash) => hash } } },
+    node: {
+      getTxReceipt: async () => ({ executionResult }),
+      getTxEffect: async () => ({
+        data: { l2ToL1Msgs: [{ isZero: () => false }] },
+      }),
+      getL2ToL1MembershipWitness: async () => undefined,
+    },
+  };
+  assert.equal(await withdrawalProof(session, "saved-exit"), null);
+  executionResult = "reverted";
+  await assert.rejects(
+    withdrawalProof(session, "saved-exit"),
+    /withdrawal reverted/
+  );
 });

@@ -56,7 +56,7 @@ export function WalletPanel({ view, controller }: ViewProps) {
           ) : (
             <Icon
               name={
-                model.ready && !view.stake.pendingExit
+                (model.ready && !view.stake.pendingExit) || view.stake.exitReady
                   ? "check"
                   : model.connected
                     ? "warning"

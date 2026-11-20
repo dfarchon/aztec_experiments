@@ -670,3 +670,28 @@ test("wallet signature recovery initializes Aztec without calling stake and stop
     "Signature rejected"
   );
 });
+
+test("refresh restores a pending withdrawal without automatically requesting L1 payment", async (t) => {
+  const f = restorableFixture(t);
+  f.wallet.connect = async () => {
+    f.emit({ ...emptyStake, setupComplete: true, pendingExit: true });
+  };
+  f.wallet.initializeAztec = async () => {
+    f.calls.push("initializeAztec");
+    f.emit({
+      ...emptyStake,
+      owner,
+      aztecReady: true,
+      setupComplete: true,
+      pendingExit: true,
+    });
+  };
+  await f.controller.initialize();
+  await until(
+    () =>
+      f.calls.includes("initializeAztec") && !f.controller.getSnapshot().busy
+  );
+  assert(f.calls.includes("initializeAztec"));
+  assert(!f.calls.includes("resumeExit"));
+  assert.equal(f.controller.getSnapshot().canPost, false);
+});
