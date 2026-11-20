@@ -48,7 +48,7 @@ export function SetupView({ view, controller, model }: SetupViewProps) {
         <p className="notch-wallet-warning" role="status">
           {view.stake.claimNeedsHash && !view.busy
             ? "Claim status is uncertain. Do not stake again. Keep this browser’s data and contact support to check the claim."
-            : "Keep this tab open until setup finishes. If interrupted, return in this browser to continue without staking again."}
+            : "Setup may take 1–2 minutes or longer. Keep this tab open until setup finishes. If interrupted, return in this browser to continue without staking again."}
         </p>
       )}
       {(model.ready || view.stake.pendingDeposit) && model.funded && (

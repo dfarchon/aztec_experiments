@@ -173,6 +173,7 @@ test("the wallet stakes before private account initialization", () => {
   view.stake = { ...view.stake, payer: `0x${"1".repeat(40)}` };
   assert.match(render(), /notch-stake-options/);
   assert.match(render(), /Keep this tab open/);
+  assert.match(render(), /Setup may take 1–2 minutes or longer/);
   assert.equal(
     (render().match(/class="notch-wallet-warning"/g) || []).length,
     1
@@ -518,6 +519,7 @@ test("post button shows the shared loading icon only during posting", () => {
     assert.ok(button.includes(`aria-busy="${posting}"`));
     assert.equal(button.includes('class="loading-icon"'), posting);
     assert.equal(button.includes("Posting…"), posting);
+    assert.equal(button.includes("May take 1–2 min"), posting);
     assert.match(button, /disabled=""/);
   }
   base.dispose();

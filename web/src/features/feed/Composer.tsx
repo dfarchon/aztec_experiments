@@ -25,7 +25,12 @@ function composerAction(view: BillboardView): ComposerAction {
   if (view.posting)
     return {
       disabled: true,
-      label: "Posting…",
+      label: (
+        <span className="post-status">
+          <span>Posting…</span>
+          <small>May take 1–2 min</small>
+        </span>
+      ),
       loading: true,
       pendingStake,
     };
