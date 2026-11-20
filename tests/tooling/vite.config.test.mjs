@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import config from "./vite.config.ts";
+import config from "../../web/vite.config.ts";
 
 const plugin = config.plugins.find(
   (entry) => entry.name === "df-local-runtime-assets"

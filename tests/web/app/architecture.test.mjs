@@ -2,21 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  environment,
+  networkPolicy,
+  validateChain,
+  validateRpc,
+} from "../../../web/src/app/network.ts";
+import {
   createFeedReader,
   readPostPage,
-} from "../features/feed/feed-reader.ts";
+} from "../../../web/src/features/feed/feed-reader.ts";
 import {
   accountSetupOptions,
   createAccountKeys,
   readStored,
   writeStored,
-} from "../features/wallet/account-keys.ts";
-import {
-  environment,
-  networkPolicy,
-  validateChain,
-  validateRpc,
-} from "./network.ts";
+} from "../../../web/src/features/wallet/account-keys.ts";
 
 test("shared account helpers keep identities, namespaces and recovery writes isolated", () => {
   let counter = 0;

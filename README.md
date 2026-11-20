@@ -17,7 +17,8 @@ content filters.
 | [`web/`](web/) | React, TypeScript and Vite website |
 | [`protocol/`](protocol/) | Current post encoding and sponsored-fee helpers |
 | [`runtime/`](runtime/) | Lazy SDK, browser wallet/PXE runtime and Noir runtime |
-| [`scripts/`](scripts/) | Build, test, local chain, and testnet release scripts |
+| [`scripts/`](scripts/) | Build, local chain, and testnet release scripts |
+| [`tests/`](tests/) | JavaScript tests grouped by feature, runtime, protocol and tooling |
 | [`docs/FRONTEND.md`](docs/FRONTEND.md) | Frontend ownership, persistence and code reading paths |
 
 The old `/df-billboard-test.html` URL redirects to `/` for existing links. The

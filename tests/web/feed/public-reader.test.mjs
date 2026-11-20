@@ -9,7 +9,7 @@ import {
   MAP_SLOT_SEPARATOR,
   PublicField,
   publicReadSDK,
-} from "./public-reader.ts";
+} from "../../../web/src/features/feed/public-reader.ts";
 
 test("read-only map slots match Aztec 6.0.0 SDK vectors", async () => {
   assert.equal(
@@ -361,7 +361,9 @@ test("storage batches reject malformed field values", async (t) => {
 test("initial controller graph excludes wallet modules and stays below 150 KB", async () => {
   const { build } = await import("esbuild");
   const result = await build({
-    entryPoints: [new URL("../../app/controller.ts", import.meta.url).pathname],
+    entryPoints: [
+      new URL("../../../web/src/app/controller.ts", import.meta.url).pathname,
+    ],
     bundle: true,
     splitting: true,
     format: "esm",

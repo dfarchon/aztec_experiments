@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createBillboardController } from "./controller.ts";
+import { createBillboardController } from "../../../web/src/app/controller.ts";
 
 const deployment = {
   kind: "notch-stake",

@@ -1,15 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { readAccountFile, writeAccountFile } from "./account-files.ts";
-import { hashDepositSecret } from "./deposit-secret.ts";
+import {
+  readAccountFile,
+  writeAccountFile,
+} from "../../../web/src/features/wallet/account-files.ts";
+import { hashDepositSecret } from "../../../web/src/features/wallet/deposit-secret.ts";
 import {
   MAX_STAKE,
   postQuota,
   STAKE_UNIT,
   validateTopup,
-} from "./stake-policy.ts";
-import { createWalletFlow } from "./wallet-flow.ts";
+} from "../../../web/src/features/wallet/stake-policy.ts";
+import { createWalletFlow } from "../../../web/src/features/wallet/wallet-flow.ts";
 
 const payer = `0x${"2".repeat(40)}`;
 const board = `0x${"1".repeat(64)}`;

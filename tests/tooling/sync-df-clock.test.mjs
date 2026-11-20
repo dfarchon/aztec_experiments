@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { syncLocalClock } from "./sync-df-clock.mjs";
+import { syncLocalClock } from "../../scripts/sync-df-clock.mjs";
 
 function fixture() {
   let timestamp = 1000;

@@ -1,29 +1,33 @@
 // Local integration: L1 stake -> private L2 claim -> sponsored post -> L1 withdrawal.
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { Contract as EvmContract, JsonRpcProvider } from "ethers";
-import { createAztecNodeClient } from "@aztec-labs/aztec.js/node";
-import { createAztecNodeDebugClient } from "@aztec-labs/stdlib/interfaces/client";
+
+import { loadContractArtifact } from "@aztec-labs/aztec.js/abi";
 import { AztecAddress, EthAddress } from "@aztec-labs/aztec.js/addresses";
-import { EmbeddedWallet } from "@aztec-labs/wallets/embedded";
 import {
   Contract,
   getContractInstanceFromInstantiationParams,
 } from "@aztec-labs/aztec.js/contracts";
-import { loadContractArtifact } from "@aztec-labs/aztec.js/abi";
-import { Fr, Fq } from "@aztec-labs/aztec.js/fields";
 import { SponsoredFeePaymentMethod } from "@aztec-labs/aztec.js/fee";
+import { Fq, Fr } from "@aztec-labs/aztec.js/fields";
+import { createAztecNodeClient } from "@aztec-labs/aztec.js/node";
 import { SponsoredFPCContract } from "@aztec-labs/noir-contracts.js/SponsoredFPC";
 import { GasFees } from "@aztec-labs/stdlib/gas";
-import { createDepositSecret } from "../web/src/features/wallet/deposit-secret.ts";
+import { createAztecNodeDebugClient } from "@aztec-labs/stdlib/interfaces/client";
+import { EmbeddedWallet } from "@aztec-labs/wallets/embedded";
+import { Contract as EvmContract, JsonRpcProvider } from "ethers";
+
 import {
-  encodeDFMessage,
   decodeDFMessage,
+  encodeDFMessage,
   getBillboardFeeOptions,
-} from "../protocol/message.mjs";
+} from "../../protocol/message.mjs";
+import { createDepositSecret } from "../../web/src/features/wallet/deposit-secret.ts";
 
 const deployment = JSON.parse(
-  fs.readFileSync(new URL("../.local/billboard-harness.json", import.meta.url)),
+  fs.readFileSync(
+    new URL("../../.local/billboard-harness.json", import.meta.url)
+  )
 );
 assert.equal(deployment.kind, "notch-stake");
 assert.equal(deployment.chainId, 31337, "Only local chain is allowed");
@@ -53,45 +57,45 @@ try {
     JSON.parse(
       fs.readFileSync(
         new URL(
-          "../df-billboard/target/df_billboard-DFBillboard.json",
-          import.meta.url,
-        ),
-      ),
-    ),
+          "../../df-billboard/target/df_billboard-DFBillboard.json",
+          import.meta.url
+        )
+      )
+    )
   );
   const instance = await node.getContract(
-    AztecAddress.fromStringUnsafe(deployment.board),
+    AztecAddress.fromStringUnsafe(deployment.board)
   );
   assert(instance, "Board is missing");
   await wallet.registerContract(instance, boardArtifact);
   const board = await Contract.at(instance.address, boardArtifact, wallet);
   const sponsor = await getContractInstanceFromInstantiationParams(
     SponsoredFPCContract.artifact,
-    { salt: Fr.ZERO },
+    { salt: Fr.ZERO }
   );
   await wallet.registerContract(sponsor, SponsoredFPCContract.artifact);
   const fee = () =>
     getBillboardFeeOptions(
       node,
       new SponsoredFeePaymentMethod(sponsor.address),
-      GasFees,
+      GasFees
     );
   const portalArtifact = JSON.parse(
     fs.readFileSync(
       new URL(
-        "../.local/billboard-l1-out/BillboardPortal.sol/BillboardPortal.json",
-        import.meta.url,
-      ),
-    ),
+        "../../.local/billboard-l1-out/BillboardPortal.sol/BillboardPortal.json",
+        import.meta.url
+      )
+    )
   );
   const portal = new EvmContract(
     deployment.l1Stake.portal,
     portalArtifact.abi,
-    signer,
+    signer
   );
   assert.equal(
     (await portal.board()).toLowerCase(),
-    deployment.board.toLowerCase(),
+    deployment.board.toLowerCase()
   );
   const send = async (call) => {
     const tx = await call.send({ from: owner, fee: await fee() });
@@ -120,8 +124,8 @@ try {
         EthAddress.fromString(l1Owner),
         amount,
         Fr.fromString(secret),
-        deposited.args.index,
-      ),
+        deposited.args.index
+      )
     );
   };
   const readStake = async () => {
@@ -135,7 +139,7 @@ try {
     board.methods
       .post(text, length)
       .simulate({ from: owner, fee: await fee() }),
-    /Stake required/,
+    /Stake required/
   );
   await stake(500_000_000_000_000n);
   assert.equal(BigInt((await readStake())[0]), 500_000_000_000_000n);
@@ -146,7 +150,7 @@ try {
     board.methods
       .post(text, length)
       .simulate({ from: owner, fee: await fee() }),
-    /24-hour post limit reached/,
+    /24-hour post limit reached/
   );
   await stake(500_000_000_000_000n);
   assert.equal(BigInt((await readStake())[0]), 1_000_000_000_000_000n);
@@ -162,23 +166,23 @@ try {
     await recoveredWallet.createSchnorrInitializerlessAccount(
       secret,
       salt,
-      signingKey,
+      signingKey
     )
   ).address;
   assert.equal(
     recoveredOwner.toString(),
     owner.toString(),
-    "Imported keys must restore the same Aztec address",
+    "Imported keys must restore the same Aztec address"
   );
   await recoveredWallet.registerContract(instance, boardArtifact);
   await recoveredWallet.registerContract(
     sponsor,
-    SponsoredFPCContract.artifact,
+    SponsoredFPCContract.artifact
   );
   const recoveredBoard = await Contract.at(
     instance.address,
     boardArtifact,
-    recoveredWallet,
+    recoveredWallet
   );
   const readRecoveredStake = async () => {
     const result = await recoveredBoard.methods
@@ -190,17 +194,17 @@ try {
   assert.equal(
     BigInt(recoveredBefore[0]),
     1_000_000_000_000_000n,
-    "Imported account must recover its stake",
+    "Imported account must recover its stake"
   );
   assert.equal(
     BigInt(recoveredBefore[1]),
     BigInt(l1Owner),
-    "Imported stake must remain bound to the same L1 wallet",
+    "Imported stake must remain bound to the same L1 wallet"
   );
   assert.equal(
     BigInt(recoveredBefore[3]),
     4n,
-    "Imported account must recover its remaining quota",
+    "Imported account must recover its remaining quota"
   );
   const recoveredFingerprint = "Recovered browser account post";
   const recoveredPayload = encodeDFMessage(recoveredFingerprint);
@@ -214,7 +218,7 @@ try {
       await recoveredBoard.methods
         .get_post_count()
         .simulate({ from: recoveredOwner })
-    ).result,
+    ).result
   );
   const recoveredPostData = await recoveredBoard.methods
     .get_post(recoveredCount - 1n)
@@ -223,14 +227,14 @@ try {
     recoveredPostData.result ?? recoveredPostData;
   assert.equal(
     decodeDFMessage(recoveredFields, recoveredLength),
-    recoveredFingerprint,
+    recoveredFingerprint
   );
 
   await assert.rejects(
     recoveredBoard.methods
       .withdraw()
       .simulate({ from: recoveredOwner, fee: await fee() }),
-    /Wait 24 hours/,
+    /Wait 24 hours/
   );
   await debug.warpL2TimeAtLeastBy(86_500);
   assert.equal(BigInt((await readRecoveredStake())[3]), 10n);
@@ -245,7 +249,7 @@ try {
   const witness = await node.getL2ToL1MembershipWitness(
     exit.receipt.txHash,
     effect.data.l2ToL1Msgs[index],
-    index,
+    index
   );
   assert(witness, "Withdrawal proof missing");
   const path = witness.siblingPath
@@ -257,13 +261,13 @@ try {
       witness.epochNumber,
       witness.numCheckpointsInEpoch,
       witness.leafIndex,
-      path,
+      path
     )
   ).wait();
   assert.equal(await portal.deposits(l1Owner), 0n);
   assert.equal(BigInt((await readRecoveredStake())[0]), 0n);
   console.log(
-    "PASS clean-account recovery, remaining quota, posting, 24h lock, L1 refund",
+    "PASS clean-account recovery, remaining quota, posting, 24h lock, L1 refund"
   );
 } finally {
   await recoveredWallet?.stop();

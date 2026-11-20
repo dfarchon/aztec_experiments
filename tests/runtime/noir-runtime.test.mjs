@@ -6,7 +6,9 @@ import { build } from "esbuild";
 
 test("Noir WASM initializes without a document URL or network fetch", async () => {
   const compiled = await build({
-    entryPoints: [new URL("./noir-runtime.mjs", import.meta.url).pathname],
+    entryPoints: [
+      new URL("../../runtime/noir-runtime.mjs", import.meta.url).pathname,
+    ],
     bundle: true,
     platform: "node",
     format: "cjs",

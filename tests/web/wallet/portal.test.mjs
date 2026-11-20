@@ -8,8 +8,11 @@ import {
   submitDeposit,
   verifyPortal,
   waitForDepositReceipt,
-} from "./portal.ts";
-import { MAX_STAKE, STAKE_UNIT } from "./stake-policy.ts";
+} from "../../../web/src/features/wallet/portal.ts";
+import {
+  MAX_STAKE,
+  STAKE_UNIT,
+} from "../../../web/src/features/wallet/stake-policy.ts";
 
 const address = (digit) => `0x${digit.repeat(40)}`;
 const payer = address("1"),

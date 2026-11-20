@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { listEthereumWallets, switchEthereumChain } from "./l1.ts";
+import {
+  listEthereumWallets,
+  switchEthereumChain,
+} from "../../../web/src/features/wallet/l1.ts";
 
 test("discovers announced and legacy L1 wallets without duplicates", async (t) => {
   const previous = globalThis.window;

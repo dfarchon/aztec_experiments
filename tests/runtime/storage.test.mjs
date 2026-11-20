@@ -1,11 +1,12 @@
+import "fake-indexeddb/auto";
+
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { AztecIndexedDBStore } from "@aztec-labs/kv-store/deprecated/indexeddb";
 import { createLogger } from "@aztec-labs/foundation/log";
-import "fake-indexeddb/auto";
+import { AztecIndexedDBStore } from "@aztec-labs/kv-store/deprecated/indexeddb";
 
-import { indexedDBStoreNamespace } from "./storage.mjs";
+import { indexedDBStoreNamespace } from "../../runtime/storage.mjs";
 
 const config = {
   dataDirectory: `notch-storage-${Date.now()}`,

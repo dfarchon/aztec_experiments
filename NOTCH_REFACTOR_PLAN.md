@@ -233,7 +233,7 @@ web/
     ui/                  # Used primitives: Icon, LoadingIcon, StepIndicator, toasts
     appearance/          # Theme, brand, interactive background, onboarding
     styles.css           # Split only where a clear component boundary helps
-  tests/                 # Or colocated tests; use one consistent convention
+tests/                   # JavaScript tests grouped by web, runtime, protocol, tooling and e2e
 protocol/
   message.mjs            # Current message format and fee helpers used by scripts
 scripts/
@@ -268,7 +268,7 @@ Extract modules only along these responsibilities. Do not split every function i
 
 The owner must be able to understand the frontend without first reading the Aztec SDK. Reducing file count or moving existing code into more folders is not sufficient. Keep the UI familiar and make its implementation easier to follow.
 
-Use a feature-oriented layout. Keep a feature's components, domain types, and operations together; reserve `ui/` for primitives actually reused by the product. Use one consistent test convention, preferably tests beside their owning modules. Avoid deep folders and barrel exports that hide where a function is implemented.
+Use a feature-oriented layout. Keep a feature's components, domain types, and operations together; reserve `ui/` for primitives actually reused by the product. Keep JavaScript tests in the root `tests/` directory, grouped by their owning feature or subsystem; keep native contract tests with their toolchains. Avoid deep folders and barrel exports that hide where a function is implemented.
 
 A concrete wallet decomposition is:
 
@@ -411,7 +411,7 @@ Check the public domain's build identity, Notch title, headers, post reads, and 
 
 Use existing meaningful tests and move them with their owners. Add tests for changed boundaries and failure paths, not for every deleted line or mechanical move. Run targeted checks after a phase and the full relevant suite before release; do not rebuild/prove after every small edit.
 
-Use public testnet for real wallet verification under the user's existing testing preference. Do not remove the local-only guards from `test-df-stake-e2e.mjs` to make it run against testnet. If funded browser verification needs a wallet approval, request that specific action and report the remaining acceptance item instead of claiming a mocked test proves it.
+Use public testnet for real wallet verification under the user's existing testing preference. Do not remove the local-only guards from `tests/e2e/stake-flow.mjs` to make it run against testnet. If funded browser verification needs a wallet approval, request that specific action and report the remaining acceptance item instead of claiming a mocked test proves it.
 
 ## 7. Completion and rollback
 

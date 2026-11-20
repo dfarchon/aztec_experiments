@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createDepositSecret, hashDepositSecret } from "./deposit-secret.ts";
+import {
+  createDepositSecret,
+  hashDepositSecret,
+} from "../../../web/src/features/wallet/deposit-secret.ts";
 
 test("lightweight L1 stake secret matches the Aztec secret hash vector", () => {
   assert.equal(

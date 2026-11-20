@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { initializeTheme, toggleTheme } from "./theme.ts";
+import {
+  initializeTheme,
+  toggleTheme,
+} from "../../../web/src/appearance/theme.ts";
 
 test("theme initializes from the prepaint choice and persists changes", () => {
   const previous = {

@@ -8,13 +8,13 @@ import { createElement } from "react";
 import { renderToStaticMarkup as renderMarkup } from "react-dom/server";
 import { StaticRouter } from "react-router-dom/server.js";
 
-import { createBillboardController } from "./controller.ts";
+import { createBillboardController } from "../../../web/src/app/controller.ts";
 
 const compiled = await build({
   stdin: {
     contents:
       "export { PostTime, formatPostTime } from '../features/feed/PostTime.tsx'; export { App } from './App.tsx'; export { Feed } from '../features/feed/Feed.tsx';",
-    resolveDir: fileURLToPath(new URL(".", import.meta.url)),
+    resolveDir: fileURLToPath(new URL("../../../web/src/app", import.meta.url)),
   },
   bundle: true,
   platform: "node",

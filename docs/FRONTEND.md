@@ -20,7 +20,23 @@ Aztec SDK first.
 | `scripts/` | Contract, runtime, local-chain, deployment and release tooling |
 | `df-billboard/` | Current Noir contract, L1 stake portal, tests and deployment notes |
 
-Tests live beside the module they protect.
+JavaScript tests live under the root `tests/` directory, separate from production
+code. They import the owning modules directly and use Node's built-in test runner.
+
+| Path | Coverage | Command |
+| --- | --- | --- |
+| `tests/web/` | App/controller, feed, wallet and appearance | `npm run test:unit` |
+| `tests/runtime/` | Noir runtime and IndexedDB | `npm run test:unit` |
+| `tests/protocol/` | Message encoding and fees | `npm run test:message` |
+| `tests/tooling/` | Vite and local clock | `npm run test:unit` |
+| `tests/tooling/deployment.test.mjs` | Offline deployment/recovery | `npm run test:deployment` |
+| `tests/tooling/release.test.mjs` | Isolated static release packaging | `npm run test:release` |
+| `tests/e2e/stake-flow.mjs` | Stake, claim, post and withdraw on local chains | `npm run test:e2e` |
+
+Native contract tests stay in `df-billboard/test/` and
+`df-billboard/portal/test/` for their respective toolchains. The end-to-end
+script requires a local deployment and rejects public chains; it is not part of
+`npm run check` or `npm test`.
 
 ## State ownership
 

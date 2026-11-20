@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+
 import { GasFees } from "@aztec-labs/stdlib/gas";
+
 import {
   decodeDFMessage,
   encodeDFMessage,
   getBillboardFeeOptions,
-} from "./message.mjs";
+} from "../../protocol/message.mjs";
 
 function pack(text) {
   return Array.from({ length: 17 }, (_, i) => {

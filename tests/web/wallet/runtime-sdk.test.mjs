@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createAztecRuntime } from "../../../../runtime/wallet-runtime.mjs";
+import { createAztecRuntime } from "../../../runtime/wallet-runtime.mjs";
 
 test("the heavy Aztec SDK is lazy, shared, timed out and retryable", async (t) => {
   const scripts = [];
@@ -36,7 +36,8 @@ test("the heavy Aztec SDK is lazy, shared, timed out and retryable", async (t) =
     else delete globalThis.window;
   });
 
-  const { loadAztecSdk } = await import("./runtime-sdk.ts");
+  const { loadAztecSdk } =
+    await import("../../../web/src/features/wallet/runtime-sdk.ts");
   assert.equal(scripts.length, 0);
   const first = loadAztecSdk();
   assert.equal(loadAztecSdk(), first);

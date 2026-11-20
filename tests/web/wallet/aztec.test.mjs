@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { claimDeposit, createAztecBoardSession } from "./aztec.ts";
+import {
+  claimDeposit,
+  createAztecBoardSession,
+} from "../../../web/src/features/wallet/aztec.ts";
 
 const config = {
   environment: "local",
