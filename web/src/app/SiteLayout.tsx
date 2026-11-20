@@ -20,9 +20,10 @@ export function SiteLayout({
     controller.getSnapshot
   );
   const theme = useTheme();
+  const cloudsMode = view.restoring || view.busy ? "low" : "normal";
   return (
     <div className="billboard-app">
-      <AsciiClouds theme={theme} />
+      <AsciiClouds theme={theme} mode={cloudsMode} />
       <a href="#main-content" className="skip-link">
         Skip to content
       </a>

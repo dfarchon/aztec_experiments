@@ -13,7 +13,7 @@ Aztec SDK first.
 | `web/src/features/feed/` | Public post reader, pinned feed cache, `Feed`, `PostTime` and `Composer` |
 | `web/src/features/wallet/` | Wallet panel and views, account persistence, import/export, L1 portal operations, Aztec board operations and transaction sequencing |
 | `web/src/ui/` | Reused product primitives such as icons, loading state, steps and notifications |
-| `web/src/appearance/` | Theme, brand, interactive background and onboarding guide |
+| `web/src/appearance/` | Theme, brand, worker-backed interactive background and onboarding guide |
 | `protocol/message.mjs` | Post encoding/decoding and sponsored-fee estimation shared with scripts |
 | `runtime/` | Lazy SDK entry, wallet/PXE runtime, Noir runtime and IndexedDB namespace helper |
 | `runtime/generated/` | Ignored SDK and worker build output |
@@ -58,6 +58,14 @@ the controller:
 
 The UI never signs a transaction, reads an account secret, polls a receipt, or
 calls a contract method.
+
+The interactive background lives in `appearance/AsciiClouds.tsx`. On supporting
+browsers it transfers the canvas to `appearance/clouds.worker.ts`, which runs the
+shared `appearance/clouds-renderer.ts` outside the main thread. The worker keeps
+the existing noise, glyph and palette logic, precomputes per-cell geometry, and
+runs at a lower frame rate while wallet restore or transaction work is active.
+Browsers without OffscreenCanvas fall back to the same renderer at reduced main
+thread frequency. Reduced-motion users receive one static frame.
 
 `app/SiteLayout.tsx` keeps the background, header, wallet panel, notifications and
 content frame mounted outside the route's Suspense boundary. Router transitions
