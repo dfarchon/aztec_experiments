@@ -11,7 +11,7 @@ import { initializeTheme } from "./appearance/theme";
 
 initializeTheme();
 createRoot(document.getElementById("root")!).render(
-  <BrowserRouter>
+  <BrowserRouter future={{ v7_startTransition: true }}>
     <SiteRoutes />
   </BrowserRouter>
 );

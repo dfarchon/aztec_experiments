@@ -9,6 +9,12 @@ content filters.
 
 [Public testnet site](https://df-billboard-testnet.netlify.app/) · [Frontend guide](docs/FRONTEND.md) · [Product design and usage](df-billboard/README.md) · [Deployment guide](df-billboard/DEPLOYMENT.md)
 
+The information icon in the header opens `/about`,
+which explains the project's origins, staking model and privacy limits.
+About can be read without connecting a wallet or loading the wallet runtime.
+The logo and the About page's back link return to the board. The wallet entry
+remains available on both pages.
+
 ## Project layout
 
 | Path | Purpose |

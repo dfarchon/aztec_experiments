@@ -194,14 +194,165 @@ html[data-theme="light"] .ascii-clouds {
   letter-spacing: 0.12em;
   line-height: 1;
 }
-.header-spacer {
-  flex: 1;
-}
 .header-actions {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-left: auto;
+}
+.about-page {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) var(--bg);
+  padding: 24px 40px 32px;
+  background: var(--bg);
+  overflow-wrap: anywhere;
+}
+.about-page:focus {
+  outline: none;
+}
+.about-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  min-height: 40px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 13px;
+}
+.about-back svg {
+  transform: rotate(180deg);
+}
+.about-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 80px;
+  align-items: center;
+  gap: 24px;
+  padding-bottom: 0;
+}
+.about-eyebrow {
+  color: var(--accent);
+  font: 11px/1.5 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.about-page h1 {
+  margin: 10px 0 12px;
+  font-size: clamp(28px, 3.5vw, 38px);
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+}
+.about-intro {
+  max-width: 560px;
+  font-size: 16px;
+  line-height: 1.65;
+}
+.about-mark {
+  width: 80px;
+  height: 80px;
+  color: var(--heading);
+}
+.about-section,
+.about-footer {
+  margin-top: 36px;
+}
+.about-page h2 {
+  display: block;
+  margin: 8px 0 12px;
+  font-size: clamp(20px, 2.5vw, 23px);
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+.about-section > p:not(.about-eyebrow),
+.about-footer > p:not(.about-eyebrow) {
+  max-width: 680px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.about-section > p + p {
+  margin-top: 10px;
+}
+.about-flow {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: about-step;
+}
+.about-flow li {
+  position: relative;
+  padding-left: 30px;
+  counter-increment: about-step;
+}
+.about-flow li::before {
+  content: "0" counter(about-step);
+  position: absolute;
+  top: 3px;
+  left: 0;
+  color: var(--accent);
+  font: 12px/1.7 var(--font-mono);
+}
+.about-flow h3 {
+  margin: 0 0 4px;
+  color: var(--heading);
+  font-size: 14px;
+  font-weight: 500;
+}
+.about-flow p {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.about-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 24px;
+  margin-top: 20px;
+}
+.about-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 14px;
+}
+.about-board-link {
+  padding: 10px 18px;
+  background: var(--accent-tint);
+  box-shadow: inset -2px -2px 0 var(--accent-strong);
+  color: var(--accent);
+  text-decoration: none;
+}
+.about-board-link:hover {
+  background: var(--line);
+}
+@media (max-width: 600px) {
+  .about-page {
+    padding: 20px 20px 28px;
+  }
+  .about-hero {
+    grid-template-columns: minmax(0, 1fr) 48px;
+    gap: 16px;
+  }
+  .about-mark {
+    width: 48px;
+    height: 48px;
+  }
+  .about-intro {
+    font-size: 15px;
+  }
+  .about-section,
+  .about-footer {
+    margin-top: 28px;
+  }
 }
 .header-control {
   display: inline-flex;
@@ -223,11 +374,13 @@ html[data-theme="light"] .ascii-clouds {
   border-color: transparent;
   box-shadow: inset -2px -2px 0 var(--accent-strong);
 }
-.theme-toggle {
+.theme-toggle,
+.info-link {
   width: 44px;
   padding: 0;
 }
-.theme-toggle svg {
+.theme-toggle svg,
+.info-link svg {
   width: 20px;
   height: 20px;
 }
@@ -1065,14 +1218,18 @@ textarea::placeholder {
   border: 0;
   margin-bottom: 0;
 }
-.feed-card.driver-active-element {
-  padding: 16px;
-  border: 1px solid var(--accent-strong);
-  border-radius: 0;
+.product-main:has(> .board-content.driver-active-element) {
+  overflow: visible;
 }
-.feed-card.driver-active-element #refresh {
-  top: 16px;
-  right: 16px;
+.board-content.driver-active-element {
+  position: relative;
+  z-index: 3;
+  overflow: visible;
+  background: var(--bg);
+  /* Match the guide's 8px opening and cover the composer beneath its edge. */
+  box-shadow: 0 0 0 8px var(--bg);
+  outline: 1px solid var(--accent-strong);
+  outline-offset: 7px;
 }
 .post-row:first-child {
   padding-right: 48px;
@@ -1136,9 +1293,6 @@ textarea::placeholder {
 @media (max-width: 760px) {
   .product-layout {
     width: calc(100% - 24px);
-  }
-  .header-spacer {
-    display: none;
   }
   .header-actions {
     display: flex;

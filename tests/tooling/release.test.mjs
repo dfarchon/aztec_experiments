@@ -23,6 +23,8 @@ test("Netlify applies isolation headers globally and rewrites only known pages",
     .split("\n")
     .map((line) => line.split(/\s+/));
   const pages = [
+    "/about",
+    "/about/",
     "/reports",
     "/reports/",
     "/fee-lab",

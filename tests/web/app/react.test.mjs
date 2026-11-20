@@ -13,7 +13,7 @@ import { createBillboardController } from "../../../web/src/app/controller.ts";
 const compiled = await build({
   stdin: {
     contents:
-      "export { PostTime, formatPostTime } from '../features/feed/PostTime.tsx'; export { App } from './App.tsx'; export { Feed } from '../features/feed/Feed.tsx';",
+      "export { PostTime, formatPostTime } from '../features/feed/PostTime.tsx'; export { App } from './App.tsx'; export { SiteLayout } from './SiteLayout.tsx'; export { Feed } from '../features/feed/Feed.tsx';",
     resolveDir: fileURLToPath(new URL("../../../web/src/app", import.meta.url)),
   },
   bundle: true,
@@ -34,7 +34,19 @@ new Function("require", "module", "exports", compiled.outputFiles[0].text)(
   module,
   module.exports
 );
-const { App, Feed, PostTime, formatPostTime } = module.exports;
+const {
+  App: Board,
+  SiteLayout,
+  Feed,
+  PostTime,
+  formatPostTime,
+} = module.exports;
+const App = ({ controller }) =>
+  createElement(
+    SiteLayout,
+    { controller },
+    createElement(Board, { controller })
+  );
 const renderToStaticMarkup = (element) =>
   renderMarkup(createElement(StaticRouter, { location: "/" }, element));
 
@@ -269,7 +281,9 @@ test("Onchain Reality shell keeps the wallet above the board", () => {
   assert.match(html, /class="billboard-app"/);
   assert.match(html, /<canvas class="ascii-clouds" aria-hidden="true">/);
   const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
-  assert.doesNotMatch(header, /Settings|About/);
+  assert.doesNotMatch(header, /Settings/);
+  assert.match(header, /aria-label="About Notch"/);
+  assert.match(header, /href="\/about"/);
   assert.match(header, /id="walletMenu"/);
   assert.match(header, /class="header-control theme-toggle"/);
   assert.match(

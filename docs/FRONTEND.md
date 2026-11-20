@@ -59,6 +59,17 @@ the controller:
 The UI never signs a transaction, reads an account secret, polls a receipt, or
 calls a contract method.
 
+`app/SiteLayout.tsx` keeps the background, header, wallet panel, notifications and
+content frame mounted outside the route's Suspense boundary. Router transitions
+retain the current content while the next page's code loads, so the first About
+visit does not flash a loading screen or restart the background animation.
+
+`app/AboutRoute.tsx` is a lazy, static `/about` page for the project's origins,
+mechanism and privacy boundaries. The header information icon opens About; its
+back link and the logo return to the board. Reading About does not initialize the
+feed or load the wallet runtime. Navigating away from the board does not dispose
+its module-owned runtime; returning reuses the existing session.
+
 ## What is persisted
 
 Browser names and file formats are compatibility contracts:

@@ -4,6 +4,7 @@ const linePaths = {
 };
 
 const pixelPaths = {
+  info: "M6 1h8v2H6z M3 3h3v2H3z M14 3h3v2h-3z M1 5h2v10H1z M17 5h2v10h-2z M3 15h3v2H3z M14 15h3v2h-3z M6 17h8v2H6z M9 5h2v2H9z M8 9h3v5H8z M7 14h6v2H7z",
   warning:
     "M9 2h2v2H9z M7 4h2v4H7z M11 4h2v4h-2z M5 8h2v4H5z M13 8h2v4h-2z M3 12h2v4H3z M15 12h2v4h-2z M3 16h14v2H3z M9 7h2v5H9z M9 13h2v2H9z",
   arrow:

@@ -11,7 +11,7 @@ const headers = {
   'X-Content-Type-Options': 'nosniff',
   'Cache-Control': 'no-cache',
 };
-const appRoutes = ['reports', 'fee-lab', 'l1-post-lab'];
+const appRoutes = ['about', 'reports', 'fee-lab', 'l1-post-lab'];
 
 export function vercelConfig() {
   return {

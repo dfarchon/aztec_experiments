@@ -291,7 +291,7 @@ test("Vercel config isolates workers and does not rewrite missing assets to HTML
   );
   assert.equal(headers.headers["Cross-Origin-Opener-Policy"], "same-origin");
   assert.equal(filesystem.handle, "filesystem");
-  for (const route of ["/reports", "/fee-lab", "/l1-post-lab"])
+  for (const route of ["/about", "/reports", "/fee-lab", "/l1-post-lab"])
     assert(new RegExp(`^${app.src}$`).test(route));
   for (const route of [
     "/missing.js",

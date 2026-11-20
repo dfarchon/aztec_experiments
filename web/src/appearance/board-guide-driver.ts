@@ -7,8 +7,8 @@ export function startBoardGuide(seenKey: string) {
     popoverClass: "billboard-tour",
     overlayColor: "#000",
     overlayOpacity: 0.62,
-    stagePadding: 12,
-    stageRadius: 4,
+    stagePadding: 8,
+    stageRadius: 0,
     popoverOffset: 16,
     disableActiveInteraction: true,
     skipMissingElement: true,
@@ -22,7 +22,7 @@ export function startBoardGuide(seenKey: string) {
     },
     steps: [
       {
-        element: ".feed-card",
+        element: ".board-content",
         popover: {
           title: "Public board",
           description:
