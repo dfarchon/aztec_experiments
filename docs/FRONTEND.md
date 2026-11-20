@@ -65,7 +65,9 @@ shared `appearance/clouds-renderer.ts` outside the main thread. The worker keeps
 the existing noise, glyph and palette logic, precomputes per-cell geometry, and
 runs at a lower frame rate while wallet restore or transaction work is active.
 Browsers without OffscreenCanvas fall back to the same renderer at reduced main
-thread frequency. Reduced-motion users receive one static frame.
+thread frequency. Worker creation, transfer, asynchronous errors and a missing
+startup acknowledgement fall back using a fresh canvas. Reduced-motion mode
+stops the previous draw timer and renders a static frame.
 
 `app/SiteLayout.tsx` keeps the background, header, wallet panel, notifications and
 content frame mounted outside the route's Suspense boundary. Router transitions

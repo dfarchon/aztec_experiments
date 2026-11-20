@@ -1,10 +1,11 @@
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 
 import type {
   CloudsMode,
   CloudsPanelRect,
   CloudsTheme,
   CloudsWorkerMessage,
+  CloudsWorkerReply,
 } from "./clouds-protocol.ts";
 import { AsciiCloudsRenderer } from "./clouds-renderer.ts";
 
@@ -38,13 +39,31 @@ function createWorkerController(
   initialTheme: CloudsTheme,
   initialMode: CloudsMode,
   motion: MediaQueryList,
-  getMode: () => CloudsMode
+  getMode: () => CloudsMode,
+  onFailure: () => void
 ): CloudsController {
   const worker = new Worker(new URL("./clouds.worker.ts", import.meta.url), {
     type: "module",
   });
-  const offscreen = canvas.transferControlToOffscreen();
-  const send = (message: CloudsWorkerMessage) => worker.postMessage(message);
+  let failed = false;
+  const onError = (event?: Event) => {
+    event?.preventDefault();
+    if (failed) return;
+    failed = true;
+    clearTimeout(startupTimer);
+    worker.terminate();
+    onFailure();
+  };
+  const onReady = (event: MessageEvent<CloudsWorkerReply>) => {
+    if (event.data?.type === "ready") clearTimeout(startupTimer);
+  };
+  worker.addEventListener("error", onError);
+  worker.addEventListener("messageerror", onError);
+  worker.addEventListener("message", onReady);
+  const startupTimer = setTimeout(onError, 5000);
+  const send = (message: CloudsWorkerMessage) => {
+    if (!failed) worker.postMessage(message);
+  };
   let pointerFrame = 0;
   let pointer: { x: number; y: number } | null = null;
 
@@ -59,19 +78,29 @@ function createWorkerController(
       dpr: window.devicePixelRatio || 1,
     });
 
-  worker.postMessage(
-    {
-      type: "init",
-      canvas: offscreen,
-      theme: initialTheme,
-      mode: effectiveMode(initialMode),
-      width: window.innerWidth,
-      height: window.innerHeight,
-      dpr: window.devicePixelRatio || 1,
-      panel: panelRect(),
-    },
-    [offscreen]
-  );
+  try {
+    const offscreen = canvas.transferControlToOffscreen();
+    worker.postMessage(
+      {
+        type: "init",
+        canvas: offscreen,
+        theme: initialTheme,
+        mode: effectiveMode(initialMode),
+        width: window.innerWidth,
+        height: window.innerHeight,
+        dpr: window.devicePixelRatio || 1,
+        panel: panelRect(),
+      },
+      [offscreen]
+    );
+  } catch (error) {
+    clearTimeout(startupTimer);
+    worker.removeEventListener("error", onError);
+    worker.removeEventListener("messageerror", onError);
+    worker.removeEventListener("message", onReady);
+    worker.terminate();
+    throw error;
+  }
 
   const onPointerMove = (event: PointerEvent) => {
     pointer = { x: event.clientX, y: event.clientY };
@@ -125,6 +154,10 @@ function createWorkerController(
       send({ type: "theme", theme });
     },
     dispose() {
+      clearTimeout(startupTimer);
+      worker.removeEventListener("error", onError);
+      worker.removeEventListener("messageerror", onError);
+      worker.removeEventListener("message", onReady);
       cancelAnimationFrame(pointerFrame);
       window.removeEventListener("resize", onResize);
       window.removeEventListener("pointermove", onPointerMove);
@@ -187,7 +220,10 @@ function createMainThreadController(
   };
   const onVisibility = () => schedule();
   const onMotion = () => schedule();
-  const onPanel = () => renderer.setPanel(panelRect());
+  const onPanel = () => {
+    renderer.setPanel(panelRect());
+    if (effectiveMode() === "static") draw(0);
+  };
 
   renderer.setPanel(panelRect());
   resize();
@@ -245,33 +281,49 @@ export const AsciiClouds = memo(function AsciiClouds({
   const controllerRef = useRef<CloudsController | null>(null);
   const themeRef = useRef(theme);
   const modeRef = useRef(mode);
+  const [fallback, setFallback] = useState(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const getMode = () => modeRef.current;
-    const controller =
-      typeof Worker !== "undefined" && "transferControlToOffscreen" in canvas
-        ? createWorkerController(
-            canvas,
-            themeRef.current,
-            modeRef.current,
-            motion,
-            getMode
-          )
-        : createMainThreadController(
-            canvas,
-            themeRef.current,
-            modeRef.current,
-            motion
-          );
+    let active = true;
+    let controller: CloudsController | null = null;
+    if (
+      !fallback &&
+      typeof Worker !== "undefined" &&
+      "transferControlToOffscreen" in canvas
+    ) {
+      try {
+        controller = createWorkerController(
+          canvas,
+          themeRef.current,
+          modeRef.current,
+          motion,
+          getMode,
+          () => {
+            if (active) setFallback(true);
+          }
+        );
+      } catch {
+        setFallback(true);
+      }
+    } else {
+      controller = createMainThreadController(
+        canvas,
+        themeRef.current,
+        modeRef.current,
+        motion
+      );
+    }
     controllerRef.current = controller;
     return () => {
+      active = false;
       controller?.dispose();
       controllerRef.current = null;
     };
-  }, []);
+  }, [fallback]);
 
   useEffect(() => {
     themeRef.current = theme;
@@ -283,5 +335,13 @@ export const AsciiClouds = memo(function AsciiClouds({
     controllerRef.current?.setMode(mode);
   }, [mode]);
 
-  return <canvas ref={canvasRef} className="ascii-clouds" aria-hidden="true" />;
+  // A transferred canvas cannot obtain a main-thread context; replace it on failure.
+  return (
+    <canvas
+      key={fallback ? "main" : "worker"}
+      ref={canvasRef}
+      className="ascii-clouds"
+      aria-hidden="true"
+    />
+  );
 });

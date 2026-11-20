@@ -1,5 +1,6 @@
 export type CloudsTheme = "dark" | "light";
 export type CloudsMode = "normal" | "low" | "paused" | "static";
+export type CloudsWorkerReply = { type: "ready" };
 
 export interface CloudsPanelRect {
   left: number;
