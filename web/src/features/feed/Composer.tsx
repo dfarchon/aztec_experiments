@@ -10,6 +10,7 @@ interface ComposerAction {
   loading: boolean;
   pendingStake: boolean;
   ariaLabel?: string;
+  hint?: string;
 }
 
 function composerAction(view: BillboardView): ComposerAction {
@@ -24,13 +25,10 @@ function composerAction(view: BillboardView): ComposerAction {
     };
   if (view.posting)
     return {
+      ariaLabel: "Posting. This may take 1–2 minutes.",
       disabled: true,
-      label: (
-        <span className="post-status">
-          <span>Posting…</span>
-          <small>May take 1–2 min</small>
-        </span>
-      ),
+      hint: "Posting may take 1–2 minutes.",
+      label: "Posting…",
       loading: true,
       pendingStake,
     };
@@ -105,7 +103,8 @@ export function Composer({ view, controller }: ViewProps) {
           id="post"
           type="button"
           aria-busy={view.posting}
-          aria-label={action.ariaLabel}
+          aria-label={action.ariaLabel || action.hint}
+          title={action.hint}
           disabled={action.disabled}
           onClick={() =>
             action.pendingStake || !view.connected || !view.canPost

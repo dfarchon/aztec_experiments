@@ -535,7 +535,15 @@ test("post button shows the shared loading icon only during posting", () => {
     assert.ok(button.includes(`aria-busy="${posting}"`));
     assert.equal(button.includes('class="loading-icon"'), posting);
     assert.equal(button.includes("Posting…"), posting);
-    assert.equal(button.includes("May take 1–2 min"), posting);
+    assert.equal(
+      button.includes('aria-label="Posting. This may take 1–2 minutes."'),
+      posting
+    );
+    assert.equal(
+      button.includes('title="Posting may take 1–2 minutes."'),
+      posting
+    );
+    assert.doesNotMatch(button, /post-status|<small/);
     assert.match(button, /disabled=""/);
   }
   base.dispose();
