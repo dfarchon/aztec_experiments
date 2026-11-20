@@ -113,7 +113,7 @@ export function Composer({ view, controller }: ViewProps) {
               : void controller.post()
           }
         >
-          {action.label}{" "}
+          <span className="post-button-label">{action.label}</span>
           {action.loading ? <LoadingIcon /> : <Icon name="arrow" />}
         </button>
       </div>
