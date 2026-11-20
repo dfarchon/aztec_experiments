@@ -179,3 +179,70 @@ test("stake preflight checks the existing deposit once and refuses recovery or c
     assert.equal(prompts, 0);
   }
 });
+
+test("recoverable deposits bind gas estimation and submission to the signed nonce", async () => {
+  let nonce = 7;
+  const overrides = [];
+  const deposit = async (_hash, options) => {
+    overrides.push(options);
+    return { hash: "l1-hash" };
+  };
+  deposit.estimateGas = async (_hash, options) => {
+    overrides.push(options);
+    return 50000n;
+  };
+  const portal = { deposits: async () => 0n, connect: () => ({ deposit }) };
+  const injected = {
+    request: async ({ method }) => {
+      if (method === "eth_accounts") return [payer];
+      if (method === "eth_chainId") return "0x7a69";
+      if (method === "eth_getTransactionCount")
+        return `0x${nonce.toString(16)}`;
+      throw Error(`Unexpected wallet call: ${method}`);
+    },
+  };
+  const job = {
+    amount: STAKE_UNIT.toString(),
+    secretHash: `0x${"a".repeat(64)}`,
+    nonce: 7,
+  };
+  let submitted = false;
+  assert.equal(
+    await submitDeposit(
+      portal,
+      injected,
+      payer,
+      job,
+      () => {},
+      () => {
+        submitted = true;
+      },
+      true
+    ),
+    "l1-hash"
+  );
+  assert(submitted);
+  assert.deepEqual(overrides, [
+    { value: STAKE_UNIT, nonce: 7 },
+    { value: STAKE_UNIT, nonce: 7 },
+  ]);
+  nonce = 8;
+  submitted = false;
+  overrides.length = 0;
+  await assert.rejects(
+    submitDeposit(
+      portal,
+      injected,
+      payer,
+      job,
+      () => {},
+      () => {
+        submitted = true;
+      },
+      true
+    ),
+    (error) => error.code === "NONCE_CHANGED"
+  );
+  assert(!submitted);
+  assert.deepEqual(overrides, []);
+});

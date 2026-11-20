@@ -53,6 +53,8 @@ the controller:
 - `features/wallet/portal.ts` performs concrete Sepolia portal calls.
 - `features/wallet/aztec.ts` performs concrete Aztec board and PXE-facing calls.
 - `features/wallet/account-storage.ts` owns the durable browser account record.
+- `features/wallet/wallet-recovery.ts` owns versioned signature messages and
+  domain-separated account/deposit key derivation; no SDK is needed before payment.
 - `features/wallet/account-files.ts` owns versioned import/export validation.
 - `features/wallet/wallet-session.ts` owns the silent-reconnect preference.
 
@@ -251,5 +253,11 @@ submit a claim. Closing the background-restoration dialog does not invalidate
 the session; disconnecting, replacing the account, or disposing the flow does.
 
 `verifyPortal` requires both the Aztec node's Inbox and the L1 portal's Inbox to
-match the deployment configuration. Deposit preflight reads the L1 stake once
-and checks account recovery and the cap before requesting a wallet signature.
+match the deployment configuration. Stake preflight checks the existing L1 balance before deriving new keys or
+requesting payment. Existing stakes without local keys enter signature recovery
+instead of submitting a new deposit. `readDepositHistory` scans bounded block
+ranges and validates transactions; `depositWasClaimed` computes the message
+nullifier locally and sends only the siloed nullifier to the node. Recovery
+checkpoints persist across refresh/export, and L1/L2 balances must reconcile
+before the flow permits posting or more stake. See the product README for the
+frozen `l1-signature-v1` derivation scheme and legacy account limitations.

@@ -29,6 +29,11 @@ function parseDeposit(value: unknown): DepositRecord | null {
     typeof deposit.secretHash !== "string"
   )
     throw new Error("Backup deposit secret does not match its hash");
+  if (
+    deposit.nonce !== undefined &&
+    (!Number.isSafeInteger(deposit.nonce) || (deposit.nonce as number) < 0)
+  )
+    throw new Error("Backup deposit nonce is invalid");
   try {
     if (
       hashDepositSecret(BigInt(deposit.secret)).toLowerCase() !==
@@ -82,6 +87,35 @@ export async function readAccountFile(
   const backup = asObject(parsed);
   if (!backup) throw new Error("Backup has an invalid format");
   if (
+    backup.keyDerivation !== undefined &&
+    backup.keyDerivation !== "l1-signature-v1"
+  )
+    throw new Error("Backup account derivation version is not supported");
+  let recoveryAmount: string | undefined;
+  if (backup.recoveryAmount !== undefined) {
+    if (
+      typeof backup.recoveryAmount !== "string" ||
+      !/^\d+$/.test(backup.recoveryAmount) ||
+      BigInt(backup.recoveryAmount) <= 0n ||
+      BigInt(backup.recoveryAmount) > 4n * STAKE_UNIT
+    )
+      throw new Error("Backup recovery amount is invalid");
+    recoveryAmount = backup.recoveryAmount;
+  }
+  let recoveryDeposits: DepositRecord[] | undefined;
+  if (backup.recoveryDeposits !== undefined) {
+    if (
+      !Array.isArray(backup.recoveryDeposits) ||
+      backup.recoveryDeposits.length > 128
+    )
+      throw new Error("Backup recovery deposits are invalid");
+    recoveryDeposits = backup.recoveryDeposits.map((entry) => {
+      const deposit = parseDeposit(entry);
+      if (!deposit) throw new Error("Backup recovery deposit is missing");
+      return deposit;
+    });
+  }
+  if (
     (backup.version !== undefined && Number(backup.version) !== 1) ||
     (backup.kind !== undefined && backup.kind !== "notch-account")
   )
@@ -129,6 +163,9 @@ export async function readAccountFile(
   }
 
   return {
+    keyDerivation: backup.keyDerivation,
+    recoveryAmount,
+    recoveryDeposits,
     keys: hasKeys
       ? {
           secretKey: backup.secretKey,
@@ -155,6 +192,9 @@ export function writeAccountFile(
       {
         kind: "notch-account",
         version: 1,
+        keyDerivation: record.keyDerivation,
+        recoveryAmount: record.recoveryAmount,
+        recoveryDeposits: record.recoveryDeposits,
         secretKey: record.secretKey,
         salt: record.salt,
         signingKey: record.signingKey,
@@ -187,6 +227,9 @@ export function importedAccountRecord(
 ): WalletAccountRecord {
   return {
     payer,
+    keyDerivation: imported.keyDerivation,
+    recoveryAmount: imported.recoveryAmount,
+    recoveryDeposits: imported.recoveryDeposits,
     secretKey: imported.keys?.secretKey || "",
     salt: imported.keys?.salt || "",
     signingKey: imported.keys?.signingKey || "",

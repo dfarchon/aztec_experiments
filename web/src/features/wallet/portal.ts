@@ -4,6 +4,7 @@ import {
   Interface,
   JsonRpcProvider,
   keccak256,
+  zeroPadValue,
 } from "ethers";
 
 import {
@@ -30,6 +31,7 @@ export const portalABI = [
   "function ROLLUP_VERSION() view returns(uint256)",
   "function MAX_STAKE() view returns(uint256)",
   "event Deposited(address indexed depositor,uint256 amount,bytes32 indexed key,uint256 index,bytes32 indexed secretHash)",
+  "event Withdrawn(address indexed depositor,uint256 amount)",
 ];
 
 const portalInterface = new Interface(portalABI);
@@ -37,13 +39,13 @@ const portalInterface = new Interface(portalABI);
 interface DepositMethod {
   (
     secretHash: string,
-    overrides?: { value: bigint }
+    overrides?: { value: bigint; nonce?: number }
   ): Promise<{
     hash: string;
   }>;
   estimateGas(
     secretHash: string,
-    overrides?: { value: bigint }
+    overrides?: { value: bigint; nonce?: number }
   ): Promise<bigint>;
 }
 
@@ -162,6 +164,80 @@ export async function findDeposit(
   );
 }
 
+export async function readDepositHistory(
+  provider: JsonRpcProvider,
+  config: NotchDeployment,
+  payer: string,
+  expectedBalance: bigint
+) {
+  const end = await provider.getBlockNumber();
+  const from = config.l1Stake.deploymentBlock ?? 0;
+  const topics = ["Deposited", "Withdrawn"].map(
+    (name) => portalInterface.getEvent(name)!.topicHash
+  );
+  let balance = 0n;
+  let active: {
+    amount: string;
+    secretHash: string;
+    messageKey: string;
+    leafIndex: string;
+    l1Tx: string;
+    nonce: number;
+  }[] = [];
+  // Bound each RPC request instead of relying on an unlimited historical log query.
+  for (let start = from; start <= end; start += 2000) {
+    const logs = await provider.getLogs({
+      address: config.l1Stake.portal,
+      topics: [topics, zeroPadValue(payer, 32)],
+      fromBlock: start,
+      toBlock: Math.min(start + 1999, end),
+    });
+    logs.sort((a, b) => a.blockNumber - b.blockNumber || a.index - b.index);
+    for (const log of logs) {
+      const event = portalInterface.parseLog(log);
+      if (!event || event.args.depositor.toLowerCase() !== payer.toLowerCase())
+        throw new Error("Deposit recovery log mismatch");
+      const amount = BigInt(event.args.amount);
+      if (event.name === "Withdrawn") {
+        balance -= amount;
+        if (balance < 0n)
+          throw new Error("Incomplete deposit recovery history");
+        if (balance === 0n) active = [];
+      } else {
+        balance += amount;
+        active.push({
+          amount: amount.toString(),
+          secretHash: String(event.args.secretHash),
+          messageKey: String(event.args.key),
+          leafIndex: String(event.args.index),
+          l1Tx: log.transactionHash,
+          nonce: 0,
+        });
+      }
+    }
+  }
+  if (balance !== expectedBalance || balance > MAX_STAKE)
+    throw new Error(
+      "L1 stake history changed or is incomplete. Retry recovery."
+    );
+  for (const deposit of active) {
+    const transaction = await provider.getTransaction(deposit.l1Tx);
+    const call = transaction && portalInterface.parseTransaction(transaction);
+    if (
+      !transaction ||
+      transaction.from.toLowerCase() !== payer.toLowerCase() ||
+      transaction.to?.toLowerCase() !== config.l1Stake.portal.toLowerCase() ||
+      transaction.value !== BigInt(deposit.amount) ||
+      call?.name !== "deposit" ||
+      String(call.args.secretHash).toLowerCase() !==
+        deposit.secretHash.toLowerCase()
+    )
+      throw new Error("Deposit recovery transaction mismatch");
+    deposit.nonce = transaction.nonce;
+  }
+  return active;
+}
+
 export async function waitForDepositReceipt(
   provider: JsonRpcProvider,
   portal: PortalContract,
@@ -196,6 +272,7 @@ export async function waitForDepositReceipt(
     transaction.to?.toLowerCase() !== config.l1Stake.portal.toLowerCase() ||
     transaction.from.toLowerCase() !== payer.toLowerCase() ||
     transaction.value !== BigInt(job.amount) ||
+    (job.nonce !== undefined && transaction.nonce !== job.nonce) ||
     call?.name !== "deposit" ||
     call.args.secretHash !== job.secretHash
   )
@@ -255,15 +332,29 @@ export async function submitDeposit(
   if ((await signer.getAddress()).toLowerCase() !== payer.toLowerCase())
     throw new Error("Wallet changed");
   const entry = portal.connect(signer);
+  if (job.nonce !== undefined) {
+    const nonce = await signer.getNonce("pending");
+    if (nonce !== job.nonce)
+      throw Object.assign(
+        new Error(
+          "Wallet nonce changed. Retry this stake before confirming payment."
+        ),
+        { code: "NONCE_CHANGED" }
+      );
+  }
+  const overrides = {
+    value,
+    ...(job.nonce === undefined ? {} : { nonce: job.nonce }),
+  };
   progress("Checking stake gas…");
   await waitForWalletApproval(
-    entry.deposit.estimateGas(job.secretHash, { value }),
+    entry.deposit.estimateGas(job.secretHash, overrides),
     "stake gas estimate"
   );
   beforeSubmit();
   progress("Confirm the stake in your wallet…");
   const transaction = await waitForWalletApproval(
-    entry.deposit(job.secretHash, { value }),
+    entry.deposit(job.secretHash, overrides),
     "stake confirmation"
   );
   return transaction.hash;

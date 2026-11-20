@@ -74,6 +74,7 @@ export interface BillboardController {
   disconnect(): Promise<void>;
   resumeRequest(hash?: string, layer?: "l1" | "l2"): Promise<void>;
   initializeAztec(): Promise<void>;
+  recoverAccount(): Promise<void>;
   selectStakeAmount(amount: string): void;
   stake(amount: string): Promise<void>;
   withdrawStake(): Promise<void>;

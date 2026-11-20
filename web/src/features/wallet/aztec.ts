@@ -172,6 +172,30 @@ export async function checkSponsor(config: NotchDeployment) {
     throw new Error("L2 sponsor is empty. No L1 payment was requested.");
 }
 
+export async function depositWasClaimed(
+  session: AztecBoardSession,
+  config: NotchDeployment,
+  deposit: DepositRecord
+) {
+  if (!deposit.messageKey) throw new Error("Missing deposit message key");
+  const sdk = session.runtime.sdk;
+  // Aztec 6 consume_l1_to_l2_message([secret]) uses this single-secret nullifier.
+  const nullifier = await sdk.computeL1ToL2MessageNullifier(
+    sdk.Fr.fromString(deposit.messageKey),
+    sdk.Fr.fromString(deposit.secret)
+  );
+  const siloed = await sdk.siloNullifier(
+    sdk.AztecAddress.fromStringUnsafe(config.board),
+    nullifier
+  );
+  const indexes = await session.node.findLeavesIndexes(
+    "latest",
+    sdk.MerkleTreeId.NULLIFIER_TREE,
+    [siloed]
+  );
+  return indexes[0] !== undefined && indexes[0] !== null;
+}
+
 async function feeOptions(session: AztecBoardSession, config: NotchDeployment) {
   const sdk = session.runtime.sdk;
   const balance = await sdk.getFeeJuiceBalance(

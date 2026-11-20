@@ -97,6 +97,14 @@ export function SetupView({ view, controller, model }: SetupViewProps) {
             type="button"
             className="notch-wallet-import"
             disabled={view.busy}
+            onClick={() => void controller.recoverAccount()}
+          >
+            Already staked? Restore with your wallet
+          </button>
+          <button
+            type="button"
+            className="notch-wallet-import"
+            disabled={view.busy}
             onClick={() => importFile.current?.click()}
           >
             Already have an account? Import it

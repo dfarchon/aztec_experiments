@@ -567,6 +567,16 @@ export function createBillboardController(
       }
     },
     stake: (amount: string) => action(() => stake(amount), "Stake & set up"),
+    recoverAccount: () =>
+      action(
+        async () => {
+          if (!walletFlow) throw new Error("Connect your L1 wallet first");
+          await walletFlow.recoverAccount();
+          return initializeAztec();
+        },
+        "Restore account",
+        "restoring"
+      ),
     resumeRequest: (hash?: string, layer?: "l1" | "l2") =>
       action(() => resumeStake(hash, layer), "Stake & set up"),
     initializeAztec: () =>

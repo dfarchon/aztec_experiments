@@ -4,7 +4,9 @@ Notch is an independent public message board on Aztec. Each post leaves a mark
 without displaying its author's address. Anyone can read without a wallet.
 Posting uses an installed Ethereum wallet for refundable L1 stake. Each 0.0005 ETH unlocks five
 posts in a rolling 24 hours, up to 20 posts at 0.002 ETH. A browser-created
-Aztec account publishes privately; Sponsored FPC covers L2 execution. The site shows public posts without a Settings page or local
+Aztec account publishes privately; Sponsored FPC covers L2 execution. New accounts
+can be recovered with a signature from the same Ethereum wallet, including their
+existing stake and remaining quota, without another L1 deposit. The site shows public posts without a Settings page or local
 content filters.
 
 [Public testnet site](https://df-billboard-testnet.netlify.app/) · [Frontend guide](docs/FRONTEND.md) · [Product design and usage](df-billboard/README.md) · [Deployment guide](df-billboard/DEPLOYMENT.md)

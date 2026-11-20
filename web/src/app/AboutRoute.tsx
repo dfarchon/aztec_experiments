@@ -85,8 +85,8 @@ export default function AboutRoute() {
         <h2 id="about-privacy">Public words. A private account.</h2>
         <p>
           Posts and their publication times are public on Aztec. The board does
-          not display an author address, and your Aztec account is generated
-          independently of your Ethereum wallet.
+          not display an author address, and your separate Aztec account can be
+          recovered through a signature from your Ethereum wallet.
         </p>
         <p>
           That does not guarantee anonymity. L1 deposits and withdrawals are

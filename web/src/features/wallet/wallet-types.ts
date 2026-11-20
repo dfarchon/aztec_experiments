@@ -36,6 +36,8 @@ export interface DepositRecord {
   l2Attempted: boolean;
   messageKey?: string;
   leafIndex?: string;
+  nonce?: number;
+  recovered?: boolean;
 }
 
 export interface ExitRecord {
@@ -54,6 +56,9 @@ export interface WalletAccountRecord extends Partial<AccountKeys> {
   setupComplete?: boolean;
   importedAmountHint?: string | null;
   address?: string;
+  keyDerivation?: "l1-signature-v1";
+  recoveryAmount?: string;
+  recoveryDeposits?: DepositRecord[];
   deposit?: DepositRecord | null;
   exit?: ExitRecord | null;
 }
@@ -90,6 +95,9 @@ export interface AccountBackup {
 }
 
 export interface ImportedAccount {
+  keyDerivation?: "l1-signature-v1";
+  recoveryAmount?: string;
+  recoveryDeposits?: DepositRecord[];
   keys?: AccountKeys;
   address?: string;
   amountHint: string;
@@ -110,6 +118,7 @@ export interface WalletFlow {
   resume(): Promise<boolean | string>;
   recoverDeposit(hash: string): Promise<void>;
   recoverClaim(hash: string): Promise<void>;
+  recoverAccount(): Promise<boolean>;
   withdraw(): Promise<void>;
   resumeExit(): Promise<void>;
   recoverExit(hash: string): Promise<void>;

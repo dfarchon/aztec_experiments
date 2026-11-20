@@ -1,4 +1,4 @@
-// Private Aztec account material. Never derive it from the L1 payer.
+// Private account material. A public L1 address alone is never a recovery secret.
 type RequestSDK = typeof import("../../../../runtime/sdk-entry.mjs");
 
 export interface AccountKeys {
@@ -22,8 +22,8 @@ export function hasAccountKeys(value: unknown): value is AccountKeys {
     (key) => typeof keys[key] === "string" && Boolean(keys[key])
   );
 }
-// Callers keep separate storage keys and PXE namespaces. Never derive Aztec
-// secrets from an EVM payer or merge the browser and L1 wallet identities.
+// Callers keep separate storage keys and PXE namespaces. Signature recovery is
+// versioned separately; legacy random account keys must never be overwritten.
 export function accountSetupOptions(
   sdk: Pick<RequestSDK, "Fq">,
   keys: AccountKeys,

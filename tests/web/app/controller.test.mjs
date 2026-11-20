@@ -124,6 +124,9 @@ function fixture(t, overrides = {}) {
     async recoverClaim(hash) {
       calls.push(["recoverClaim", hash]);
     },
+    async recoverAccount() {
+      calls.push("recoverAccount");
+    },
     async withdraw() {
       calls.push("withdraw");
     },
@@ -672,4 +675,26 @@ test("failed initialization leaves a pending exit intact and does not request wi
   await f.controller.resumeWithdrawal();
   assert.equal(f.controller.getSnapshot().stake.pendingExit, true);
   assert(!f.calls.includes("resumeExit"));
+});
+
+test("wallet signature recovery initializes Aztec without calling stake and stops on rejection", async (t) => {
+  const f = fixture(t);
+  await f.controller.initialize();
+  await f.controller.connect(selectedProvider);
+  f.calls.length = 0;
+  await f.controller.recoverAccount();
+  assert(
+    f.calls.indexOf("recoverAccount") < f.calls.indexOf("initializeAztec")
+  );
+  assert(!f.calls.some((call) => Array.isArray(call) && call[0] === "stake"));
+  f.calls.length = 0;
+  f.wallet.recoverAccount = async () => {
+    throw new Error("Signature rejected");
+  };
+  await f.controller.recoverAccount();
+  assert(!f.calls.includes("initializeAztec"));
+  assert.equal(
+    f.controller.getSnapshot().actionError.message,
+    "Signature rejected"
+  );
 });
