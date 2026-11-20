@@ -9,10 +9,7 @@ import { Fq, Fr } from "@aztec-labs/aztec.js/fields";
 import { build } from "esbuild";
 import { getBytes, Interface, Wallet } from "ethers";
 
-import {
-  readAccountFile,
-  writeAccountFile,
-} from "../../../web/src/features/wallet/account-files.ts";
+import { writeAccountFile } from "../../../web/src/features/wallet/account-files.ts";
 import { depositWasClaimed } from "../../../web/src/features/wallet/aztec.ts";
 import {
   portalABI,
@@ -91,6 +88,7 @@ const compiled = await build({
                 "createL1Provider",
                 "findDeposit",
                 "readDepositHistory",
+                "readL1Stake",
                 "sendWithdrawal",
                 "submitDeposit",
                 "verifyPortal",
@@ -222,6 +220,7 @@ function fixture(t) {
     return job;
   };
   f.portal = { deposits: async () => f.balance };
+  f.readL1Stake = async () => f.balance;
   f.createL1Provider = () => f.provider;
   f.verifyPortal = async () => f.portal;
   f.readDepositHistory = readDepositHistory;
@@ -269,7 +268,7 @@ function fixture(t) {
   ) => {
     const address = await addressOf(record);
     lifecycle.assertActive();
-    lifecycle.onAccountReady(address);
+    lifecycle.onAccountReady(address, `0x${"a".repeat(64)}`);
     return {
       owner: { toString: () => address },
       wallet: { pxe: { stop: async () => {} } },
@@ -357,7 +356,7 @@ test("new stakes are recoverable before payment and a clean browser restores Rea
   const { f, values } = fixture(t);
   let flow = await f.open();
   await flow.stake(STAKE_UNIT.toString());
-  await flow.initializeAztec({});
+  await flow.initializeAztec({ sdk: { SDK_VERSION: "6.0.0" } });
   assert.equal(f.state.owner, expectedAddress);
   assert.equal(f.state.remaining, 3);
   await flow.stake(STAKE_UNIT.toString());
@@ -365,8 +364,8 @@ test("new stakes are recoverable before payment and a clean browser restores Rea
   await flow.disconnect();
   values.clear();
   flow = await f.open();
-  await flow.recoverAccount();
-  await flow.initializeAztec({});
+  await flow.continueSetup();
+  await flow.initializeAztec({ sdk: { SDK_VERSION: "6.0.0" } });
   assert.equal(f.state.owner, expectedAddress);
   assert.equal(f.state.remaining, 8);
   assert.equal(f.state.pendingDeposit, false);
@@ -384,7 +383,7 @@ test("a paid but unclaimed deposit recovers from L1 history and claims once with
   flow = await f.open();
   // Clicking Stake with an existing balance must recover rather than send another deposit.
   await flow.stake(STAKE_UNIT.toString());
-  await flow.initializeAztec({});
+  await flow.initializeAztec({ sdk: { SDK_VERSION: "6.0.0" } });
   assert.equal(f.sends, 1);
   assert.equal(f.claims, 1);
   assert.equal(f.state.remaining, 3);
@@ -399,8 +398,8 @@ test("recovery skips claimed top-ups, resumes the remaining top-up and preserves
   f.amount = STAKE_UNIT;
   f.claimed.add(first.l1Tx);
   const flow = await f.open();
-  await flow.recoverAccount();
-  await flow.initializeAztec({});
+  await flow.continueSetup();
+  await flow.initializeAztec({ sdk: { SDK_VERSION: "6.0.0" } });
   assert.equal(f.sends, 0);
   assert.equal(f.claims, 1);
   assert.equal(f.state.remaining, 8);
@@ -418,7 +417,7 @@ test("rejected signatures and incompatible old deposits never request payment or
   delete f.signError;
   const old = f.addDeposit(1);
   old.secretHash = `0x${"12".repeat(32)}`;
-  await assert.rejects(flow.recoverAccount(), /original account backup/);
+  await assert.rejects(flow.continueSetup(), /original wallet and deployment/);
   assert.equal([...values.values()][0], initial);
   assert.equal(f.sends, 0);
 });
@@ -434,35 +433,6 @@ test("nonce changes before submission discard only the unsigned job and allow a 
   await flow.stake(STAKE_UNIT.toString());
   assert.equal(f.sends, 1);
   assert.equal(f.deposits[0].nonce, 8);
-});
-
-test("recovery checkpoints and derivation version survive export and import", async (t) => {
-  const { f, values } = fixture(t);
-  f.addDeposit(1);
-  f.addDeposit(2);
-  const flow = await f.open();
-  await flow.recoverAccount();
-  const saved = JSON.parse([...values.values()][0]);
-  const backup = writeAccountFile(saved, expectedAddress, config);
-  const restored = await readAccountFile(
-    new File([backup.contents], "account.json"),
-    config,
-    payer,
-    {
-      sdk: { Fq },
-      deriveAccountAddress: async (secretKey, salt, signingKey) => {
-        const address = await addressOf({
-          secretKey,
-          salt: salt.toString(),
-          signingKey: signingKey.toString(),
-        });
-        return { address: { toString: () => address } };
-      },
-    }
-  );
-  assert.equal(restored.keyDerivation, "l1-signature-v1");
-  assert.equal(restored.recoveryAmount, (2n * STAKE_UNIT).toString());
-  assert.equal(restored.recoveryDeposits.length, 1);
 });
 
 test("recovery nullifier checks keep secrets local and treat tree index zero as consumed", async () => {
@@ -603,8 +573,11 @@ test("recovery stays blocked if consumed messages do not reconstruct the L1 bala
   const job = f.addDeposit(1);
   f.claimed.add(job.l1Tx);
   const flow = await f.open();
-  await flow.recoverAccount();
-  await assert.rejects(flow.initializeAztec({}), /recovery is incomplete/);
+  await flow.continueSetup();
+  await assert.rejects(
+    flow.initializeAztec({ sdk: { SDK_VERSION: "6.0.0" } }),
+    /recovery is incomplete/
+  );
   assert.equal(f.state.pendingDeposit, true);
   assert.equal(f.sends, 0);
   await assert.rejects(
@@ -624,4 +597,116 @@ test("a clean browser cannot pay again while an earlier L1 transaction is unconf
   );
   assert.equal(f.sends, 0);
   assert.equal(f.signatures, 0);
+});
+
+test("account export contains independently usable keys and no Notch payment or recovery state", async () => {
+  const { Schnorr } = await import("@aztec-labs/foundation/crypto/schnorr");
+  const { SchnorrInitializerlessAccountContractArtifact } =
+    await import("@aztec-labs/accounts/schnorr");
+  const { getContractClassFromArtifact } =
+    await import("@aztec-labs/aztec.js/contracts");
+  const classId = (
+    await getContractClassFromArtifact(
+      SchnorrInitializerlessAccountContractArtifact
+    )
+  ).id.toString();
+  const record = {
+    ...keys,
+    payer,
+    amount: STAKE_UNIT.toString(),
+    stakeChoice: STAKE_UNIT.toString(),
+    accountClassId: classId,
+    accountVersion: "6.0.0",
+    remaining: 3,
+    lastPost: "1",
+    deposit: { secret: "must not export" },
+    exit: { l2Tx: "must not export" },
+    recoveryAmount: STAKE_UNIT.toString(),
+    recoveryDeposits: [{ secret: "must not export" }],
+  };
+  const file = writeAccountFile(record, expectedAddress, config);
+  const data = JSON.parse(file.contents);
+  assert.equal(data.version, 2);
+  assert.equal(data.address, expectedAddress);
+  assert.equal(await addressOf(data.keys), expectedAddress);
+  assert.equal(data.accountContract.type, "schnorr-initializerless");
+  assert.equal(data.accountContract.classId, classId);
+  assert.deepEqual(
+    Object.keys(data).sort(),
+    ["kind", "version", "address", "keys", "accountContract", "network"].sort()
+  );
+  assert(
+    !/must not export|recovery|quota|remaining|payer|deposit|exit/.test(
+      file.contents
+    )
+  );
+  const schnorr = new Schnorr();
+  const key = Fq.fromString(data.keys.signingKey);
+  const message = new Fr(123n);
+  const signature = await schnorr.constructSignature(message, key);
+  assert(
+    await schnorr.verifySignature(
+      message,
+      await schnorr.computePublicKey(key),
+      signature
+    )
+  );
+  assert.equal(
+    await schnorr.verifySignature(
+      new Fr(124n),
+      await schnorr.computePublicKey(key),
+      signature
+    ),
+    false
+  );
+  assert.equal(
+    writeAccountFile(
+      { ...record, accountClassId: undefined },
+      expectedAddress,
+      config
+    ),
+    null
+  );
+});
+
+test("connection detects an existing stake without signing or paying, then continues setup", async (t) => {
+  const { f } = fixture(t);
+  const job = f.addDeposit(1);
+  f.amount = STAKE_UNIT;
+  f.claimed.add(job.l1Tx);
+  const flow = await f.open();
+  assert.equal(f.state.l1Amount, STAKE_UNIT.toString());
+  assert.equal(f.signatures, 0);
+  assert.equal(f.sends, 0);
+  await flow.continueSetup();
+  await flow.initializeAztec({ sdk: { SDK_VERSION: "6.0.0" } });
+  assert.equal(f.state.owner, expectedAddress);
+  assert.equal(f.state.remaining, 3);
+  assert.equal(f.sends, 0);
+  assert.equal(flow.restore, undefined);
+  assert.equal(flow.recoverAccount, undefined);
+});
+
+test("a failed read-only stake check can retry without signing, paying or initializing an account", async (t) => {
+  const { f } = fixture(t);
+  f.readL1Stake = async () => {
+    throw Error("L1 unavailable");
+  };
+  const flow = createWalletFlow(
+    config,
+    undefined,
+    (state) => {
+      f.state = state;
+    },
+    () => {}
+  );
+  await assert.rejects(flow.connect(f.injected), /L1 unavailable/);
+  assert.equal(f.state.l1Amount, null);
+  assert.equal(f.signatures, 0);
+  assert.equal(f.sends, 0);
+  f.readL1Stake = async () => 0n;
+  assert.equal(await flow.continueSetup(), false);
+  assert.equal(f.state.l1Amount, "0");
+  assert.equal(f.signatures, 0);
+  assert.equal(f.sends, 0);
 });

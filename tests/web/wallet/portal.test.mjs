@@ -146,7 +146,7 @@ test("a confirmed deposit verifies its call and event before returning its messa
 
 test("stake preflight checks the existing deposit once and refuses recovery or cap violations before a wallet prompt", async () => {
   for (const [hasAccount, current, error] of [
-    [false, MAX_STAKE, /Restore its account backup/],
+    [false, MAX_STAKE, /Continue setup/],
     [true, MAX_STAKE, /0.002 ETH cap/],
   ]) {
     let reads = 0,

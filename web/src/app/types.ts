@@ -21,6 +21,7 @@ export interface BillboardView extends EditableFields {
     owner: string;
     aztecReady: boolean;
     setupComplete: boolean;
+    l1Amount: string | null;
     amount: string;
     stakeChoice: string;
     remaining: number | null;
@@ -69,17 +70,16 @@ export interface BillboardController {
     value: EditableFields[K]
   ): void;
   setWalletPanel(open: boolean): void;
-  accountBackup(): { filename: string; contents: string } | null;
+  exportAccount(): { filename: string; contents: string } | null;
   connect(provider: InjectedProvider): Promise<void>;
   disconnect(): Promise<void>;
   resumeRequest(hash?: string, layer?: "l1" | "l2"): Promise<void>;
   initializeAztec(): Promise<void>;
-  recoverAccount(): Promise<void>;
+  continueSetup(): Promise<void>;
   selectStakeAmount(amount: string): void;
   stake(amount: string): Promise<void>;
   withdrawStake(): Promise<void>;
   resumeWithdrawal(hash?: string): Promise<void>;
-  importStakeBackup(file: File): Promise<void>;
   post(): Promise<void>;
   refresh(): Promise<void>;
   loadOlder(): Promise<void>;

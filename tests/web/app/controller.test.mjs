@@ -124,8 +124,8 @@ function fixture(t, overrides = {}) {
     async recoverClaim(hash) {
       calls.push(["recoverClaim", hash]);
     },
-    async recoverAccount() {
-      calls.push("recoverAccount");
+    async continueSetup() {
+      calls.push("continueSetup");
     },
     async withdraw() {
       calls.push("withdraw");
@@ -136,10 +136,7 @@ function fixture(t, overrides = {}) {
     async recoverExit(hash) {
       calls.push(["recoverExit", hash]);
     },
-    async restore(file) {
-      calls.push(["restore", file.name]);
-    },
-    backup: () => ({ filename: "account.json", contents: "{}" }),
+    exportAccount: () => ({ filename: "account.json", contents: "{}" }),
     async post(message) {
       calls.push(["post", message]);
       if (postError) throw postError;
@@ -342,30 +339,6 @@ test("a confirmed saved stake can resume setup after reconnecting", async (t) =>
   assert.equal(controller.getSnapshot().canPost, true);
 });
 
-test("importing an account initializes it without preparing another stake", async (t) => {
-  const { controller, calls } = fixture(t);
-  await controller.initialize();
-  await controller.connect(selectedProvider);
-  const file = new File(
-    ['{"kind":"notch-account","version":1}'],
-    "account.json",
-    {
-      type: "application/json",
-    }
-  );
-  await controller.importStakeBackup(file);
-  assert.deepEqual(
-    calls.filter(
-      (call) =>
-        call === "loadWalletRuntime" ||
-        call === "initializeAztec" ||
-        (Array.isArray(call) && ["restore", "stake"].includes(call[0]))
-    ),
-    ["loadWalletRuntime", ["restore", "account.json"], "initializeAztec"]
-  );
-  assert.equal(controller.getSnapshot().actionError, null);
-});
-
 test("Aztec initialization can wait for its claim without a failure toast", async (t) => {
   const { controller, setInitializePending } = fixture(t);
   await controller.initialize();
@@ -547,6 +520,7 @@ test("pending first setup reconnects but never starts a payment or claim automat
       pendingDeposit: true,
       depositL1Confirmed: true,
       setupComplete: false,
+      l1Amount: "0",
     });
   await f.controller.initialize();
   await until(
@@ -682,16 +656,14 @@ test("wallet signature recovery initializes Aztec without calling stake and stop
   await f.controller.initialize();
   await f.controller.connect(selectedProvider);
   f.calls.length = 0;
-  await f.controller.recoverAccount();
-  assert(
-    f.calls.indexOf("recoverAccount") < f.calls.indexOf("initializeAztec")
-  );
+  await f.controller.continueSetup();
+  assert(f.calls.indexOf("continueSetup") < f.calls.indexOf("initializeAztec"));
   assert(!f.calls.some((call) => Array.isArray(call) && call[0] === "stake"));
   f.calls.length = 0;
-  f.wallet.recoverAccount = async () => {
+  f.wallet.continueSetup = async () => {
     throw new Error("Signature rejected");
   };
-  await f.controller.recoverAccount();
+  await f.controller.continueSetup();
   assert(!f.calls.includes("initializeAztec"));
   assert.equal(
     f.controller.getSnapshot().actionError.message,

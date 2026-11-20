@@ -13,20 +13,14 @@ import {
 } from "../../../web/src/features/feed/feed-reader.ts";
 import {
   accountSetupOptions,
-  createAccountKeys,
   readStored,
   writeStored,
 } from "../../../web/src/features/wallet/account-keys.ts";
 
 test("shared account helpers keep identities, namespaces and recovery writes isolated", () => {
-  let counter = 0;
-  const sdk = {
-    Fr: { random: () => String(++counter) },
-    Fq: { random: () => String(++counter), fromString: (value) => value },
-  };
-  const browser = createAccountKeys(sdk),
-    metamask = createAccountKeys(sdk);
-  assert.notDeepEqual(browser, metamask);
+  const sdk = { Fq: { fromString: (value) => value } };
+  const browser = { secretKey: "0x01", signingKey: "0x02", salt: "3" };
+  const metamask = { secretKey: "0x04", signingKey: "0x05", salt: "6" };
   const data = new Map();
   const storage = {
     getItem: (key) => data.get(key) ?? null,

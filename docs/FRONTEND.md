@@ -11,7 +11,7 @@ Aztec SDK first.
 | `web/src/main.tsx` | Browser entry: fonts, styles, initial theme, React root and router |
 | `web/src/app/` | Page composition, routes, runtime lifetime, controller, view types and shared network policy |
 | `web/src/features/feed/` | Public post reader, pinned feed cache, `Feed`, `PostTime` and `Composer` |
-| `web/src/features/wallet/` | Wallet panel and views, account persistence, import/export, L1 portal operations, Aztec board operations and transaction sequencing |
+| `web/src/features/wallet/` | Wallet panel and views, account persistence, key export, L1 portal operations, Aztec board operations and transaction sequencing |
 | `web/src/ui/` | Reused product primitives such as icons, loading state, steps and notifications |
 | `web/src/appearance/` | Theme, brand, worker-backed interactive background and onboarding guide |
 | `protocol/message.mjs` | Post encoding/decoding and sponsored-fee estimation shared with scripts |
@@ -55,7 +55,8 @@ the controller:
 - `features/wallet/account-storage.ts` owns the durable browser account record.
 - `features/wallet/wallet-recovery.ts` owns versioned signature messages and
   domain-separated account/deposit key derivation; no SDK is needed before payment.
-- `features/wallet/account-files.ts` owns versioned import/export validation.
+- `features/wallet/account-files.ts` writes the versioned account key package;
+  it contains no import parser or transaction checkpoints.
 - `features/wallet/wallet-session.ts` owns the silent-reconnect preference.
 
 The UI never signs a transaction, reads an account secret, polls a receipt, or
@@ -91,7 +92,7 @@ Browser names and file formats are compatibility contracts:
 | Last authorized wallet | localStorage `notch-wallet-session/<board>` |
 | Account keys and transaction checkpoints | localStorage `notch-stake/6.0.0/<board>/<lowercase-payer>` |
 | PXE data | IndexedDB `pxe_data`, under the board/salt/rollup-specific data directory |
-| Account export | JSON file with `kind: "notch-account"` and version `1` |
+| Account export | JSON key package with `kind: "notch-account"` and version `2` |
 | Theme | localStorage `df-billboard:theme` |
 | Onboarding seen | localStorage `df-billboard:board-guide:v2` |
 | Cross-tab mutation lock | Web Lock `billboard-wallet:notch-stake:<board>` |
@@ -193,20 +194,21 @@ a browser leave-page confirmation.
    restore task. Disconnect, account/network changes and page disposal advance
    the controller session generation so late results cannot update a new session.
 
-### An imported account
+### Setup continuation and account export
 
-1. `features/wallet/SetupView.tsx` selects a JSON file and calls
-   `controller.importStakeBackup`.
-2. `controller.ts::prepareWallet` loads the typed runtime.
-3. `features/wallet/account-files.ts::readAccountFile` validates file size,
-   JSON shape, version, board, payer, network, deposit hash, Aztec address and
-   amount hint before replacing local state.
-4. `wallet-flow.ts::operations.restore` writes the validated record through
-   `account-storage.ts`.
-5. The controller calls `initializeAztec`. A fresh PXE registers the imported
-   account before sync, discovers historical private notes, and
-   `wallet-flow.ts::refresh` verifies the original stake and remaining quota.
-   No L1 deposit is prepared.
+1. L1 connection performs a bounded, read-only balance check through
+   `portal.ts::readL1Stake`. It does not initialize Aztec or request a signature.
+2. `SetupView` shows amount choices only for a new stake. Existing L1 stake and
+   unfinished local records use the same **Continue setup** action.
+3. `controller.continueSetup` calls `wallet-flow.ts::continueSetup`, which resumes
+   the saved operation or derives recovery credentials, then initializes Aztec.
+4. `createAztecBoardSession` records the account class ID and SDK version alongside
+   its derived address. `account-files.ts::writeAccountFile` exports only the
+   address, three key materials, account contract metadata and network identity.
+5. Ready warns about private keys before download. There is no file-import or
+   random-account fallback. See the product README for independent SDK usage.
+6. Setup progress maps verbose runtime diagnostics to short button labels. Wallet
+   primary actions have fixed height and truncate labels instead of resizing.
 
 ## Finding failures
 

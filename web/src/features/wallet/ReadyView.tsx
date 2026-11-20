@@ -7,6 +7,7 @@ import { MAX_STAKE } from "./stake-policy.ts";
 import {
   formatEth,
   STAKE_AMOUNTS,
+  walletProgressLabel,
   type WalletViewModel,
 } from "./wallet-view.ts";
 
@@ -16,8 +17,8 @@ interface ReadyViewProps {
   model: WalletViewModel;
 }
 
-function downloadBackup(controller: BillboardController) {
-  const backup = controller.accountBackup();
+function downloadAccount(controller: BillboardController) {
+  const backup = controller.exportAccount();
   if (!backup) return;
   const url = URL.createObjectURL(
     new Blob([backup.contents], { type: "application/json" })
@@ -31,6 +32,7 @@ function downloadBackup(controller: BillboardController) {
 
 export function ReadyView({ view, controller, model }: ReadyViewProps) {
   const [recoveryHash, setRecoveryHash] = useState("");
+  const [confirmExport, setConfirmExport] = useState(false);
 
   return (
     <div className="notch-wallet-body">
@@ -111,7 +113,9 @@ export function ReadyView({ view, controller, model }: ReadyViewProps) {
             {view.busy ? (
               <>
                 <LoadingIcon />{" "}
-                {view.progress?.label || "Completing withdrawal…"}
+                <span className="notch-wallet-action-label">
+                  {walletProgressLabel(view.progress?.label)}
+                </span>
               </>
             ) : (
               <>
@@ -146,27 +150,41 @@ export function ReadyView({ view, controller, model }: ReadyViewProps) {
                 </div>
               </div>
             )}
+            {confirmExport && (
+              <p className="notch-wallet-warning" role="status">
+                Contains private keys. Anyone with this file can control your
+                Aztec account.
+              </p>
+            )}
             <div className="notch-wallet-ready-actions">
               <button
                 type="button"
                 className="notch-wallet-secondary"
                 disabled={view.busy}
-                onClick={() => downloadBackup(controller)}
+                onClick={() => setConfirmExport(!confirmExport)}
               >
-                Export account
+                {confirmExport ? "Cancel" : "Export account"}
               </button>
               <button
                 type="button"
                 className="notch-wallet-primary"
                 disabled={view.busy}
                 onClick={() => {
-                  controller.setWalletPanel(false);
-                  requestAnimationFrame(() =>
-                    document.getElementById("message")?.focus()
-                  );
+                  if (confirmExport) {
+                    downloadAccount(controller);
+                    setConfirmExport(false);
+                  } else {
+                    controller.setWalletPanel(false);
+                    requestAnimationFrame(() =>
+                      document.getElementById("message")?.focus()
+                    );
+                  }
                 }}
               >
-                Ready to post <Icon name="arrow" />
+                <span className="notch-wallet-action-label">
+                  {confirmExport ? "Download account" : "Ready to post"}
+                </span>{" "}
+                <Icon name="arrow" />
               </button>
             </div>
           </>

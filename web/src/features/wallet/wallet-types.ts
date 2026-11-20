@@ -54,8 +54,9 @@ export interface WalletAccountRecord extends Partial<AccountKeys> {
   remaining?: number | null;
   lastPost?: string;
   setupComplete?: boolean;
-  importedAmountHint?: string | null;
   address?: string;
+  accountClassId?: string;
+  accountVersion?: string;
   keyDerivation?: "l1-signature-v1";
   recoveryAmount?: string;
   recoveryDeposits?: DepositRecord[];
@@ -75,6 +76,7 @@ export interface WalletStakeState {
   owner: string;
   aztecReady: boolean;
   setupComplete: boolean;
+  l1Amount: string | null;
   amount: string;
   stakeChoice: string;
   remaining: number | null;
@@ -89,20 +91,9 @@ export interface WalletStakeState {
   lastPost: string;
 }
 
-export interface AccountBackup {
+export interface AccountExport {
   filename: string;
   contents: string;
-}
-
-export interface ImportedAccount {
-  keyDerivation?: "l1-signature-v1";
-  recoveryAmount?: string;
-  recoveryDeposits?: DepositRecord[];
-  keys?: AccountKeys;
-  address?: string;
-  amountHint: string;
-  deposit: DepositRecord | null;
-  exit: ExitRecord | null;
 }
 
 export interface WalletFlow {
@@ -118,13 +109,12 @@ export interface WalletFlow {
   resume(): Promise<boolean | string>;
   recoverDeposit(hash: string): Promise<void>;
   recoverClaim(hash: string): Promise<void>;
-  recoverAccount(): Promise<boolean>;
+  continueSetup(): Promise<boolean | string>;
   withdraw(): Promise<void>;
   resumeExit(): Promise<void>;
   recoverExit(hash: string): Promise<void>;
   post(message: string): Promise<string>;
-  restore(file: File, runtime: AztecRuntime): Promise<boolean>;
-  backup(): AccountBackup | null;
+  exportAccount(): AccountExport | null;
 }
 
 export type StakeListener = (state: WalletStakeState) => void;

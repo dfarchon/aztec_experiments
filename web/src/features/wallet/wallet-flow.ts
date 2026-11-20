@@ -1,9 +1,5 @@
-import {
-  importedAccountRecord,
-  readAccountFile,
-  writeAccountFile,
-} from "./account-files.ts";
-import { createAccountKeys, hasAccountKeys } from "./account-keys.ts";
+import { writeAccountFile } from "./account-files.ts";
+import { hasAccountKeys } from "./account-keys.ts";
 import {
   accountStorageKey,
   newAccountRecord,
@@ -31,6 +27,7 @@ import {
   createL1Provider,
   findDeposit,
   readDepositHistory,
+  readL1Stake,
   sendWithdrawal,
   submitDeposit,
   verifyPortal,
@@ -68,11 +65,13 @@ export function createWalletFlow(
   let session: AztecBoardSession | null = null;
   let storageKey = "";
   let disposed = false;
+  let l1Amount: bigint | null = null;
 
   const snapshot = () => {
     if (disposed || !saved) return;
     emit({
       available: true,
+      l1Amount: l1Amount?.toString() ?? null,
       payer,
       owner: session ? session.owner.toString() : "",
       aztecReady: Boolean(session),
@@ -113,6 +112,7 @@ export function createWalletFlow(
     emit({
       available: true,
       payer: "",
+      l1Amount: null,
       owner: "",
       aztecReady: false,
       setupComplete: false,
@@ -153,19 +153,10 @@ export function createWalletFlow(
     const depositor = BigInt(result[1]);
     if (depositor !== 0n && depositor !== BigInt(payer))
       throw new Error("Aztec stake belongs to another L1 wallet");
-    if (
-      stakeAmount === 0n &&
-      saved.importedAmountHint &&
-      BigInt(saved.importedAmountHint) > 0n
-    )
-      throw new Error(
-        "Aztec stake note was not found after sync. Check the node and try again."
-      );
     if (stakeAmount > 0n && !saved.deposit) saved.setupComplete = true;
     saved.amount = stakeAmount.toString();
     saved.lastPost = BigInt(result[2]).toString();
     saved.remaining = Number(BigInt(result[3]));
-    delete saved.importedAmountHint;
     persist();
   }
 
@@ -240,7 +231,8 @@ export function createWalletFlow(
     if (!session) return true;
     const claimSession = session;
     const alreadyClaimed =
-      job.recovered && (await depositWasClaimed(claimSession, config, job));
+      (job.recovered || (job.l2Attempted && !job.l2Tx)) &&
+      (await depositWasClaimed(claimSession, config, job));
     if (disposed || saved?.deposit !== job || session !== claimSession)
       throw new Error("Deposit saved. Reconnect to resume claim.");
     const result = alreadyClaimed
@@ -263,6 +255,8 @@ export function createWalletFlow(
     await refresh();
     if (saved!.deposit) return confirmDeposit();
     await finishRecovery();
+    l1Amount = BigInt(saved!.amount);
+    snapshot();
     return true;
   }
 
@@ -343,6 +337,7 @@ export function createWalletFlow(
     try {
       const portal = await verifyPortal(provider, config);
       if ((await portal.deposits(payer)) === 0n) {
+        l1Amount = 0n;
         saved.exit = null;
         await refresh();
         return;
@@ -361,7 +356,76 @@ export function createWalletFlow(
       if (!(await verifyWithdrawalReceipt(provider, config, job.l1Tx)))
         throw new Error("L1 withdrawal is pending. Complete it later.");
       saved.exit = null;
+      l1Amount = await portal.deposits(payer);
       await refresh();
+    } finally {
+      provider.destroy();
+    }
+  }
+
+  async function recoverAccount() {
+    if (!saved || !payer || !injected)
+      throw new Error("Connect your wallet first");
+    if (saved.deposit || saved.exit || saved.recoveryAmount)
+      throw new Error("Continue the pending operation before recovering again");
+    const record = saved;
+    await assertPayer();
+    const provider = createL1Provider(config);
+    try {
+      progress("Finding your existing L1 stake…");
+      const portal = await verifyPortal(provider, config);
+      const amount = await portal.deposits(payer);
+      assertRecord(record);
+      if (amount === 0n)
+        throw new Error(
+          "No confirmed L1 stake was found. If a stake transaction is pending, wait for confirmation before retrying."
+        );
+      l1Amount = amount;
+      const deposits = await readDepositHistory(
+        provider,
+        config,
+        payer,
+        amount
+      );
+      assertRecord(record);
+      let keys;
+      if (hasAccountKeys(record)) keys = record;
+      else {
+        progress("Sign to restore your Aztec account…");
+        keys = await signAccountKeys(injected, config, payer);
+        await assertPayer();
+        assertRecord(record);
+      }
+      const jobs = deposits.map((deposit) => {
+        const claim = deriveDepositSecret(
+          keys,
+          config,
+          payer,
+          deposit.nonce,
+          deposit.amount
+        );
+        if (claim.secretHash.toLowerCase() !== deposit.secretHash.toLowerCase())
+          throw new Error(
+            "This stake cannot be recovered with this signature. Use the original wallet and deployment. Do not stake again."
+          );
+        return {
+          ...deposit,
+          ...claim,
+          recovered: true,
+          submitted: true,
+          l2Tx: null,
+          l2Attempted: false,
+        };
+      });
+      if (!jobs.length) throw new Error("No recoverable L1 deposit was found");
+      Object.assign(record, keys, {
+        keyDerivation: RECOVERY_VERSION,
+        recoveryAmount: amount.toString(),
+        deposit: jobs[0],
+        recoveryDeposits: jobs.slice(1),
+      });
+      persist();
+      return true;
     } finally {
       provider.destroy();
     }
@@ -372,6 +436,7 @@ export function createWalletFlow(
       if (!provider || typeof provider.request !== "function")
         throw new Error("Choose an Ethereum wallet first");
       injected = provider;
+      l1Amount = null;
       session = null;
       snapshot();
       try {
@@ -410,6 +475,10 @@ export function createWalletFlow(
           saved = newAccountRecord(payer);
           persist();
         }
+        progress("Checking L1 stake…");
+        const record = saved;
+        l1Amount = await readL1Stake(config, payer);
+        assertRecord(record);
         snapshot();
         provider.on?.("accountsChanged", walletChanged);
         provider.on?.("chainChanged", walletChanged);
@@ -438,15 +507,10 @@ export function createWalletFlow(
       )
         throw new Error("Stake before initializing Aztec");
       runtime = nextRuntime;
-      if (!saved.secretKey) {
-        Object.assign(
-          saved,
-          createAccountKeys(
-            runtime!.sdk as Parameters<typeof createAccountKeys>[0]
-          )
+      if (!hasAccountKeys(saved))
+        throw new Error(
+          "Restore your account with your Ethereum wallet before continuing"
         );
-        persist();
-      }
       const record = saved;
       const assertActive = () => {
         if (disposed || saved !== record)
@@ -460,9 +524,11 @@ export function createWalletFlow(
           progress,
           {
             assertActive,
-            onAccountReady: (address) => {
+            onAccountReady: (address, classId) => {
               assertActive();
               record.address = address;
+              record.accountClassId = classId;
+              record.accountVersion = runtime!.sdk.SDK_VERSION;
               persist();
             },
           }
@@ -526,8 +592,7 @@ export function createWalletFlow(
           const portal = await verifyPortal(provider, config);
           const current = await portal.deposits(payer);
           assertRecord(record);
-          if (!hasAccountKeys(record) && current > 0n)
-            return operations.recoverAccount();
+          if (!hasAccountKeys(record) && current > 0n) return recoverAccount();
           if (current !== BigInt(record.amount))
             throw new Error(
               "L1 stake changed. Recover your account before staking again."
@@ -589,79 +654,16 @@ export function createWalletFlow(
       return confirmDeposit();
     },
 
-    async recoverAccount() {
-      if (!saved || !payer || !injected)
-        throw new Error("Connect your wallet first");
-      if (saved.deposit || saved.exit || saved.recoveryAmount)
-        throw new Error(
-          "Continue the pending operation before recovering again"
-        );
+    async continueSetup() {
+      if (!saved || !payer) throw new Error("Connect your wallet first");
+      if (saved.deposit || saved.recoveryAmount) return operations.resume();
       const record = saved;
-      await assertPayer();
-      const provider = createL1Provider(config);
-      try {
-        progress("Finding your existing L1 stake…");
-        const portal = await verifyPortal(provider, config);
-        const amount = await portal.deposits(payer);
-        assertRecord(record);
-        if (amount === 0n)
-          throw new Error(
-            "No confirmed L1 stake was found. If a stake transaction is pending, wait for confirmation before retrying."
-          );
-        // Never replace an existing random account with signature-derived keys.
-        if (hasAccountKeys(record) && record.keyDerivation !== RECOVERY_VERSION)
-          return true;
-        const deposits = await readDepositHistory(
-          provider,
-          config,
-          payer,
-          amount
-        );
-        assertRecord(record);
-        let keys;
-        if (hasAccountKeys(record)) keys = record;
-        else {
-          progress("Sign to restore your Aztec account…");
-          keys = await signAccountKeys(injected, config, payer);
-          await assertPayer();
-          assertRecord(record);
-        }
-        const jobs = deposits.map((deposit) => {
-          const claim = deriveDepositSecret(
-            keys,
-            config,
-            payer,
-            deposit.nonce,
-            deposit.amount
-          );
-          if (
-            claim.secretHash.toLowerCase() !== deposit.secretHash.toLowerCase()
-          )
-            throw new Error(
-              "This stake cannot be recovered with this signature. Import the original account backup. Do not stake again."
-            );
-          return {
-            ...deposit,
-            ...claim,
-            recovered: true,
-            submitted: true,
-            l2Tx: null,
-            l2Attempted: false,
-          };
-        });
-        if (!jobs.length)
-          throw new Error("No recoverable L1 deposit was found");
-        Object.assign(record, keys, {
-          keyDerivation: RECOVERY_VERSION,
-          recoveryAmount: amount.toString(),
-          deposit: jobs[0],
-          recoveryDeposits: jobs.slice(1),
-        });
-        persist();
-        return true;
-      } finally {
-        provider.destroy();
-      }
+      l1Amount = await readL1Stake(config, payer);
+      assertRecord(record);
+      snapshot();
+      if (hasAccountKeys(record) && record.setupComplete) return true;
+      if (l1Amount === 0n) return false;
+      return recoverAccount();
     },
 
     async recoverDeposit(hash) {
@@ -748,25 +750,7 @@ export function createWalletFlow(
       return message;
     },
 
-    async restore(file, nextRuntime) {
-      if (
-        !saved ||
-        !payer ||
-        BigInt(saved.amount) !== 0n ||
-        saved.deposit ||
-        saved.exit
-      )
-        throw new Error(
-          "Connect the original L1 wallet before restoring a backup"
-        );
-      runtime = nextRuntime;
-      const imported = await readAccountFile(file, config, payer, runtime!);
-      saved = importedAccountRecord(payer, imported);
-      persist();
-      return true;
-    },
-
-    backup() {
+    exportAccount() {
       if (!saved || !payer || !hasAccountKeys(saved)) return null;
       return writeAccountFile(
         saved,
@@ -779,6 +763,7 @@ export function createWalletFlow(
       injected?.removeListener?.("accountsChanged", walletChanged);
       injected?.removeListener?.("chainChanged", walletChanged);
       injected = undefined;
+      l1Amount = null;
       payer = "";
       saved = null;
       await stopSession();
@@ -835,11 +820,7 @@ export function createWalletFlow(
       withWalletLock(`notch-stake:${config.board}`, () =>
         operations.post(message)
       ),
-    restore: (file, nextRuntime) =>
-      withWalletLock(`notch-stake:${config.board}`, () =>
-        operations.restore(file, nextRuntime)
-      ),
-    recoverAccount: () =>
-      withWalletLock(`notch-stake:${config.board}`, operations.recoverAccount),
+    continueSetup: () =>
+      withWalletLock(`notch-stake:${config.board}`, operations.continueSetup),
   };
 }

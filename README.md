@@ -6,7 +6,9 @@ Posting uses an installed Ethereum wallet for refundable L1 stake. Each 0.0005 E
 posts in a rolling 24 hours, up to 20 posts at 0.002 ETH. A browser-created
 Aztec account publishes privately; Sponsored FPC covers L2 execution. New accounts
 can be recovered with a signature from the same Ethereum wallet, including their
-existing stake and remaining quota, without another L1 deposit. The site shows public posts without a Settings page or local
+existing stake and remaining quota, without another L1 deposit. Setup uses one
+Continue setup action for existing stakes and unfinished operations. Ready can
+export the Aztec account keys for independent custody; the site has no file import. The site shows public posts without a Settings page or local
 content filters.
 
 [Public testnet site](https://df-billboard-testnet.netlify.app/) · [Frontend guide](docs/FRONTEND.md) · [Product design and usage](df-billboard/README.md) · [Deployment guide](df-billboard/DEPLOYMENT.md)

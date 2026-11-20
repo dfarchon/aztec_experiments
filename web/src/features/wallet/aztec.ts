@@ -51,7 +51,7 @@ export async function createAztecBoardSession(
   progress: WalletProgress,
   lifecycle: {
     assertActive(): void;
-    onAccountReady(address: string): void;
+    onAccountReady(address: string, classId: string): void;
   }
 ): Promise<AztecBoardSession> {
   const sdk = runtime.sdk;
@@ -77,7 +77,14 @@ export async function createAztecBoardSession(
     lifecycle.assertActive();
     if (!ready || !local.wallet || !local.address)
       throw new Error("Private account setup failed");
-    lifecycle.onAccountReady(local.address.toString());
+    if (!local.instance?.currentContractClassId || !sdk.SDK_VERSION)
+      throw new Error(
+        "Private account contract metadata is unavailable. Retry setup."
+      );
+    lifecycle.onAccountReady(
+      local.address.toString(),
+      local.instance.currentContractClassId.toString()
+    );
     const node = local.aztecNode ?? sdk.createAztecNodeClient(config.nodeUrl);
 
     const [boardResponse, sponsorResponse] = await Promise.all(

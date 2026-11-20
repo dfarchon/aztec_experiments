@@ -8,8 +8,6 @@ export interface WalletViewModel {
   connected: boolean;
   funded: boolean;
   panelLocked: boolean;
-  pendingAmount: bigint;
-  pendingLocked: boolean;
   quota: number;
   ready: boolean;
   setupInProgress: boolean;
@@ -58,8 +56,6 @@ export function walletViewModel(view: BillboardView): WalletViewModel {
     connected,
     funded,
     panelLocked,
-    pendingAmount: BigInt(view.stake.pendingAmount),
-    pendingLocked: view.stake.pendingDeposit && !view.stake.depositPrepared,
     quota: postQuota(amount),
     ready,
     setupInProgress,
@@ -76,4 +72,21 @@ export function walletViewModel(view: BillboardView): WalletViewModel {
           : "Connect wallet",
     withdrawLocked: Number(view.stake.lastPost) > 0 && Date.now() < unlockAt,
   };
+}
+
+// Keep verbose runtime diagnostics out of fixed-size action buttons.
+export function walletProgressLabel(message = "") {
+  const text = message.toLowerCase();
+  if (/signing key|capsule/.test(text)) return "Preparing keys…";
+  if (/sign to|signature/.test(text)) return "Confirm signature…";
+  if (/confirm.*stake.*wallet/.test(text)) return "Confirm stake…";
+  if (/waiting.*l1|l1 confirmation/.test(text)) return "Confirming stake…";
+  if (/waiting|deposit on aztec/.test(text)) return "Syncing stake…";
+  if (/checking.*l1|existing l1/.test(text)) return "Checking stake…";
+  if (/checking.*wallet|wallet account/.test(text)) return "Checking wallet…";
+  if (/proof|proving/.test(text)) return "Preparing proof…";
+  if (/claim/.test(text)) return "Claiming stake…";
+  if (/withdraw/.test(text)) return "Withdrawing…";
+  if (/sync|register|pxe/.test(text)) return "Syncing account…";
+  return "Setting up…";
 }

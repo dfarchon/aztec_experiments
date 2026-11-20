@@ -183,7 +183,7 @@ test("the wallet stakes before private account initialization", () => {
     render(),
     /Aztec extension wallet|Download private account backup|<select/
   );
-  view.stake = { ...view.stake, payer: `0x${"1".repeat(40)}` };
+  view.stake = { ...view.stake, payer: `0x${"1".repeat(40)}`, l1Amount: "0" };
   assert.match(render(), /notch-stake-options/);
   assert.match(render(), /Keep this tab open/);
   assert.match(render(), /Setup may take 1–2 minutes or longer/);
@@ -232,7 +232,7 @@ test("pending stake and withdrawal recovery stay inside the wallet", () => {
       })
     );
   assert.doesNotMatch(render(), /L1 deposit transaction hash/);
-  assert.match(render(), /Check L1 status/);
+  assert.match(render(), /Continue setup/);
   view.stake = {
     ...view.stake,
     depositNeedsHash: false,
@@ -358,7 +358,7 @@ test("operation toast only shows completed results outside the board", () => {
   base.dispose();
 });
 
-test("stake choices persist before payment and import stays secondary", () => {
+test("setup uses one action and only new stakes show amount choices", () => {
   const base = createBillboardController();
   const view = {
     ...base.getSnapshot(),
@@ -367,6 +367,7 @@ test("stake choices persist before payment and import stays secondary", () => {
       ...base.getSnapshot().stake,
       payer: `0x${"1".repeat(40)}`,
       owner: "",
+      l1Amount: "0",
     },
   };
   const render = () =>
@@ -377,7 +378,7 @@ test("stake choices persist before payment and import stays secondary", () => {
     );
   const html = render();
   assert.match(html, /Stake &amp; set up/);
-  assert.match(html, /Already have an account\? Import it/);
+  assert.doesNotMatch(html, /Import it|Restore with your wallet|type="file"/);
   assert.match(html, /aria-pressed="true">0\.0005 ETH/);
   assert.match(html, /Stake 0\.0005 ETH/);
   assert.doesNotMatch(html, /Restore backup|Change amount|<select/);
@@ -402,7 +403,7 @@ test("stake choices persist before payment and import stays secondary", () => {
     completed: false,
     failed: false,
   };
-  assert.match(render(), /Confirm the stake in your wallet/);
+  assert.match(render(), /notch-wallet-action-label">Confirm stake…/);
   view.busy = false;
   view.progress = null;
   view.stake = { ...view.stake, depositPrepared: false };
@@ -736,7 +737,7 @@ test("Ready account actions group connection, stake and posting while preserving
   )[0];
   assert.equal((footer.match(/<button/g) || []).length, 2);
   assert.match(footer, /class="notch-wallet-secondary"[^>]*>Export account/);
-  assert.match(footer, /class="notch-wallet-primary"[^>]*>Ready to post/);
+  assert.match(footer, /class="notch-wallet-action-label">Ready to post/);
   assert.doesNotMatch(footer, /Disconnect|Withdraw/);
   assert.doesNotMatch(html, /Close this panel and write below/);
   view.stake = { ...view.stake, amount: "2000000000000000", lastPost: "0" };
@@ -770,5 +771,43 @@ test("pending wallet actions keep their accessible label while busy and connecti
     guidance: "",
   };
   assert.match(render(), /Testnet unavailable/);
+  base.dispose();
+});
+
+test("existing stakes and unfinished setup share one Continue setup action without amount or import controls", () => {
+  const base = createBillboardController();
+  const initial = base.getSnapshot();
+  const render = (pendingDeposit) =>
+    renderToStaticMarkup(
+      createElement(App, {
+        controller: {
+          ...base,
+          getSnapshot: () => ({
+            ...initial,
+            walletOpen: true,
+            stake: {
+              ...initial.stake,
+              payer: `0x${"1".repeat(40)}`,
+              l1Amount: "500000000000000",
+              pendingDeposit,
+              depositL1Confirmed: pendingDeposit,
+            },
+          }),
+        },
+      })
+    );
+  const dialog = (html) =>
+    html.slice(
+      html.indexOf('<section id="walletPanel"'),
+      html.indexOf("</section>")
+    );
+  const restored = dialog(render(false)),
+    unfinished = dialog(render(true));
+  assert.equal(restored, unfinished);
+  assert.match(restored, /Continue setup/);
+  assert.doesNotMatch(
+    restored,
+    /notch-stake-options|Import|Restore with|Check L1 status|type="file"/
+  );
   base.dispose();
 });

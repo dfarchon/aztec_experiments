@@ -6,15 +6,6 @@ export interface AccountKeys {
   salt: string;
   signingKey: string;
 }
-export function createAccountKeys(
-  sdk: Pick<RequestSDK, "Fr" | "Fq">
-): AccountKeys {
-  return {
-    secretKey: sdk.Fr.random().toString(),
-    salt: sdk.Fr.random().toString(),
-    signingKey: sdk.Fq.random().toString(),
-  };
-}
 export function hasAccountKeys(value: unknown): value is AccountKeys {
   if (!value || typeof value !== "object") return false;
   const keys = value as Record<string, unknown>;
@@ -22,8 +13,7 @@ export function hasAccountKeys(value: unknown): value is AccountKeys {
     (key) => typeof keys[key] === "string" && Boolean(keys[key])
   );
 }
-// Callers keep separate storage keys and PXE namespaces. Signature recovery is
-// versioned separately; legacy random account keys must never be overwritten.
+// Callers keep separate storage keys and PXE namespaces for each account.
 export function accountSetupOptions(
   sdk: Pick<RequestSDK, "Fq">,
   keys: AccountKeys,

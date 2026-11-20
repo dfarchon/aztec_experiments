@@ -110,6 +110,7 @@ export function createBillboardController(
       owner: "",
       aztecReady: false,
       setupComplete: false,
+      l1Amount: null,
       amount: "0",
       stakeChoice: "500000000000000",
       remaining: null,
@@ -548,7 +549,7 @@ export function createBillboardController(
       if (name === "message" && !view.busy) patch({ message: value });
     },
     setWalletPanel: (open: boolean) => patch({ walletOpen: open }),
-    accountBackup: () => walletFlow?.backup() || null,
+    exportAccount: () => walletFlow?.exportAccount() || null,
     connect: (provider: InjectedProvider) =>
       action(() => connect(provider), "Connect wallet", "connecting"),
     disconnect: () =>
@@ -567,16 +568,12 @@ export function createBillboardController(
       }
     },
     stake: (amount: string) => action(() => stake(amount), "Stake & set up"),
-    recoverAccount: () =>
-      action(
-        async () => {
-          if (!walletFlow) throw new Error("Connect your L1 wallet first");
-          await walletFlow.recoverAccount();
-          return initializeAztec();
-        },
-        "Restore account",
-        "restoring"
-      ),
+    continueSetup: () =>
+      action(async () => {
+        if (!walletFlow) throw new Error("Connect your L1 wallet first");
+        if ((await walletFlow.continueSetup()) === false) return false;
+        return initializeAztec();
+      }, "Continue setup"),
     resumeRequest: (hash?: string, layer?: "l1" | "l2") =>
       action(() => resumeStake(hash, layer), "Stake & set up"),
     initializeAztec: () =>
@@ -604,15 +601,6 @@ export function createBillboardController(
         if (hash) await flow.recoverExit(hash);
         else await flow.resumeExit();
       }, "Complete withdrawal"),
-    importStakeBackup: (file: File) =>
-      action(async () => {
-        if (!walletFlow) throw new Error("Connect your L1 wallet first");
-        const runtime = await prepareWallet();
-        await walletFlow.restore(file, runtime);
-        await checkChain();
-        await walletFlow.initializeAztec(runtime);
-        return "Aztec account imported";
-      }, "Import account"),
     post: () => action(post, "Anonymous posting", "posting"),
     refresh: () => action(() => refresh(), "Refresh posts"),
     loadOlder: () => action(() => readFeed(true), "Load older posts"),

@@ -92,6 +92,31 @@ export function createL1Provider(config: NotchDeployment) {
   });
 }
 
+// Display-only balance check; paid operations still verify the full portal binding.
+export async function readL1Stake(config: NotchDeployment, payer: string) {
+  const provider = createL1Provider(config);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const portal = new Contract(config.l1Stake.portal, portalABI, provider);
+    const amount = await Promise.race([
+      portal.deposits(payer),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new Error("L1 stake check timed out. Continue setup to retry.")
+            ),
+          15000
+        );
+      }),
+    ]);
+    return BigInt(amount);
+  } finally {
+    clearTimeout(timer);
+    provider.destroy();
+  }
+}
+
 export async function verifyPortal(
   provider: JsonRpcProvider,
   config: NotchDeployment
@@ -318,7 +343,7 @@ export async function submitDeposit(
   const currentStake = await portal.deposits(payer);
   if (currentStake > 0n && !hasAccount)
     throw new Error(
-      "Existing L1 stake found. Restore its account backup first."
+      "Existing L1 stake found. Continue setup before staking again."
     );
   if (currentStake + value > MAX_STAKE)
     throw new Error("This L1 wallet already reached the 0.002 ETH cap");

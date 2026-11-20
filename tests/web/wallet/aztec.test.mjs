@@ -36,6 +36,7 @@ function setupFixture(t) {
   };
   const runtime = {
     sdk: {
+      SDK_VERSION: "6.0.0",
       Fq: { fromString: (x) => x },
       Fr: class {},
       AztecAddress: { fromStringUnsafe: (x) => x },
@@ -48,6 +49,9 @@ function setupFixture(t) {
       SponsoredFeePaymentMethod: class {},
     },
     setupAccount: async (state) => {
+      state.instance = {
+        currentContractClassId: { toString: () => "account-class" },
+      };
       state.wallet = wallet;
       state.address = { toString: () => "original-address" };
       state.aztecNode = {
