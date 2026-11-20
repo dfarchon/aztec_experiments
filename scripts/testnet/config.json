@@ -1,0 +1,9 @@
+{
+  "nodeUrl": "https://aztec-testnet.drpc.org",
+  "l1RpcUrl": "https://ethereum-sepolia-rpc.publicnode.com",
+  "nodeVersion": "6.0.0",
+  "chainId": 11155111,
+  "rollupVersion": "679261766",
+  "rollupAddress": "0x1f435a7F2dA358caF887A470FAeEE7d5D5f4eFBA",
+  "inboxAddress": "0x7cdC32Dd7d008870A95f1837Ffd7229ef676EF8A"
+}
