@@ -21,6 +21,7 @@ const compiled = await build({
   format: "cjs",
   jsx: "automatic",
   write: false,
+  define: { "import.meta.url": '"file:///notch/"' },
   external: [
     "react",
     "react/jsx-runtime",
