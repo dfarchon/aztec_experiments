@@ -1,0 +1,23 @@
+{
+  "kind": "notch-stake",
+  "schemaVersion": 2,
+  "environment": "mainnet",
+  "nodeUrl": "https://aztec-mainnet.drpc.org",
+  "chainId": 1,
+  "rollupVersion": "2070860440",
+  "rollupAddress": "0xe37a2663cc9c119ba41572c40fab0bbb23a5402f",
+  "board": "0x090065f980667a9f5273c8b7e7ff31d234c375bfc172539f43d2c91284717c78",
+  "boardArtifactHash": "dd636b5d4354780b07026707b893cb192487378dfa910708776692079a3a2eca",
+  "boardClassId": "0x112d479ea241cd96b4f79d008b90ca8ad2399848dd329f265adefbf60ce67edd",
+  "sponsoredFpc": "0x2b4bb42e8d8a7978edae5c3a078cc5d53c8cf3875fd3c191a3fba9cab7508dcf",
+  "sponsorSalt": "0x0dcb95cea9941da9d6dcebf38b7159b84ba26230ee6b250ede0e8370b2a03c2d",
+  "deploymentTx": "0x1bd255d6c00946767e4d48fb0988953060f099de0d8ae3e07f3beaf5a7f42cb4",
+  "l1Stake": {
+    "chainId": 1,
+    "rpcUrl": "https://ethereum-rpc.publicnode.com",
+    "portal": "0x472B1dC69736C9B6034CE7aAbBa1ff5f7f16307a",
+    "inbox": "0x603b06cecc1d537aad83f1d46651e32014c5b6ad",
+    "runtimeCodeHash": "0x3497fe5c297b558b2fb7e1cc0178f6c7a7a7e8dbd5b3a229cd981a253d63b8b4",
+    "deploymentBlock": 26461199
+  }
+}

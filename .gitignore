@@ -1,29 +1,19 @@
 # Build artifacts
 target/
+web/dist/
+runtime/generated/
 
 # Auto-generated test harnesses from aztec compile
 *_test.nr
 
 # Dependencies
 node_modules/
-package-lock.json
+.local/
 
 # OS files
 .DS_Store
 .pxe-cache/
 wallets/
-censor-daemon/llama.cpp/
-censor-daemon/models/
-censor-daemon/test_mock_cli.cjs
-censor-daemon/test_dummy_model.gguf
-
-# Cloned Verity toolchain (3.7G, has its own .git)
-fv/verity/
-
-# Local test runtime artifacts
-billboard/test/*.log
-billboard/test/*.pid
-
 # Scratch/tmp files
 tmp_*.mjs
 tmp_*.js

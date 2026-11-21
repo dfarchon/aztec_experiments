@@ -1,0 +1,16 @@
+[profile.default]
+src = "src"
+test = "test"
+out = "../../.local/billboard-l1-out"
+cache_path = "../../.local/billboard-l1-cache"
+solc = "0.8.33"
+evm_version = "prague"
+optimizer = true
+libs = ["../../node_modules"]
+allow_paths = ["../../node_modules"]
+
+remappings = [
+    "@aztec/=../../node_modules/@aztec-foundation/l1-artifacts/l1-contracts/src/",
+    "@aztec-blob-lib/=../../node_modules/@aztec-foundation/l1-artifacts/l1-contracts/src/core/libraries/rollup/",
+    "@oz/=../../node_modules/@aztec-foundation/l1-artifacts/l1-contracts/lib/openzeppelin-contracts/contracts/",
+]

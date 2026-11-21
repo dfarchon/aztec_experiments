@@ -1,0 +1,23 @@
+{
+  "kind": "notch-stake",
+  "schemaVersion": 2,
+  "environment": "testnet",
+  "nodeUrl": "https://aztec-testnet.drpc.org",
+  "chainId": 11155111,
+  "rollupVersion": "679261766",
+  "rollupAddress": "0x1f435a7F2dA358caF887A470FAeEE7d5D5f4eFBA",
+  "board": "0x18a2b30659eedc5d61f8d155121cf403ba7b36dce90ee7773f16ecf894012354",
+  "boardArtifactHash": "dd636b5d4354780b07026707b893cb192487378dfa910708776692079a3a2eca",
+  "boardClassId": "0x112d479ea241cd96b4f79d008b90ca8ad2399848dd329f265adefbf60ce67edd",
+  "sponsoredFpc": "0x2d8fff82a3b0c15d0a89169e7d8d043e079ab94d52031f1de1e4972ebad169d3",
+  "sponsorSalt": "0",
+  "deploymentTx": "0x0db178cd7545b01bf682e2ca8357fe1c2630c309a8932a602c93c86b9e606e29",
+  "l1Stake": {
+    "chainId": 11155111,
+    "rpcUrl": "https://ethereum-sepolia-rpc.publicnode.com",
+    "portal": "0xfeAa73D4c96bdf1b604D3C1e51337118bA5F342e",
+    "inbox": "0x7cdC32Dd7d008870A95f1837Ffd7229ef676EF8A",
+    "runtimeCodeHash": "0xb10df805f064c0993fad043bf5222b879c402b5b8af040ab2943da43b3660431",
+    "deploymentBlock": 12176623
+  }
+}
