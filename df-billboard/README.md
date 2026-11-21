@@ -19,6 +19,13 @@ The website uses React, TypeScript and Vite. The header offers a theme switch an
 | 0.0015 ETH |                                  15 |
 |  0.002 ETH |                                  20 |
 
+Each Aztec account owns one `PrivateMutable<AccountState>` containing the total
+stake, L1 depositor, last post time and rolling history. Initialization is protected
+by a one-time nullifier. Top-ups replace that state without clearing history or
+changing the last post time. Withdrawal sets the amount to zero while retaining
+the state, so later deposits reuse the same state chain. The history count and
+ring index share one cursor field to stay within the eight-field note limit.
+
 There is no cooldown or unused-post carryover. Each L1 address has its own deposit cap; the portal has no global custody cap. Direct contract calls still rely on clients for valid UTF-8; the contract enforces 1–512 bytes and zero padding.
 
 The private Aztec account is derived from a wallet signature, not from the public L1 address alone. No account binding is publicly registered by this flow. L1 deposits and withdrawals are public, and network metadata or timing may allow correlation. This design has local end-to-end coverage but is not a privacy or security audit. Sponsored FPC availability must be checked separately.
@@ -137,3 +144,13 @@ npm run test:e2e # requires the local chains and deployment
 ```
 
 Noir tests cover stake claims, top-ups, quota boundaries, withdrawal timing and post validation. Solidity tests cover binding, stake caps and proof-based refunds. The local end-to-end test stakes, claims, posts, increases quota and withdraws. Browser and public testnet verification remain necessary before a wider release.
+
+`portal/test/BillboardPortalFunds.t.sol` additionally uses the SDK-pinned production
+Outbox implementation to check exact refunds, competing claims and replay across
+partial epoch roots, invalid witnesses, message domain binding, failed-transfer
+rollback and reentrant refund callbacks. Its fuzz test checks pending-exit top-ups
+and later withdrawal of both amounts. The fixture inserts roots as a trusted Rollup;
+it does not generate or verify Rollup SNARKs. Noir tests cover deposit replay,
+account isolation, post-exit top-ups and quota, and reuse of a retained state snapshot.
+These tests run without a local blockchain node or real-money transactions and do
+not replace a full cross-chain integration test or an independent audit.

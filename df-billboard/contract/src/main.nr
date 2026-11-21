@@ -40,10 +40,9 @@ fn recent_posts(packed_times: [Field; 4], count: u32, now: u64) -> u32 {
 
 #[aztec]
 pub contract DFBillboard {
-    use crate::{read_time, recent_posts, write_time};
+    use crate::{recent_posts, write_time};
     use crate::bridge::{deposit_message, withdrawal_message};
     use aztec::{
-        keys::getters::get_public_keys,
         macros::{
             events::event,
             functions::{external, initializer, internal, only_self, view},
@@ -51,17 +50,13 @@ pub contract DFBillboard {
             storage::storage,
         },
         messages::delivery::MessageDelivery,
-        note::note_getter_options::NoteGetterOptions,
-        note::note_viewer_options::NoteViewerOptions,
         history::storage::public_storage_historical_read,
         protocol::{
             address::{AztecAddress, EthAddress},
-            hash::poseidon2_hash_with_separator,
             traits::{Deserialize, Packable, Serialize, ToField},
         },
-        state_vars::{Map, Owned, PrivateSet, PublicMutable, StateVariable},
+        state_vars::{Map, Owned, PrivateMutable, PublicMutable, StateVariable},
     };
-    global FIRST_POST_DOMAIN: u32 = 1145455153;
     global POST_LIMIT: u32 = 20;
     global POST_WINDOW_SECONDS: u64 = 86400;
     global STAKE_UNIT: u128 = 500000000000000;
@@ -76,24 +71,19 @@ pub contract DFBillboard {
 
     #[derive(Deserialize, Eq, Serialize, Packable)]
     #[note]
-    pub struct PostingHistory {
-        pub packed_times: [Field; 4],
-        pub next_index: u32,
-        pub count: u32,
-    }
-
-    #[derive(Deserialize, Eq, Serialize, Packable)]
-    #[note]
-    pub struct StakeNote {
+    pub struct AccountState {
         pub amount: u128,
         pub depositor: EthAddress,
         pub last_post: u64,
+        pub packed_times: [Field; 4],
+        // count * POST_LIMIT + next_index fits one field within the 8-field note limit.
+        pub cursor: u32,
     }
 
     #[storage]
     struct Storage<Context> {
-        histories: Owned<PrivateSet<PostingHistory, Context>, Context>,
-        stakes: Owned<PrivateSet<StakeNote, Context>, Context>,
+        // Each owner has one state chain; even an omitted note cannot reinitialize it.
+        accounts: Owned<PrivateMutable<AccountState, Context>, Context>,
         post_count: PublicMutable<u32, Context>,
         post_lengths: Map<u32, PublicMutable<u32, Context>, Context>,
         post_data: Map<u32, PublicMutable<Field, Context>, Context>,
@@ -134,18 +124,17 @@ pub contract DFBillboard {
             deposit_message(depositor, amount), [secret], portal, message_leaf_index,
         );
         let owner = self.msg_sender();
-        let notes = self.storage.stakes.at(owner).pop_notes(
-            NoteGetterOptions::<StakeNote, 3, Field, Field>::new().set_limit(1),
-        );
-        let mut stake = if notes.len() == 0 {
-            StakeNote { amount: 0, depositor, last_post: 0 }
-        } else {
-            notes.get_unchecked(0)
-        };
-        assert(stake.depositor == depositor, "Stake belongs to another L1 address");
-        assert(stake.amount + amount <= MAX_STAKE, "Stake exceeds account cap");
-        stake.amount += amount;
-        self.storage.stakes.at(owner).insert(stake).deliver(MessageDelivery::onchain_constrained());
+        self.storage.accounts.at(owner).initialize_or_replace(|previous: Option<AccountState>| {
+            let mut state = if previous.is_none() {
+                AccountState { amount: 0, depositor, last_post: 0, packed_times: [0; 4], cursor: 0 }
+            } else {
+                previous.unwrap_unchecked()
+            };
+            assert(state.depositor == depositor, "Stake belongs to another L1 address");
+            assert(state.amount + amount <= MAX_STAKE, "Stake exceeds account cap");
+            state.amount += amount;
+            state
+        }).deliver(MessageDelivery::onchain_constrained());
     }
 
     #[external("public")]
@@ -156,23 +145,15 @@ pub contract DFBillboard {
 
     #[external("utility")]
     unconstrained fn get_stake_info(owner: AztecAddress) -> pub [Field; 4] {
-        let notes = self.storage.stakes.at(owner).view_notes(
-            NoteViewerOptions::<StakeNote, 3>::new().set_limit(1),
-        );
-        if notes.len() == 0 { [0, 0, 0, 0] }
+        let account = self.storage.accounts.at(owner);
+        if !account.is_initialized() { [0, 0, 0, 0] }
         else {
-            let stake = notes.get_unchecked(0);
-            let quota = ((stake.amount / STAKE_UNIT) as u32) * 5;
-            let history_notes = self.storage.histories.at(owner).view_notes(
-                NoteViewerOptions::<PostingHistory, 6>::new().set_limit(1),
-            );
-            assert((history_notes.len() > 0) | (stake.last_post == 0), "Posting history unavailable");
-            let used = if history_notes.len() == 0 { 0 }
-                else {
-                    let history = history_notes.get_unchecked(0);
-                    recent_posts(history.packed_times, history.count, self.context.timestamp())
-                };
-            [stake.amount as Field, stake.depositor.to_field(), stake.last_post as Field, (quota - used) as Field]
+            let state = account.view_note();
+            let quota = ((state.amount / STAKE_UNIT) as u32) * 5;
+            let used = recent_posts(state.packed_times, state.cursor / POST_LIMIT, self.context.timestamp());
+            // A zero-balance state is retained after withdrawal, including its history.
+            let remaining = if used < quota { quota - used } else { 0 };
+            [state.amount as Field, state.depositor.to_field(), state.last_post as Field, remaining as Field]
         }
     }
 
@@ -188,49 +169,21 @@ pub contract DFBillboard {
         let owner = self.msg_sender();
         let header = self.context.get_anchor_block_header();
         let now = header.timestamp();
-        let stake_notes = self.storage.stakes.at(owner).pop_notes(
-            NoteGetterOptions::<StakeNote, 3, Field, Field>::new().set_limit(1),
-        );
-        assert(stake_notes.len() > 0, "Stake required");
-        let mut stake = stake_notes.get_unchecked(0);
-        assert(stake.amount >= STAKE_UNIT & stake.amount <= MAX_STAKE, "Invalid stake");
-        let quota = ((stake.amount / STAKE_UNIT) as u32) * 5;
-        assert(now >= stake.last_post, "Posting time moved backwards");
-        stake.last_post = now;
-        self.storage.stakes.at(owner).insert(stake).deliver(MessageDelivery::onchain_constrained());
-        let board = self.context.this_address();
-        let notes = self.storage.histories.at(owner).pop_notes(
-            NoteGetterOptions::<PostingHistory, 6, Field, Field>::new().set_limit(1),
-        );
-        let mut history = if notes.len() == 0 {
-            // The one-time nullifier prevents an account from dropping its
-            // history note to reset the rolling limit. No registration is needed.
-            let secret = self.context.request_nhk_app(get_public_keys(owner).npk_m_hash);
-            let first_post_id = poseidon2_hash_with_separator(
-                [board.to_field(), owner.to_field(), secret],
-                FIRST_POST_DOMAIN,
-            );
-            self.context.push_nullifier_unsafe(first_post_id);
-            PostingHistory { packed_times: [0; 4], next_index: 0, count: 0 }
-        } else {
-            notes.get_unchecked(0)
-        };
-        assert(history.count <= POST_LIMIT, "Invalid posting history");
-        assert(history.next_index < POST_LIMIT, "Invalid posting history");
-        let index = history.next_index;
-        if history.count > 0 {
-            let last_index = (index + POST_LIMIT - 1) % POST_LIMIT;
-            let last = read_time(history.packed_times, last_index);
-            assert(now >= last, "Posting time moved backwards");
-        }
-        let used = recent_posts(history.packed_times, history.count, now);
-        assert(used < quota, "24-hour post limit reached");
-        history.packed_times = write_time(history.packed_times, index, now);
-        if history.count < POST_LIMIT { history.count += 1; }
-        history.next_index = (index + 1) % POST_LIMIT;
-        self.storage.histories.at(owner).insert(history).deliver(
-            MessageDelivery::onchain_constrained(),
-        );
+        self.storage.accounts.at(owner).replace(|mut state: AccountState| {
+            assert(state.amount >= STAKE_UNIT & state.amount <= MAX_STAKE, "Stake required");
+            let quota = ((state.amount / STAKE_UNIT) as u32) * 5;
+            assert(now >= state.last_post, "Posting time moved backwards");
+            let count = state.cursor / POST_LIMIT;
+            let next_index = state.cursor % POST_LIMIT;
+            assert(count <= POST_LIMIT, "Invalid posting history");
+            let used = recent_posts(state.packed_times, count, now);
+            assert(used < quota, "24-hour post limit reached");
+            state.last_post = now;
+            state.packed_times = write_time(state.packed_times, next_index, now);
+            let new_count = if count < POST_LIMIT { count + 1 } else { count };
+            state.cursor = new_count * POST_LIMIT + (next_index + 1) % POST_LIMIT;
+            state
+        }).deliver(MessageDelivery::onchain_constrained());
         // Fixed-size canonical bytes: callers cannot hide content in padding.
         for i in 0..MAX_BYTES {
             if i >= length {
@@ -254,20 +207,23 @@ pub contract DFBillboard {
     fn withdraw() {
         let owner = self.msg_sender();
         let now = self.context.get_anchor_block_header().timestamp();
-        let notes = self.storage.stakes.at(owner).pop_notes(
-            NoteGetterOptions::<StakeNote, 3, Field, Field>::new().set_limit(1),
-        );
-        assert(notes.len() > 0, "No stake to withdraw");
-        let stake = notes.get_unchecked(0);
-        assert(now >= stake.last_post, "Posting time moved backwards");
-        assert((stake.last_post == 0) | (now - stake.last_post >= POST_WINDOW_SECONDS),
-            "Wait 24 hours after the last post");
         let header = self.context.get_anchor_block_header();
         let portal_field = public_storage_historical_read(
             header, self.storage.l1_portal.get_storage_slot(), self.context.this_address(),
         );
         let portal = EthAddress::from_field(portal_field);
-        self.enqueue_self._withdraw_public(portal, withdrawal_message(stake.depositor, stake.amount));
+        let current = self.storage.accounts.at(owner).get_note();
+        let state = current.get_note();
+        current.deliver(MessageDelivery::onchain_constrained());
+        assert(state.amount > 0, "No stake to withdraw");
+        assert(now >= state.last_post, "Posting time moved backwards");
+        assert((state.last_post == 0) | (now - state.last_post >= POST_WINDOW_SECONDS),
+            "Wait 24 hours after the last post");
+        self.storage.accounts.at(owner).replace(|mut note: AccountState| {
+            note.amount = 0;
+            note
+        }).deliver(MessageDelivery::onchain_constrained());
+        self.enqueue_self._withdraw_public(portal, withdrawal_message(state.depositor, state.amount));
     }
 
     #[external("public")]
