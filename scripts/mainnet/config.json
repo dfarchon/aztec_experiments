@@ -1,0 +1,11 @@
+{
+  "environment": "mainnet",
+  "nodeUrl": "https://aztec-mainnet.drpc.org",
+  "l1RpcUrl": "https://ethereum-rpc.publicnode.com",
+  "nodeVersion": "6.0.0",
+  "chainId": 1,
+  "rollupVersion": "2070860440",
+  "rollupAddress": "0xe37a2663cc9c119ba41572c40fab0bbb23a5402f",
+  "inboxAddress": "0x603b06cecc1d537aad83f1d46651e32014c5b6ad",
+  "sponsoredFpc": "0x2b4bb42e8d8a7978edae5c3a078cc5d53c8cf3875fd3c191a3fba9cab7508dcf"
+}

@@ -99,9 +99,9 @@ export default function AboutRoute() {
         <p className="about-eyebrow">Still taking shape</p>
         <h2>An ongoing experiment.</h2>
         <p>
-          Notch currently runs on the Aztec public testnet and Ethereum Sepolia.
-          The contracts have not been audited. Use test funds while the project
-          evolves.
+          Notch runs on Aztec and uses Ethereum for stake deposits and refunds.
+          The contracts have not been audited. Check the selected network before
+          staking.
         </p>
         <div className="about-links">
           <Link className="about-board-link" to="/">

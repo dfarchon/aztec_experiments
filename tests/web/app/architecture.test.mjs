@@ -60,17 +60,21 @@ test("shared account helpers keep identities, namespaces and recovery writes iso
 
 test("network policies fail closed on RPC, version, rollup and proof mismatches", () => {
   assert.equal(environment(undefined), "local");
-  assert.throws(() => environment("mainnet"));
+  assert.equal(environment("mainnet"), "mainnet");
+  assert.throws(() => environment("unknown"));
   validateRpc("http://127.0.0.1:5180", "local");
   validateRpc("https://rpc.example", "testnet");
+  validateRpc("https://rpc.example", "mainnet");
   for (const [url, env] of [
     ["https://rpc.example", "local"],
     ["http://rpc.example", "testnet"],
     ["https://localhost", "testnet"],
     ["https://user:secret@rpc.example", "testnet"],
+    ["http://rpc.example", "mainnet"],
+    ["https://localhost", "mainnet"],
   ])
     assert.throws(() => validateRpc(url, env));
-  for (const env of ["local", "testnet"]) {
+  for (const env of ["local", "testnet", "mainnet"]) {
     const p = networkPolicy(env);
     const info = {
       l1ChainId: p.chainId,
@@ -80,13 +84,13 @@ test("network policies fail closed on RPC, version, rollup and proof mismatches"
     };
     const config = { rollupAddress: "rollup", rollupVersion: "1" };
     validateChain(env, config, info, "rollup");
-    if (env === "testnet")
+    if (env !== "local")
       assert.throws(() =>
         validateChain(env, { rollupAddress: "rollup" }, info, "rollup")
       );
     for (const change of [
       { realProofs: !p.realProofs },
-      { l1ChainId: 1 },
+      { l1ChainId: p.chainId === 1 ? 11155111 : 1 },
       { nodeVersion: "other" },
       { rollupVersion: 2 },
     ])

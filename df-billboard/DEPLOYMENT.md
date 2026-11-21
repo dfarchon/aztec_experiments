@@ -1,5 +1,8 @@
 # Notch public testnet deployment
 
+For the separate mainnet configuration and maintained FPC integration, see
+[MAINNET.md](MAINNET.md). The commands below continue to select testnet.
+
 The website is static on Vercel or Netlify. Contracts are deployed from your computer,
 not from the hosting provider. The two contracts are **BillboardPortal on Ethereum Sepolia**, then
 **DFBillboard on Aztec Testnet**. This does not deploy the Aztec protocol.

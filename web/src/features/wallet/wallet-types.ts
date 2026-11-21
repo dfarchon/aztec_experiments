@@ -1,4 +1,5 @@
 import type { AztecRuntime } from "../../../../runtime/wallet-runtime.mjs";
+import type { Environment } from "../../app/network.ts";
 import type { AccountKeys } from "./account-keys.ts";
 import type { InjectedProvider } from "./l1.ts";
 
@@ -14,7 +15,7 @@ export interface L1StakeDeployment {
 export interface NotchDeployment {
   kind: "notch-stake";
   schemaVersion: 2;
-  environment?: "local" | "testnet";
+  environment?: Environment;
   nodeUrl: string;
   rollupAddress: string;
   rollupVersion: string | number;
@@ -22,7 +23,7 @@ export interface NotchDeployment {
   boardClassId: string;
   boardArtifactHash: string;
   sponsoredFpc: string;
-  sponsorSalt: string;
+  sponsorSalt?: string;
   l1Stake: L1StakeDeployment;
 }
 

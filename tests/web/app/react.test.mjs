@@ -766,7 +766,7 @@ test("Ready account actions group connection, stake and posting while preserving
   controller.dispose();
 });
 
-test("pending wallet actions keep their accessible label while busy and connection loading still reports testnet availability", () => {
+test("pending wallet actions keep their accessible label while busy and connection loading reports network availability", () => {
   const base = createBillboardController();
   const view = {
     ...base.getSnapshot(),
@@ -785,13 +785,13 @@ test("pending wallet actions keep their accessible label while busy and connecti
     );
   assert.match(render(), /aria-label="Complete the pending wallet action"/);
   assert.match(render(), /Finding wallets/);
-  assert.match(render(), /Waiting for the testnet/);
+  assert.match(render(), /Waiting for the network/);
   view.actionError = {
     label: "Load Notch",
     message: "Node unavailable",
     guidance: "",
   };
-  assert.match(render(), /Testnet unavailable/);
+  assert.match(render(), /Network unavailable/);
   base.dispose();
 });
 

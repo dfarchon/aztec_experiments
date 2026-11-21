@@ -228,17 +228,25 @@ a browser leave-page confirmation.
 ```sh
 npm run dev                 # prepare runtime assets and serve the website
 npm run build               # typecheck and build the static website
+npm run build:mainnet       # isolated frontend package for the deployed mainnet contracts
 npm run build:runtime       # rebuild lazy SDK and workers
 npm run build:contracts     # compile Noir and Solidity contracts
 npm run check               # formatting, types, unit, message and deployment tests
 npm run test                # unit, message and isolated release packaging tests
 npm run dev:local           # local chain, deployment and website
 npm run release:testnet -- plan
+npm run release:mainnet -- plan
 ```
 
 `npm run dev` uses an existing `web/dist/df-local.json`. The local command builds
 contracts and writes a local manifest. Public-testnet release packaging is
 documented in `df-billboard/DEPLOYMENT.md`; it never deploys automatically.
+
+The mainnet frontend reads the public, versioned `deployments/mainnet.json`.
+`npm run build:mainnet` produces `.local/releases/notch-mainnet/public`; use
+`-- --out PATH` for a fresh output directory on later builds. It does not read
+private deployment journals, change the development manifest or upload anything.
+See `df-billboard/MAINNET.md` for network pins and deployment addresses.
 
 
 ## Resuming a withdrawal after reload

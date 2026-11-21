@@ -28,6 +28,9 @@ import {
 const config = JSON.parse(
   fs.readFileSync(new URL("../../scripts/testnet/config.json", import.meta.url))
 );
+const mainnetConfig = JSON.parse(
+  fs.readFileSync(new URL("../../scripts/mainnet/config.json", import.meta.url))
+);
 const binding = {
   config,
   boardArtifactHash: "artifact-hash",
@@ -113,6 +116,36 @@ test("pins chain, rollup, inbox, version and real proofs", () => {
       checkNetwork({ ...config, nodeUrl: url }, info, 11155111n)
     );
   }
+});
+
+test("mainnet checks require the explicit FPC and reject Sepolia or synthetic proofs", () => {
+  const info = {
+    nodeVersion: mainnetConfig.nodeVersion,
+    l1ChainId: 1,
+    realProofs: true,
+    rollupVersion: mainnetConfig.rollupVersion,
+    l1ContractAddresses: {
+      rollupAddress: mainnetConfig.rollupAddress,
+      inboxAddress: mainnetConfig.inboxAddress,
+    },
+  };
+  checkNetwork(mainnetConfig, info, 1n);
+  assert.throws(
+    () => checkNetwork(mainnetConfig, info, 11155111n),
+    /wrong chain/
+  );
+  assert.throws(
+    () => checkNetwork(mainnetConfig, { ...info, realProofs: false }, 1n),
+    /Synthetic/
+  );
+  assert.throws(
+    () => checkNetwork({ ...mainnetConfig, sponsoredFpc: undefined }, info, 1n),
+    /explicit Sponsored FPC/
+  );
+  assert.throws(
+    () => checkNetwork({ ...mainnetConfig, environment: "testnet" }, info, 1n),
+    /selected environment/
+  );
 });
 
 test("journal locks concurrent runs, writes mode 600 and rejects changed artifacts", (t) => {
@@ -279,6 +312,14 @@ test("public export excludes all secrets and refuses incomplete deployments", ()
   assert.equal(manifest.l1Stake.chainId, 11155111);
   assert.equal(manifest.boardArtifactHash, binding.boardArtifactHash);
   assert.throws(() => publicManifest({ ...state, l2: {} }), /confirmed/);
+  const mainnetManifest = publicManifest({
+    ...state,
+    binding: { ...binding, config: mainnetConfig, sponsorSalt: "custom-salt" },
+  });
+  assert.equal(mainnetManifest.environment, "mainnet");
+  assert.equal(mainnetManifest.l1Stake.chainId, 1);
+  assert.equal(mainnetManifest.sponsorSalt, "custom-salt");
+  assert(!JSON.stringify(mainnetManifest).includes("PRIVATE"));
 });
 
 test("Vercel config isolates workers and does not rewrite missing assets to HTML", () => {
@@ -303,43 +344,61 @@ test("Vercel config isolates workers and does not rewrite missing assets to HTML
   assert.equal(missing.status, 404);
 });
 
-test("L1 recovery validates signed creation bytecode, chain and expected address without reading a key", async () => {
-  const portal = JSON.parse(
-    fs.readFileSync(
-      new URL(
-        "../../.local/billboard-l1-out/BillboardPortal.sol/BillboardPortal.json",
-        import.meta.url
+for (const selectedConfig of [config, mainnetConfig])
+  test(`L1 recovery validates ${selectedConfig.chainId} signed creation bytecode and chain without reading a key`, async () => {
+    const portal = JSON.parse(
+      fs.readFileSync(
+        new URL(
+          "../../.local/billboard-l1-out/BillboardPortal.sol/BillboardPortal.json",
+          import.meta.url
+        )
       )
-    )
-  );
-  const signer = Wallet.createRandom(); // Ephemeral fixture, never funded or sent.
-  const data = await new ContractFactory(
-    portal.abi,
-    portal.bytecode.object
-  ).getDeployTransaction(config.rollupAddress, config.rollupVersion);
-  const raw = await signer.signTransaction({
-    ...data,
-    nonce: 0,
-    chainId: 11155111,
-    gasLimit: 1_000_000,
-    gasPrice: 1,
+    );
+    const signer = Wallet.createRandom(); // Ephemeral fixture, never funded or sent.
+    const data = await new ContractFactory(
+      portal.abi,
+      portal.bytecode.object
+    ).getDeployTransaction(
+      selectedConfig.rollupAddress,
+      selectedConfig.rollupVersion
+    );
+    const raw = await signer.signTransaction({
+      ...data,
+      nonce: 0,
+      chainId: selectedConfig.chainId,
+      gasLimit: 1_000_000,
+      gasPrice: 1,
+    });
+    const stage = {
+      raw,
+      hash: keccak256(raw),
+      address: getCreateAddress({ from: signer.address, nonce: 0 }),
+    };
+    const adapter = adapters(
+      { binding: { ...binding, config: selectedConfig }, portal },
+      { state: {} },
+      "/must-not-read"
+    ).l1;
+    await adapter.validate(stage);
+    await assert.rejects(adapter.validate({ ...stage, hash: "wrong" }));
+    await assert.rejects(
+      adapter.validate({ ...stage, address: config.rollupAddress })
+    );
+    const wrongChainRaw = await signer.signTransaction({
+      ...data,
+      nonce: 0,
+      chainId: selectedConfig.chainId === 1 ? 11155111 : 1,
+      gasLimit: 1_000_000,
+      gasPrice: 1,
+    });
+    await assert.rejects(
+      adapter.validate({
+        ...stage,
+        raw: wrongChainRaw,
+        hash: keccak256(wrongChainRaw),
+      })
+    );
   });
-  const stage = {
-    raw,
-    hash: keccak256(raw),
-    address: getCreateAddress({ from: signer.address, nonce: 0 }),
-  };
-  const adapter = adapters(
-    { binding, portal },
-    { state: {} },
-    "/must-not-read"
-  ).l1;
-  await adapter.validate(stage);
-  await assert.rejects(adapter.validate({ ...stage, hash: "wrong" }));
-  await assert.rejects(
-    adapter.validate({ ...stage, address: config.rollupAddress })
-  );
-});
 
 test("release rejects wrong artifacts before creating output", async (t) => {
   const destination = path.join(path.dirname(temporary(t)), "release");
@@ -453,4 +512,37 @@ test("CLI refuses deploy without --broadcast before network or key access", () =
   );
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /requires explicit --broadcast/);
+});
+
+test("CLI rejects an implicit mainnet config or an unknown network before RPC access", () => {
+  for (const args of [
+    [
+      "plan",
+      "--config",
+      new URL("../../scripts/mainnet/config.json", import.meta.url).pathname,
+    ],
+    [
+      "plan",
+      "--network",
+      "mainnet",
+      "--config",
+      new URL("../../scripts/testnet/config.json", import.meta.url).pathname,
+    ],
+    ["plan", "--network", "unknown"],
+  ]) {
+    const result = spawnSync(
+      process.execPath,
+      [
+        new URL("../../scripts/deploy-billboard-testnet.mjs", import.meta.url)
+          .pathname,
+        ...args,
+      ],
+      { encoding: "utf8" }
+    );
+    assert.notEqual(result.status, 0);
+    assert.match(
+      result.stderr,
+      /differs from --network|Unsupported public deployment environment/
+    );
+  }
 });

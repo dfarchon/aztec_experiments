@@ -1,8 +1,10 @@
-export type Environment = "local" | "testnet";
+import { PUBLIC_NETWORKS } from "../../../protocol/networks.mjs";
+
+export type Environment = "local" | "testnet" | "mainnet";
 export const SDK_VERSION = "6.0.0";
 export function environment(value: unknown): Environment {
   if (value === undefined || value === "local") return "local";
-  if (value === "testnet") return value;
+  if (value === "testnet" || value === "mainnet") return value;
   throw new Error("Unsupported deployment environment");
 }
 export function networkPolicy(env: Environment) {
@@ -13,12 +15,7 @@ export function networkPolicy(env: Environment) {
         chainName: "Notch Local Anvil",
         currency: "Local ETH",
       }
-    : {
-        chainId: 11155111,
-        realProofs: true,
-        chainName: "Sepolia",
-        currency: "Sepolia ETH",
-      };
+    : PUBLIC_NETWORKS[env];
 }
 export function validateRpc(url: string, env: Environment) {
   const parsed = new URL(url);
@@ -45,7 +42,7 @@ export function validateChain(
 ) {
   const policy = networkPolicy(env);
   if (
-    (env === "testnet" && !config.rollupVersion) ||
+    (env !== "local" && !config.rollupVersion) ||
     Number(info.l1ChainId) !== policy.chainId ||
     info.nodeVersion !== SDK_VERSION ||
     info.realProofs !== policy.realProofs ||

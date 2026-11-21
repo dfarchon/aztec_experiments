@@ -6,25 +6,28 @@ import { parseArgs } from 'node:util';
 import { connect, adapters, verifyDeployment } from './testnet/network.mjs';
 import { atomicJson, openJournal, publicManifest, runStage } from './testnet/state.mjs';
 import { buildRelease } from './testnet/release.mjs';
+import { publicNetwork } from '../protocol/networks.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
-  config: { type: 'string', default: path.join(root, 'scripts/testnet/config.json') },
-  state: { type: 'string', default: path.join(root, '.local/testnet/stake-deployment.json') },
+  network: { type: 'string', default: 'testnet' },
+  config: { type: 'string' },
+  state: { type: 'string' },
   'key-file': { type: 'string' }, out: { type: 'string' },
   target: { type: 'string' },
   broadcast: { type: 'boolean', default: false }, help: { type: 'boolean', default: false },
 } });
 const action = positionals[0] ?? 'plan';
 if (values.help) {
-  console.log(`Billboard public testnet deployment
+  console.log(`Notch public network deployment
   plan                         Read-only network/artifact/sponsor checks (default)
   deploy --broadcast           Start/resume using the private journal
   status                       Inspect confirmed/pending stages; never broadcast
   export --out FILE            Verify on chain, export public manifest only
   release --out DIRECTORY      Verify, build isolated static package
     --target vercel|netlify    Hosting target (default: vercel)
-Options: --config FILE --state FILE --key-file FILE
+Options: --network testnet|mainnet (default: testnet) --config FILE --state FILE --key-file FILE
+Mainnet selects scripts/mainnet/config.json and a separate .local/mainnet journal.
 The key file is read ONLY when preparing the first L1 deploy with --broadcast.
 Resume uses recorded transactions. No private keys belong in the hosting package.`);
 } else {
@@ -35,25 +38,30 @@ Resume uses recorded transactions. No private keys belong in the hosting package
   assert(values.target === undefined || action === 'release', '--target is only allowed with release');
   assert(values.target === undefined || ['vercel', 'netlify'].includes(values.target), 'Release target must be vercel or netlify');
   assert(!['export', 'release'].includes(action) || values.out, 'Export/release requires --out');
-  const config = JSON.parse(fs.readFileSync(values.config, 'utf8'));
+  const policy = publicNetwork(values.network);
+  const configFile = values.config ?? path.join(root, `scripts/${values.network}/config.json`);
+  const stateFile = values.state ?? path.join(root, `.local/${values.network}/stake-deployment.json`);
+  const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+  assert.equal(config.environment ?? 'testnet', values.network, 'Config environment differs from --network');
   const context = await connect(config);
   let journal;
   try {
     if (action === 'plan') {
-      console.log(JSON.stringify({ ...context.binding, sponsorBalance: context.sponsorBalance.toString(),
-        warning: 'Balance does not guarantee sponsorship. No keys loaded or transactions sent.',
-        order: ['Sepolia BillboardPortal', 'Aztec DFBillboard (real proofs)', 'Bind portal to board'],
+      console.log(JSON.stringify({ ...context.binding,
+        ...(context.sponsorBalance !== null ? { sponsorBalance: context.sponsorBalance.toString() } : {}),
+        warning: 'Read-only checks. No keys loaded or transactions sent.',
+        order: [`${policy.chainName} BillboardPortal`, 'Aztec DFBillboard (real proofs)', 'Bind portal to board'],
       }, null, 2));
     } else {
-      assert(action === 'deploy' || fs.existsSync(values.state), 'No deployment journal exists');
-      journal = openJournal(path.resolve(values.state), context.binding);
+      assert(action === 'deploy' || fs.existsSync(stateFile), 'No deployment journal exists');
+      journal = openJournal(path.resolve(stateFile), context.binding);
       const stages = adapters(context, journal, values['key-file']);
       if (action === 'deploy') {
-        if (!journal.state.l2?.confirmed) {
+        if (!journal.state.l2?.confirmed && context.sponsorBalance !== null) {
           assert(context.sponsorBalance > 0n, 'Sponsored FPC is empty; stop before spending L1 gas');
         }
         for (const name of ['l1', 'l2', 'bind']) {
-          console.log(`Deploy/resume ${name}; checkpoint: ${path.resolve(values.state)}`);
+          console.log(`Deploy/resume ${name}; checkpoint: ${path.resolve(stateFile)}`);
           const stage = await runStage(journal, name, stages[name]);
           console.log(`${name}: ${stage.address} · ${stage.hash} · confirmed`);
         }

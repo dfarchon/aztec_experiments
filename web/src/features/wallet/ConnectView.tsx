@@ -71,8 +71,8 @@ export function ConnectView({ view, controller }: ConnectViewProps) {
       {!view.stake.available && (
         <p>
           {view.actionError?.label === "Load Notch"
-            ? "Testnet unavailable."
-            : "Waiting for the testnet…"}
+            ? "Network unavailable."
+            : "Waiting for the network…"}
         </p>
       )}
       {!loading && wallets.length === 0 && (

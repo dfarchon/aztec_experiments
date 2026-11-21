@@ -1,4 +1,5 @@
 import type { InjectedProvider } from "../features/wallet/l1.ts";
+import type { Environment } from "./network.ts";
 
 export interface PostData {
   id: number | string;
@@ -48,6 +49,7 @@ export interface BillboardView extends EditableFields {
   canPost: boolean;
   walletOpen: boolean;
   deployment: {
+    environment?: Environment;
     nodeUrl: string;
     board: string;
     sponsoredFpc: string;

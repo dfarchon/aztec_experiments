@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   claimDeposit,
   createAztecBoardSession,
+  publishPost,
   withdrawalProof,
 } from "../../../web/src/features/wallet/aztec.ts";
 
@@ -30,7 +31,9 @@ function setupFixture(t) {
         stops++;
       },
     },
-    registerContract: async () => {},
+    registerContract: async (instance) => {
+      events.push(`registered:${instance.address}`);
+    },
   };
   const board = {
     methods: { get_l1_portal: () => ({ simulate: async () => "portal" }) },
@@ -44,10 +47,11 @@ function setupFixture(t) {
       loadContractArtifact: (x) => x,
       getContractClassFromArtifact: async () => ({ id: "class" }),
       Contract: { at: async () => board },
-      getContractInstanceFromInstantiationParams: async () => ({
-        address: { toString: () => "sponsor" },
-      }),
-      SponsoredFeePaymentMethod: class {},
+      SponsoredFeePaymentMethod: class {
+        constructor(address) {
+          this.address = address;
+        }
+      },
     },
     setupAccount: async (state) => {
       state.instance = {
@@ -56,8 +60,12 @@ function setupFixture(t) {
       state.wallet = wallet;
       state.address = { toString: () => "original-address" };
       state.aztecNode = {
-        getContract: async () => ({
-          currentContractClassId: { equals: () => true },
+        getContract: async (address) => ({
+          address,
+          currentContractClassId: {
+            equals: () => true,
+            toString: () => "class",
+          },
         }),
       };
       return true;
@@ -103,6 +111,99 @@ test("setup saves the derived address before artifacts and transfers the live PX
   assert.equal(f.saved.address, "original-address");
   assert.equal(f.events[0], "saved");
   assert.equal(f.stops(), 0);
+  assert.equal(session.payment.address, "sponsor");
+  assert(f.events.includes("registered:sponsor"));
+});
+
+test("mainnet setup uses the supplied FPC instance without deriving a testnet address", async (t) => {
+  const f = setupFixture(t);
+  const mainnet = {
+    ...config,
+    environment: "mainnet",
+    sponsoredFpc: "maintained-mainnet-fpc",
+    sponsorSalt: undefined,
+  };
+  const setup = f.runtime.setupAccount;
+  f.runtime.setupAccount = async (state, options) => {
+    assert.equal(options.proverEnabled, true);
+    return setup(state);
+  };
+  const session = await createAztecBoardSession(
+    mainnet,
+    f.runtime,
+    f.saved,
+    () => {},
+    f.lifecycle
+  );
+  assert.equal(session.payment.address, mainnet.sponsoredFpc);
+  assert(f.events.includes(`registered:${mainnet.sponsoredFpc}`));
+});
+
+test("a wrong FPC class stops setup and closes the PXE", async (t) => {
+  const f = setupFixture(t);
+  const setup = f.runtime.setupAccount;
+  f.runtime.setupAccount = async (state) => {
+    await setup(state);
+    const getContract = state.aztecNode.getContract;
+    state.aztecNode.getContract = async (address) =>
+      address === "sponsor"
+        ? { address, currentContractClassId: { toString: () => "wrong-class" } }
+        : getContract(address);
+    return true;
+  };
+  await assert.rejects(
+    createAztecBoardSession(config, f.runtime, f.saved, () => {}, f.lifecycle),
+    /FPC class/
+  );
+  assert.equal(f.stops(), 1);
+  assert(!f.events.includes("registered:sponsor"));
+});
+
+test("mainnet posting uses the maintained sponsor without a balance precheck", async () => {
+  let sent;
+  class GasFees {
+    constructor(da, l2) {
+      this.feePerDaGas = da;
+      this.feePerL2Gas = l2;
+    }
+  }
+  const session = {
+    runtime: {
+      sdk: {
+        GasFees,
+        getFeeJuiceBalance: async () => {
+          throw new Error("Mainnet balance should not be queried");
+        },
+      },
+    },
+    node: {
+      getBlock: async () => ({
+        header: {
+          globalVariables: { gasFees: { feePerDaGas: 1n, feePerL2Gas: 1n } },
+        },
+      }),
+      getPredictedMinFees: async () => [{ feePerDaGas: 1n, feePerL2Gas: 1n }],
+    },
+    payment: "maintained-fpc",
+    board: {
+      methods: {
+        post: () => ({
+          send: async (options) => {
+            sent = options;
+            return { receipt: { executionResult: "success" } };
+          },
+        }),
+      },
+    },
+  };
+  await publishPost(
+    session,
+    { ...config, environment: "mainnet" },
+    "Hello mainnet",
+    "owner"
+  );
+  assert.equal(sent.from, "owner");
+  assert.equal(sent.fee.paymentMethod, session.payment);
 });
 
 test("artifact failures stop the unreturned PXE while preserving account identity", async (t) => {

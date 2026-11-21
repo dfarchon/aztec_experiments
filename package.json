@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "npm run prepare && vite --config web/vite.config.ts",
     "build": "npm run typecheck && npm run prepare && vite build --config web/vite.config.ts",
+    "build:mainnet": "node scripts/build-mainnet.mjs",
     "preview": "vite preview --config web/vite.config.ts",
     "prepare": "node scripts/build-df-harness.mjs",
     "build:runtime": "node scripts/build-sdk.mjs",
@@ -33,6 +34,7 @@
     "start:local": "bash scripts/start-local.sh",
     "deploy:local": "bash scripts/with-toolchain.sh node scripts/deploy-df-harness.mjs",
     "release:testnet": "bash scripts/with-toolchain.sh node scripts/deploy-billboard-testnet.mjs",
+    "release:mainnet": "bash scripts/with-toolchain.sh node scripts/deploy-billboard-testnet.mjs --network mainnet",
     "sync:clock": "node scripts/sync-df-clock.mjs"
   },
   "dependencies": {

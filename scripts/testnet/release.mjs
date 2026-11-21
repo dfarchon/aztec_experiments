@@ -4,6 +4,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { digest } from './state.mjs';
+import { publicNetwork } from '../../protocol/networks.mjs';
 
 const headers = {
   'Cross-Origin-Opener-Policy': 'same-origin',
@@ -57,7 +58,12 @@ const run = (args, env) => new Promise((resolve, reject) => {
 
 export async function buildRelease(manifest, destination, target = 'vercel') {
   assert(['vercel', 'netlify'].includes(target), 'Release target must be vercel or netlify');
-  assert.equal(manifest.environment, 'testnet');
+  assert(['testnet', 'mainnet'].includes(manifest.environment), 'Release environment must be testnet or mainnet');
+  const policy = publicNetwork(manifest.environment);
+  if (manifest.environment === 'mainnet') {
+    assert.equal(manifest.l1Stake?.chainId, policy.chainId, 'Mainnet release must use Ethereum mainnet');
+    assert(manifest.sponsoredFpc, 'Mainnet release requires a Sponsored FPC');
+  }
   assert.equal(digest(fs.readFileSync(boardFile)), manifest.boardArtifactHash, 'Recompile/deploy mismatch; cannot publish');
   assert(!fs.existsSync(destination), 'Release directory already exists; choose a new directory');
   const output = target === 'vercel' ? path.join(destination, '.vercel/output') : destination;

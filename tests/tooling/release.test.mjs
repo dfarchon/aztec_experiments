@@ -89,9 +89,13 @@ test("upload budget counts nested assets and config, and rejects oversized outpu
 
 // Explicit offline packaging smoke test: fixture addresses, no RPC, no keys,
 // no deployment. Delete the fixture package after inspection.
-for (const target of ["vercel", "netlify"])
+for (const [target, network] of [
+  ["vercel", "testnet"],
+  ["netlify", "testnet"],
+  ["netlify", "mainnet"],
+])
   test(
-    `isolated ${target} package contains runtime assets, not local data or secrets`,
+    `isolated ${network} ${target} package contains runtime assets, not local data or secrets`,
     {
       timeout: 180_000,
     },
@@ -115,7 +119,7 @@ for (const target of ["vercel", "netlify"])
         : null;
       const config = JSON.parse(
         fs.readFileSync(
-          new URL("../../scripts/testnet/config.json", import.meta.url)
+          new URL(`../../scripts/${network}/config.json`, import.meta.url)
         )
       );
       const fixture = publicManifest({

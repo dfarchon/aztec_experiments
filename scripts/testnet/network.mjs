@@ -14,6 +14,7 @@ import { loadContractArtifact } from '@aztec-labs/aztec.js/abi';
 import { GasFees } from '@aztec-labs/stdlib/gas';
 import { getBillboardFeeOptions } from '../../protocol/message.mjs';
 import { checkNetwork, digest, publicRpc, readPrivateJson } from './state.mjs';
+import { resolveSponsoredFpc } from '../../runtime/sponsored-fpc.mjs';
 
 const root = new URL('../../', import.meta.url);
 const boardFile = new URL('df-billboard/target/df_billboard-DFBillboard.json', root);
@@ -37,13 +38,14 @@ export async function connect(config) {
     const artifact = loadContractArtifact(JSON.parse(text));
     const portalText = fs.readFileSync(portalFile);
     const portal = JSON.parse(portalText);
-    const sponsor = await getContractInstanceFromInstantiationParams(SponsoredFPCContract.artifact, { salt: Fr.ZERO });
-    const deployedSponsor = await node.getContract(sponsor.address);
-    assert.equal(deployedSponsor?.currentContractClassId.toString(), sponsor.currentContractClassId.toString(), 'Canonical Sponsored FPC is missing or its class changed');
-    const sponsorBalance = await getFeeJuiceBalance(sponsor.address, node);
+    const sponsorAddress = config.sponsoredFpc ?? (await getContractInstanceFromInstantiationParams(SponsoredFPCContract.artifact, { salt: Fr.ZERO })).address.toString();
+    const sponsor = await resolveSponsoredFpc(node, { AztecAddress, getContractClassFromArtifact }, SponsoredFPCContract.artifact, sponsorAddress);
+    // Mainnet uses an externally maintained FPC. Keep existing testnet preflight only.
+    const sponsorBalance = config.environment === 'mainnet' ? null : await getFeeJuiceBalance(sponsor.address, node);
     const binding = {
       config, boardArtifactHash: digest(text), boardClassId: (await getContractClassFromArtifact(artifact)).id.toString(),
       portalArtifactHash: digest(portalText), sponsoredFpc: sponsor.address.toString(),
+      ...(config.sponsoredFpc ? { sponsorSalt: sponsor.salt.toString() } : {}),
     };
     return { node, provider, artifact, portal, sponsor, sponsorBalance, binding, close: () => provider.destroy() };
   } catch (error) {
@@ -66,13 +68,13 @@ export function adapters(context, journal, keyFile, createWallet = (node, option
       } catch { throw new Error('Invalid l1PrivateKey in the private key file; value omitted'); }
       const factory = new ContractFactory(portal.abi, portal.bytecode.object, signer);
       const request = await signer.populateTransaction(await factory.getDeployTransaction(config.rollupAddress, config.rollupVersion));
-      assert.equal(request.chainId, 11155111n);
+      assert.equal(request.chainId, BigInt(config.chainId));
       const raw = await signer.signTransaction(request);
       return { address: getCreateAddress({ from: signer.address, nonce: request.nonce }), hash: keccak256(raw), raw };
     },
     async validate(stage) {
       const tx = Transaction.from(stage.raw);
-      assert.equal(tx.chainId, 11155111n);
+      assert.equal(tx.chainId, BigInt(config.chainId));
       assert.equal(tx.to, null);
       assert.equal(tx.value, 0n);
       assert.equal(tx.hash, stage.hash);
@@ -167,14 +169,14 @@ export function adapters(context, journal, keyFile, createWallet = (node, option
       assert.equal(signer.address.toLowerCase(), Transaction.from(journal.state.l1.raw).from.toLowerCase(), 'Portal deployer changed');
       const entry = new EvmContract(journal.state.l1.address, portal.abi, signer);
       const request = await signer.populateTransaction(await entry.bindBoard.populateTransaction(journal.state.l2.address));
-      assert.equal(request.chainId, 11155111n);
+      assert.equal(request.chainId, BigInt(config.chainId));
       const raw = await signer.signTransaction(request);
       return { address: journal.state.l1.address, hash: keccak256(raw), raw };
     },
     async validate(stage) {
       const tx = Transaction.from(stage.raw);
       assert.equal(tx.hash, stage.hash);
-      assert.equal(tx.chainId, 11155111n);
+      assert.equal(tx.chainId, BigInt(config.chainId));
       assert.equal(tx.to?.toLowerCase(), journal.state.l1.address.toLowerCase());
       assert.equal(tx.value, 0n);
       assert.equal(tx.from.toLowerCase(), Transaction.from(journal.state.l1.raw).from.toLowerCase());

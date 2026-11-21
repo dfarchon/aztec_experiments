@@ -531,6 +531,9 @@ html[data-theme="light"] .ascii-clouds {
   font: 12px var(--font-mono);
   color: var(--muted);
 }
+.notch-wallet-network {
+  margin-bottom: 16px;
+}
 .notch-wallet-body > button {
   width: 100%;
 }

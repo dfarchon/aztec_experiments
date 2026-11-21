@@ -3,6 +3,7 @@ import {
   encodeDFMessage,
   getBillboardFeeOptions,
 } from "../../../../protocol/message.mjs";
+import { resolveSponsoredFpc } from "../../../../runtime/sponsored-fpc.mjs";
 import {
   type AztecRuntime,
   createAztecRuntime,
@@ -124,13 +125,13 @@ export async function createAztecBoardSession(
       throw new Error("Board trusts another stake portal");
 
     const sponsorArtifact = sdk.loadContractArtifact(sponsorResponse);
-    const sponsor = await sdk.getContractInstanceFromInstantiationParams(
+    const sponsor = await resolveSponsoredFpc(
+      node,
+      sdk,
       sponsorArtifact,
-      { salt: new sdk.Fr(BigInt(config.sponsorSalt)) }
+      config.sponsoredFpc
     );
     lifecycle.assertActive();
-    if (sponsor.address.toString() !== config.sponsoredFpc)
-      throw new Error("Sponsor artifact mismatch");
     await local.wallet.registerContract(sponsor, sponsorArtifact);
     lifecycle.assertActive();
     return {
@@ -205,12 +206,14 @@ export async function depositWasClaimed(
 
 async function feeOptions(session: AztecBoardSession, config: NotchDeployment) {
   const sdk = session.runtime.sdk;
-  const balance = await sdk.getFeeJuiceBalance(
-    sdk.AztecAddress.fromStringUnsafe(config.sponsoredFpc),
-    session.node
-  );
-  if (balance <= 0n)
-    throw new Error("L2 sponsor is empty. No L1 payment was requested.");
+  if (environment(config.environment) !== "mainnet") {
+    const balance = await sdk.getFeeJuiceBalance(
+      sdk.AztecAddress.fromStringUnsafe(config.sponsoredFpc),
+      session.node
+    );
+    if (balance <= 0n)
+      throw new Error("L2 sponsor is empty. No L1 payment was requested.");
+  }
   return getBillboardFeeOptions(session.node, session.payment, sdk.GasFees);
 }
 

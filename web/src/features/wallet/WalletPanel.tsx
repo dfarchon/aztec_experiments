@@ -102,6 +102,11 @@ export function WalletPanel({ view, controller }: ViewProps) {
                 <Icon name="close" />
               </button>
             </div>
+            {view.deployment?.environment === "mainnet" && (
+              <p className="notch-wallet-connected notch-wallet-network">
+                Aztec Mainnet · Ethereum
+              </p>
+            )}
             {!model.connected ? (
               <ConnectView view={view} controller={controller} />
             ) : view.stake.pendingExit || model.ready ? (

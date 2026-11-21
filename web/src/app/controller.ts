@@ -54,7 +54,7 @@ type NotchDeployment = Awaited<ReturnType<typeof fetchPublicJson>> & {
   boardClassId: string;
   boardArtifactHash: string;
   sponsoredFpc: string;
-  environment?: "local" | "testnet";
+  environment?: "local" | "testnet" | "mainnet";
   l1Stake: { rpcUrl: string; portal: string };
 };
 type PublicNode = ReturnType<ReadRuntime["createAztecNodeClient"]>;

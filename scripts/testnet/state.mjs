@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
+import { publicNetwork } from '../../protocol/networks.mjs';
 
 export const digest = value => createHash('sha256').update(value).digest('hex');
 
@@ -9,14 +10,16 @@ export function publicRpc(value) {
   const url = new URL(value);
   assert(url.protocol === 'https:' && !url.username && !url.password && !url.hash,
     'Public RPC must be HTTPS without embedded credentials');
-  assert(!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname), 'Loopback RPC is not public testnet');
+  assert(!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname), 'Loopback RPC is not a public network');
   return value;
 }
 
 export function checkNetwork(config, info, chainId) {
   publicRpc(config.nodeUrl);
   publicRpc(config.l1RpcUrl);
-  assert.equal(config.chainId, 11155111, 'Only Ethereum Sepolia is supported');
+  const policy = publicNetwork(config.environment);
+  assert.equal(config.chainId, policy.chainId, 'L1 chain does not match the selected environment');
+  if (config.environment === 'mainnet') assert(config.sponsoredFpc, 'Mainnet requires an explicit Sponsored FPC address');
   assert.equal(Number(chainId), config.chainId, 'L1 RPC is on the wrong chain');
   assert.equal(info.l1ChainId, config.chainId, 'Aztec is on the wrong L1');
   assert.equal(info.nodeVersion, config.nodeVersion, 'Aztec version changed');
@@ -97,11 +100,11 @@ export function publicManifest(state) {
   const { config, boardArtifactHash, boardClassId, sponsoredFpc } = state.binding;
   // Explicit allowlist. Never spread the private journal into public output.
   return {
-    kind: 'notch-stake', schemaVersion: 2, environment: 'testnet',
+    kind: 'notch-stake', schemaVersion: 2, environment: config.environment ?? 'testnet',
     nodeUrl: publicRpc(config.nodeUrl), chainId: config.chainId,
     rollupVersion: config.rollupVersion, rollupAddress: config.rollupAddress,
     board: state.l2.address, boardArtifactHash, boardClassId,
-    sponsoredFpc, sponsorSalt: '0', deploymentTx: state.l2.hash,
+    sponsoredFpc, sponsorSalt: state.binding.sponsorSalt ?? '0', deploymentTx: state.l2.hash,
     l1Stake: {
       chainId: config.chainId, rpcUrl: publicRpc(config.l1RpcUrl),
       portal: state.l1.address, inbox: config.inboxAddress,

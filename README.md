@@ -11,7 +11,12 @@ Continue setup action for existing stakes and unfinished operations. Ready can
 export the Aztec account keys for independent custody; the site has no file import. The site shows public posts without a Settings page or local
 content filters.
 
-[Public testnet site](https://df-billboard-testnet.netlify.app/) · [Frontend guide](docs/FRONTEND.md) · [Product design and usage](df-billboard/README.md) · [Deployment guide](df-billboard/DEPLOYMENT.md)
+[Website](https://onenotch.xyz/) · [Mainnet deployment](df-billboard/MAINNET.md) · [Frontend guide](docs/FRONTEND.md) · [Product design and usage](df-billboard/README.md) · [Testnet deployment](df-billboard/DEPLOYMENT.md)
+
+The deployed mainnet contracts and maintained FPC are pinned in
+[`deployments/mainnet.json`](deployments/mainnet.json). `npm run build:mainnet`
+builds the matching frontend into `.local/releases/notch-mainnet/public` without
+reading deployment keys or a private journal. Building does not publish the site.
 
 The information icon in the header opens `/about`,
 which explains the project's origins, staking model and privacy limits.
@@ -27,13 +32,14 @@ remains available on both pages.
 | [`web/`](web/) | React, TypeScript and Vite website |
 | [`protocol/`](protocol/) | Current post encoding and sponsored-fee helpers |
 | [`runtime/`](runtime/) | Lazy SDK, browser wallet/PXE runtime and Noir runtime |
-| [`scripts/`](scripts/) | Build, local chain, and testnet release scripts |
+| [`scripts/`](scripts/) | Build, local chain, and public network release scripts |
+| [`deployments/`](deployments/) | Public configuration for deployed contracts |
 | [`tests/`](tests/) | JavaScript tests grouped by feature, runtime, protocol and tooling |
 | [`docs/FRONTEND.md`](docs/FRONTEND.md) | Frontend ownership, persistence and code reading paths |
 
 The old `/df-billboard-test.html` URL redirects to `/` for existing links. The
-`testnet` in the hosted domain identifies the public test network. `web/` is the
-product, not a separate test page.
+published deployment manifest selects the network; the hostname does not.
+`web/` contains the product website.
 
 ## Local development
 
