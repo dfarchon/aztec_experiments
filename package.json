@@ -11,6 +11,8 @@
     "dev:testnet": "node scripts/dev-network.mjs testnet",
     "build": "npm run typecheck && npm run prepare:assets && vite build --config web/vite.config.ts",
     "build:mainnet": "node scripts/build-mainnet.mjs",
+    "build:testnet": "node scripts/build-public-frontend.mjs --network testnet",
+    "build:netlify": "node scripts/build-public-frontend.mjs --netlify",
     "preview": "vite preview --config web/vite.config.ts",
     "prepare:assets": "node scripts/build-df-harness.mjs",
     "build:runtime": "node scripts/build-sdk.mjs",

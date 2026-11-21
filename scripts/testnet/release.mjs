@@ -56,7 +56,7 @@ const run = (args, env) => new Promise((resolve, reject) => {
   child.on('exit', code => code === 0 ? resolve() : reject(new Error(`Build failed (${code}): ${args[0]}`)));
 });
 
-export async function buildRelease(manifest, destination, target = 'vercel') {
+export async function buildRelease(manifest, destination, target = 'vercel', { boardArtifact = boardFile } = {}) {
   assert(['vercel', 'netlify'].includes(target), 'Release target must be vercel or netlify');
   assert(['testnet', 'mainnet'].includes(manifest.environment), 'Release environment must be testnet or mainnet');
   const policy = publicNetwork(manifest.environment);
@@ -64,13 +64,13 @@ export async function buildRelease(manifest, destination, target = 'vercel') {
     assert.equal(manifest.l1Stake?.chainId, policy.chainId, 'Mainnet release must use Ethereum mainnet');
     assert(manifest.sponsoredFpc, 'Mainnet release requires a Sponsored FPC');
   }
-  assert.equal(digest(fs.readFileSync(boardFile)), manifest.boardArtifactHash, 'Recompile/deploy mismatch; cannot publish');
+  assert.equal(digest(fs.readFileSync(boardArtifact)), manifest.boardArtifactHash, 'Recompile/deploy mismatch; cannot publish');
   assert(!fs.existsSync(destination), 'Release directory already exists; choose a new directory');
   const output = target === 'vercel' ? path.join(destination, '.vercel/output') : destination;
   const dist = path.join(output, target === 'vercel' ? 'static' : 'public');
   fs.mkdirSync(dist, { recursive: true });
   fs.writeFileSync(path.join(dist, 'df-local.json'), JSON.stringify(manifest, null, 2) + '\n');
-  const env = { ...process.env, BILLBOARD_OUTPUT_DIR: dist };
+  const env = { ...process.env, BILLBOARD_OUTPUT_DIR: dist, BILLBOARD_BOARD_ARTIFACT: boardArtifact };
   // Rebuild SDK to prevent stale local runtime assets from entering a release.
   await run(['scripts/build-sdk.mjs'], env);
   await run(['node_modules/typescript/bin/tsc', '-p', 'web/tsconfig.json'], env);

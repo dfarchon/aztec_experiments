@@ -9,6 +9,9 @@ runtime/generated/
 # Dependencies
 node_modules/
 .local/
+.env
+.env.*
+!.env.example
 
 # OS files
 .DS_Store

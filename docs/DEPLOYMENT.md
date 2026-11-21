@@ -80,46 +80,77 @@ npm run release:testnet -- status
 
 ## Frontend Builds
 
-The committed mainnet manifest can build a frontend without the private journal:
+Public frontend builds need Node `24.22.1` and `npm ci`. They use the versioned
+manifests and `deployments/artifacts/notch-board.json`, verified against the
+manifest hash. No Aztec toolchain, compiled local contract, deployment journal
+or deployer private key is required. Frontend builds do not deploy contracts.
 
 ```sh
 npm run build:mainnet
+npm run build:testnet
 ```
 
-This creates a Netlify-ready package at:
+Outputs are `.local/releases/notch-mainnet/public` and
+`.local/releases/notch-testnet/public`. Existing release directories are not
+overwritten; use `-- --out .local/releases/a-new-name` for another build.
 
-```text
-.local/releases/notch-mainnet/public
+### Netlify from GitHub
+
+1. Import the repository in Netlify and select the intended branch.
+2. Leave the base directory at the repository root. The committed `netlify.toml`
+   sets the build command to `npm run build:netlify`, the publish directory to
+   `.local/netlify/public` and Node to `24.22.1`.
+3. Add `NOTCH_NETWORK` in the site's environment variables, with Builds scope:
+   `mainnet` for Ethereum/Aztec mainnet, or `testnet` for Sepolia/Aztec testnet.
+   This choice is required; an unset/invalid value fails before building.
+4. Optionally set `AZTEC_RPC_URL` and `L1_RPC_URL` in the same location. Omit
+   them to use the selected manifest's defaults. Do not add private URLs to Git.
+5. Deploy. Subsequent pushes rebuild the site. Changing environment variables
+   requires a new deployment; it does not change an already published build.
+
+Use separate Netlify projects for mainnet and testnet, each with its own network
+and RPC settings. Environment values can also differ by Netlify deploy context;
+check the effective values before publishing a production deployment. Do not put
+network/RPC overrides in `netlify.toml`, whose values take precedence over UI values.
+
+The Netlify command replaces only its dedicated `.local/netlify` output each run,
+so cached build output cannot retain another network's manifest. It emits COOP
+and COEP headers and rewrites only actual application routes. Missing JS/WASM
+files remain 404 rather than receiving the SPA HTML page.
+
+### RPC overrides and local configuration
+
+Copy `.env.example` to `.env.local` (ignored by Git):
+
+```dotenv
+NOTCH_NETWORK=testnet
+AZTEC_RPC_URL=https://your-aztec-rpc.example
+L1_RPC_URL=https://your-ethereum-rpc.example
 ```
 
-For testnet or a journal-verified release:
+`dev:mainnet`, `dev:testnet`, `build:mainnet`, `build:testnet` and `build:netlify`
+all support these RPC overrides. Explicit mainnet/testnet commands select their
+named network regardless of `NOTCH_NETWORK`. Shell/Netlify variables override
+`.env.local`; absent values use the selected manifest. An explicitly empty or
+invalid RPC override fails without printing the endpoint. Contract addresses,
+chain IDs and Rollup identity cannot be changed through these environment variables.
+Changing an RPC no longer requires editing `scripts/mainnet/config.json`; that
+file configures contract deployment tooling, not the public frontend build.
 
-```sh
-npm run release:testnet -- release --target netlify \
-  --out .local/releases/notch-testnet
-```
+RPCs must use HTTPS, allow browser CORS, and serve the selected network and
+compatible Aztec version. The application checks chain and contract identity
+at runtime. A successful offline build does not verify RPC availability.
 
-Use the same command shape with `release:mainnet` when a verified private mainnet
-journal is available. The release command rebuilds the SDK, typechecks the
-frontend, prepares runtime assets, checks the board artifact and builds React.
+**RPC URLs are embedded in the public `df-local.json` and visible to visitors.**
+Environment variables keep them out of Git, not out of the browser. Use a
+browser-safe provider key with domain restrictions, or a separately implemented
+server proxy when credentials must remain secret. Never set deployer keys as
+frontend build configuration.
 
-Before publication, verify:
-
-- `df-local.json` has the intended environment, chain and contract addresses;
-- `df-board-artifact.json` matches `boardArtifactHash`;
-- `df-read-config.json` matches the artifact;
-- the package contains no `.local`, key or journal files;
-- COOP and COEP headers are present.
-
-Published releases currently use Netlify:
-
-```text
-Mainnet project: notch-mainnet
-Testnet project: df-billboard-testnet
-```
-
-Upload only the generated `public/` directory. Do not connect a cloud build that
-is expected to deploy contracts or reconstruct a private journal.
+Before publication, check `/df-local.json` for the selected network and addresses,
+load posts, open `/about` directly and verify the wallet's network label. Upload
+only the generated `public/` directory when deploying manually. Builds never
+need the private `.local` journals or wallet data.
 
 ## Fee Sponsorship
 

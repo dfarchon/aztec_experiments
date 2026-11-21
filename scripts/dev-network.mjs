@@ -5,21 +5,20 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { frontendEnvironment, frontendManifest, publicBoardArtifact } from './public-frontend.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const [network, ...viteArgs] = process.argv.slice(2);
 assert(['mainnet', 'testnet'].includes(network), 'Choose mainnet or testnet');
-const manifest = JSON.parse(fs.readFileSync(path.join(root, `deployments/${network}.json`), 'utf8'));
-assert.equal(manifest.environment, network);
-assert.equal(manifest.chainId, network === 'mainnet' ? 1 : 11155111);
-assert.equal(manifest.l1Stake.chainId, manifest.chainId);
-const artifact = path.join(root, 'deployments/artifacts/notch-board.json');
+const settings = frontendEnvironment();
+const manifest = frontendManifest(network, settings);
+const artifact = publicBoardArtifact;
 assert.equal(createHash('sha256').update(fs.readFileSync(artifact)).digest('hex'), manifest.boardArtifactHash,
   'Public artifact does not match the deployed board');
 const output = path.join(root, `.local/frontend/${network}`);
 fs.mkdirSync(output, { recursive: true });
 fs.writeFileSync(path.join(output, 'df-local.json'), JSON.stringify(manifest, null, 2) + '\n');
-const env = { ...process.env, BILLBOARD_OUTPUT_DIR: output, BILLBOARD_BOARD_ARTIFACT: artifact };
+const env = { ...settings, BILLBOARD_OUTPUT_DIR: output, BILLBOARD_BOARD_ARTIFACT: artifact };
 
 function run(args) {
   return new Promise((resolve, reject) => {
@@ -43,7 +42,7 @@ function run(args) {
   });
 }
 
-console.log(`Notch ${network}: ${manifest.nodeUrl}\nBoard: ${manifest.board}`);
+console.log(`Notch ${network}\nBoard: ${manifest.board}`);
 if (network === 'mainnet') console.log('Mainnet transactions use real ETH.');
 await run(['scripts/build-sdk.mjs']);
 await run(['scripts/build-df-harness.mjs']);

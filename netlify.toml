@@ -1,0 +1,8 @@
+[build]
+  command = "npm run build:netlify"
+  publish = ".local/netlify/public"
+
+[build.environment]
+  NODE_VERSION = "24.22.1"
+# Set NOTCH_NETWORK and optional RPC overrides in the Netlify UI.
+# Do not define them here: file values would override the site's UI settings.

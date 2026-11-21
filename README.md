@@ -137,10 +137,13 @@ with `npm run dev:testnet -- --port 5002`.
 
 The commands read `deployments/mainnet.json` and `deployments/testnet.json`,
 respectively, and keep generated files in separate `.local/frontend/` folders.
-To use a different RPC, edit `nodeUrl` in the corresponding manifest and restart.
-The RPC must support that deployment's network and browser CORS. Configuration
-is public; do not embed private credentials. For mainnet release builds, keep
-`scripts/mainnet/config.json` in sync as well.
+To override RPCs without committing them, copy `.env.example` to `.env.local`
+and set `AZTEC_RPC_URL` and optionally `L1_RPC_URL`. Shell/CI environment
+variables take priority. Restart after changing them. RPCs must support the
+selected network and browser CORS; their URLs are visible to website visitors.
+
+For repository-connected Netlify hosting, see
+[Netlify deployment](docs/DEPLOYMENT.md#netlify-from-github).
 
 For local contract development only, also install Aztec `6.0.0` and run:
 
