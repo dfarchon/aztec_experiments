@@ -25,10 +25,10 @@ function composerAction(view: BillboardView): ComposerAction {
     };
   if (view.posting)
     return {
-      ariaLabel: "Posting. This may take 1–2 minutes.",
+      ariaLabel: "Posting. This may take about 1 minute.",
       disabled: true,
-      hint: "Posting may take 1–2 minutes.",
-      label: "Posting…",
+      hint: "Posting may take about 1 minute.",
+      label: "Posting… ~1 min",
       loading: true,
       pendingStake,
     };
@@ -112,8 +112,9 @@ export function Composer({ view, controller }: ViewProps) {
               : void controller.post()
           }
         >
+          {action.loading && <LoadingIcon />}
           <span className="post-button-label">{action.label}</span>
-          {action.loading ? <LoadingIcon /> : <Icon name="arrow" />}
+          {!action.loading && <Icon name="arrow" />}
         </button>
       </div>
     </section>

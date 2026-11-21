@@ -522,7 +522,7 @@ test("load errors stay copyable without retry or duplicate failed progress", () 
   assert.doesNotMatch(html, /Retry|Retrying/);
   assert.match(html, /aria-label="Copy full error"/);
   assert.match(html, /HTTP 408/);
-  assert.match(html, /id="operationProgress"[^>]*hidden/);
+  assert.equal((html.match(/class="toast(?: toast-error)?"/g) || []).length, 1);
   assert.doesNotMatch(html, /Load failed/);
   base.dispose();
 });
@@ -544,13 +544,13 @@ test("post button shows the shared loading icon only during posting", () => {
     const button = html.match(/<button id="post"[\s\S]*?<\/button>/)[0];
     assert.ok(button.includes(`aria-busy="${posting}"`));
     assert.equal(button.includes('class="loading-icon"'), posting);
-    assert.equal(button.includes("Posting…"), posting);
+    assert.equal(button.includes("Posting… ~1 min"), posting);
     assert.equal(
-      button.includes('aria-label="Posting. This may take 1–2 minutes."'),
+      button.includes('aria-label="Posting. This may take about 1 minute."'),
       posting
     );
     assert.equal(
-      button.includes('title="Posting may take 1–2 minutes."'),
+      button.includes('title="Posting may take about 1 minute."'),
       posting
     );
     assert.doesNotMatch(button, /post-status|<small/);

@@ -2,14 +2,30 @@ export function LoadingIcon() {
   return (
     <svg
       className="loading-icon"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      shapeRendering="crispEdges"
       aria-hidden="true"
     >
-      <circle cx="12" cy="12" r="9" opacity="0.25" />
-      <path d="M12 3a9 9 0 0 1 9 9" strokeLinecap="round" />
+      {[
+        [8, 0],
+        [14, 2],
+        [16, 8],
+        [14, 14],
+        [8, 16],
+        [2, 14],
+        [0, 8],
+        [2, 2],
+      ].map(([x, y], index) => (
+        <rect
+          key={index}
+          x={x}
+          y={y}
+          width="4"
+          height="4"
+          style={{ animationDelay: `${index * 0.15 - 1.2}s` }}
+        />
+      ))}
     </svg>
   );
 }

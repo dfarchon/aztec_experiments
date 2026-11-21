@@ -1,38 +1,71 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { BillboardView } from "../app/types";
 import { Icon } from "./Icon";
 
-function Toast({
-  error = false,
-  children,
-}: {
-  error?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      className={`toast${error ? " toast-error" : ""}`}
-      role={error ? "alert" : "status"}
-      aria-live={error ? "assertive" : "polite"}
-      aria-atomic="true"
-    >
-      {children}
-    </div>
-  );
-}
+type Notification =
+  | { error: NonNullable<BillboardView["actionError"]>; progress?: never }
+  | { error?: never; progress: NonNullable<BillboardView["progress"]> };
+
+const DISPLAY_MS = 3000;
+const EXIT_MS = 180;
 
 export function NotificationToasts({ view }: { view: BillboardView }) {
   const viewport = useRef<HTMLDivElement>(null);
-  const [dismissed, setDismissed] =
-    useState<BillboardView["actionError"]>(null);
+  const incomingError = view.actionError;
+  const feedUpdated =
+    view.progress?.label === "Refresh posts completed" ||
+    view.progress?.label === "Load older posts completed";
+  const incomingProgress =
+    view.progress?.completed &&
+    !feedUpdated &&
+    !(incomingError && view.progress.failed)
+      ? view.progress
+      : null;
+  const [toast, setToast] = useState<Notification | null>(() =>
+    incomingError
+      ? { error: incomingError }
+      : incomingProgress
+        ? { progress: incomingProgress }
+        : null
+  );
+  const [leaving, setLeaving] = useState(false);
+  const sequence = useRef(0);
+  const seen = useRef({ error: incomingError, progress: incomingProgress });
+  useEffect(() => {
+    const previous = seen.current;
+    seen.current = { error: incomingError, progress: incomingProgress };
+    const next =
+      incomingError && incomingError !== previous.error
+        ? { error: incomingError }
+        : incomingProgress && incomingProgress !== previous.progress
+          ? { progress: incomingProgress }
+          : null;
+    if (next) {
+      sequence.current++;
+      setLeaving(false);
+      setToast(next);
+    }
+  }, [incomingError, incomingProgress]);
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setLeaving(true), DISPLAY_MS);
+    return () => clearTimeout(timer);
+  }, [toast]);
+  useEffect(() => {
+    if (!toast || !leaving) return;
+    const timer = setTimeout(() => setToast(null), EXIT_MS);
+    return () => clearTimeout(timer);
+  }, [toast, leaving]);
   const [copyResult, setCopyResult] = useState<{
     error: BillboardView["actionError"];
     success: boolean;
   } | null>(null);
-  const error = view.actionError;
+  const error = toast?.error;
+  const progress = toast?.progress;
+  const failed = Boolean(error || progress?.failed);
   const copyLabel =
-    copyResult?.error === error
+    copyResult && copyResult.error === error
       ? copyResult.success
         ? "Copied"
         : "Copy failed — try again"
@@ -46,14 +79,6 @@ export function NotificationToasts({ view }: { view: BillboardView }) {
       setCopyResult({ error, success: false });
     }
   };
-  // The error toast replaces the transient failed-progress notification.
-  const feedUpdated =
-    view.progress?.label === "Refresh posts completed" ||
-    view.progress?.label === "Load older posts completed";
-  const progress =
-    view.progress?.completed && !feedUpdated && !(error && view.progress.failed)
-      ? view.progress
-      : null;
   useEffect(() => {
     const element = viewport.current;
     const composer = element
@@ -78,50 +103,59 @@ export function NotificationToasts({ view }: { view: BillboardView }) {
 
   return (
     <div className="toast-viewport" ref={viewport}>
-      {error && error !== dismissed && (
-        <Toast error>
-          <div className="toast-heading">
-            <span className="toast-title">
-              <span aria-hidden="true">⚠ </span>
-              {error.label} failed
-            </span>
-            <button
-              className="toast-icon"
-              aria-label="Dismiss notification"
-              onClick={() => setDismissed(error)}
-            >
-              <span aria-hidden="true">×</span>
-            </button>
-          </div>
-          <div className="toast-message-row">
-            <p className="toast-message">{error.message}</p>
-            <button
-              className="toast-icon"
-              aria-label={copyLabel}
-              title={copyLabel}
-              onClick={() => void copyError()}
-            >
-              <Icon
-                name={
-                  copyResult?.error === error && copyResult.success
-                    ? "check"
-                    : "copy"
-                }
-              />
-            </button>
-          </div>
-        </Toast>
-      )}
       <div
         id="operationProgress"
-        className={`operation-progress${progress?.failed ? " failed" : ""}`}
-        hidden={!progress}
+        className={`operation-progress${failed ? " failed" : ""}`}
+        hidden={!toast}
       >
-        <Toast error={progress?.failed}>
-          <div className="operation-progress-text">
-            <span id="operationLabel">{progress?.label}</span>
+        {toast && (
+          <div
+            key={sequence.current}
+            className={`toast${failed ? " toast-error" : ""}${leaving ? " is-leaving" : ""}`}
+            role={failed ? "alert" : "status"}
+            aria-live={failed ? "assertive" : "polite"}
+            aria-atomic="true"
+          >
+            {error ? (
+              <>
+                <div className="toast-heading">
+                  <span className="toast-title">
+                    <Icon name="warning" />
+                    {error.label} failed
+                  </span>
+                  <button
+                    className="toast-icon"
+                    aria-label="Dismiss notification"
+                    onClick={() => setLeaving(true)}
+                  >
+                    <Icon name="close" />
+                  </button>
+                </div>
+                <div className="toast-message-row">
+                  <p className="toast-message">{error.message}</p>
+                  <button
+                    className="toast-icon"
+                    aria-label={copyLabel}
+                    title={copyLabel}
+                    onClick={() => void copyError()}
+                  >
+                    <Icon
+                      name={
+                        copyResult?.error === error && copyResult.success
+                          ? "check"
+                          : "copy"
+                      }
+                    />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="operation-progress-text">
+                <span id="operationLabel">{progress?.label}</span>
+              </div>
+            )}
           </div>
-        </Toast>
+        )}
       </div>
     </div>
   );

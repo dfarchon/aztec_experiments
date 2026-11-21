@@ -99,7 +99,7 @@ export function WalletPanel({ view, controller }: ViewProps) {
                 disabled={model.panelLocked}
                 onClick={() => controller.setWalletPanel(false)}
               >
-                ×
+                <Icon name="close" />
               </button>
             </div>
             {!model.connected ? (
