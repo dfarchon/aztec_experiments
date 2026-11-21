@@ -115,25 +115,43 @@ Changing a hostname alone cannot change the application's network.
 
 ## Local development
 
-Use Node `24.22.1` and Aztec `6.0.0`. From the repository root:
+Use Node `24.22.1` (`nvm use` with nvm), then install dependencies once:
 
 ```sh
 npm ci
+```
+
+Run the React source against either existing public deployment:
+
+```sh
+npm run dev:mainnet
+# Or:
+npm run dev:testnet
+```
+
+Open `http://127.0.0.1:5001/`. Both commands build the browser SDK, prepare
+public contract assets and start Vite with hot reload. They need no Aztec CLI,
+local node, deployer key or contract compilation. Mainnet actions use real ETH;
+testnet actions use Sepolia test ETH. The port must be free, or select another
+with `npm run dev:testnet -- --port 5002`.
+
+The commands read `deployments/mainnet.json` and `deployments/testnet.json`,
+respectively, and keep generated files in separate `.local/frontend/` folders.
+To use a different RPC, edit `nodeUrl` in the corresponding manifest and restart.
+The RPC must support that deployment's network and browser CORS. Configuration
+is public; do not embed private credentials. For mainnet release builds, keep
+`scripts/mainnet/config.json` in sync as well.
+
+For local contract development only, also install Aztec `6.0.0` and run:
+
+```sh
 npm run build:runtime
 npm run build:contracts
 npm run dev:local
 ```
 
-Open `http://127.0.0.1:5001/`. To build the deployed mainnet frontend without a
-private deployment journal:
-
-```sh
-npm run build:mainnet
-```
-
-This writes a Netlify-ready package under `.local/releases/notch-mainnet/public`
-and does not upload or deploy contracts. See [the deployment guide](docs/DEPLOYMENT.md)
-for testnet, mainnet, signing and release details.
+See [the deployment guide](docs/DEPLOYMENT.md) for release builds and contract
+deployments. Public network development does not deploy or modify contracts.
 
 ## Checks
 

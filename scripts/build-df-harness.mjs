@@ -11,7 +11,9 @@ fs.mkdirSync(dist, { recursive: true });
 // Vite writes content-hashed bundles here. Rebuild them from scratch while
 // preserving generated root runtime assets and the local deployment manifest.
 fs.rmSync(path.join(dist, 'assets'), { recursive: true, force: true });
-const boardArtifact = path.join(root, 'df-billboard/target/df_billboard-DFBillboard.json');
+const boardArtifact = process.env.BILLBOARD_BOARD_ARTIFACT
+  ? path.resolve(process.env.BILLBOARD_BOARD_ARTIFACT)
+  : path.join(root, 'df-billboard/target/df_billboard-DFBillboard.json');
 if (!fs.existsSync(boardArtifact)) throw new Error(`Missing ${boardArtifact}. Run npm run build:contract first.`);
 // Keep the artifact matching the running deployment until it is redeployed.
 const publishedArtifact = path.join(dist, 'df-board-artifact.json');

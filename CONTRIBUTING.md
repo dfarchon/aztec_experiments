@@ -6,7 +6,7 @@ with the existing feature boundaries and verify the behavior they affect.
 ## Requirements
 
 - Node.js `24.22.1`
-- Aztec `6.0.0`
+- Aztec `6.0.0` only for contract compilation or local chain development
 - npm
 
 The Aztec toolchain is available through `scripts/with-toolchain.sh` when
@@ -16,12 +16,15 @@ installed in `.local/toolchains/6.0.0` or the configured Aztec installation.
 
 ```sh
 npm ci
-npm run build:runtime
-npm run build:contracts
-npm run dev:local
+npm run dev:testnet
+# Or connect the source frontend to mainnet:
+npm run dev:mainnet
 ```
 
-The local site runs at `http://127.0.0.1:5001/`.
+The local site runs at `http://127.0.0.1:5001/`. These commands prepare the SDK
+and use the versioned public manifests and artifact; no local chain or Aztec CLI
+is needed. Mainnet transactions use real ETH. See [Local development](README.md#local-development)
+for RPC configuration and the separate local-contract workflow.
 
 ## Change Scope
 

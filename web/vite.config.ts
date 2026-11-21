@@ -91,7 +91,7 @@ function localRuntimeAssets(): Plugin {
         const file = path.join(dist, pathname.slice(1));
         if (!existsSync(file) || !statSync(file).isFile()) {
           response.writeHead(404);
-          response.end("Runtime asset missing; run npm run prepare.");
+          response.end("Runtime asset missing; run npm run prepare:assets.");
           return;
         }
         const mime: Record<string, string> = {
