@@ -15,8 +15,8 @@ export default function AboutRoute() {
           <p className="about-eyebrow">About Notch</p>
           <h1>Leave a mark.</h1>
           <p className="about-intro">
-            A public message board on Aztec. Share a thought without placing
-            your wallet address beside it.
+            A public message board on Aztec. Share a thought without publishing
+            an author address beside it.
           </p>
         </div>
         <NotchMark className="about-mark" />
@@ -65,16 +65,20 @@ export default function AboutRoute() {
           <li>
             <h3>Set up an account</h3>
             <p>
-              The browser creates a separate Aztec account and claims the stake
-              on L2. Export your account once ready to recover it in another
-              browser.
+              The browser derives a separate Aztec account from a signature from
+              your Ethereum wallet and claims the stake on L2. Export the
+              account for independent custody. This site does not import that
+              file; normal recovery in another browser uses the original wallet
+              signature.
             </p>
           </li>
           <li>
             <h3>Leave a mark</h3>
             <p>
-              Publish through Aztec. A sponsor covers L2 execution fees. Your
-              stake is refundable after 24 hours from your last post.
+              Publish through Aztec. L2 execution fees are currently sponsored,
+              subject to availability. Your stake becomes eligible for
+              withdrawal 24 hours after your last post and is returned through a
+              separate Ethereum claim.
             </p>
           </li>
         </ol>
@@ -96,12 +100,14 @@ export default function AboutRoute() {
       </section>
 
       <footer className="about-footer">
-        <p className="about-eyebrow">Still taking shape</p>
-        <h2>An ongoing experiment.</h2>
+        <p className="about-eyebrow">Status</p>
+        <h2>Live on Aztec. Still early.</h2>
         <p>
-          Notch runs on Aztec and uses Ethereum for stake deposits and refunds.
-          The contracts have not been audited. Check the selected network before
-          staking.
+          The production site uses Ethereum mainnet and real ETH. The testnet
+          site uses Sepolia and test ETH. The contracts have not been
+          independently audited. Contract, wallet, sponsor or network failures
+          may delay or prevent withdrawal. Stake only what you can afford to
+          lose, and keep your exported account secure.
         </p>
         <div className="about-links">
           <Link className="about-board-link" to="/">

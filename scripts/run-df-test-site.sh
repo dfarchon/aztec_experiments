@@ -76,7 +76,7 @@ npm run deploy:local >.local/df-test-deploy.log 2>&1 || {
 }
 
 echo "Notch: http://127.0.0.1:${SITE_PORT}/"
-echo "Design and testing: df-billboard/README.md"
+echo "Design and testing: README.md and docs/FRONTEND.md"
 node scripts/sync-df-clock.mjs
 node scripts/sync-df-clock.mjs --watch >.local/df-clock.log 2>&1 &
 CLOCK_PID=$!

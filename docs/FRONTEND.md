@@ -18,7 +18,7 @@ Aztec SDK first.
 | `runtime/` | Lazy SDK entry, wallet/PXE runtime, Noir runtime and IndexedDB namespace helper |
 | `runtime/generated/` | Ignored SDK and worker build output |
 | `scripts/` | Contract, runtime, local-chain, deployment and release tooling |
-| `df-billboard/` | Current Noir contract, L1 stake portal, tests and deployment notes |
+| `df-billboard/` | Current Noir contract, L1 stake portal and native contract tests |
 
 JavaScript tests live under the root `tests/` directory, separate from production
 code. They import the owning modules directly and use Node's built-in test runner.
@@ -50,7 +50,7 @@ The wallet feature owns durable transaction facts and emits wallet snapshots to
 the controller:
 
 - `features/wallet/wallet-flow.ts` is the transaction coordinator.
-- `features/wallet/portal.ts` performs concrete Sepolia portal calls.
+- `features/wallet/portal.ts` performs concrete Ethereum portal calls.
 - `features/wallet/aztec.ts` performs concrete Aztec board and PXE-facing calls.
 - `features/wallet/account-storage.ts` owns the durable browser account record.
 - `features/wallet/wallet-recovery.ts` owns versioned signature messages and
@@ -131,7 +131,7 @@ feed cache nor wallet UI state is persisted.
    `controller.stake(amount)`.
 2. `features/wallet/wallet-flow.ts::createWalletFlow` creates one deposit secret
    and persists the pending job before any wallet prompt can spend ETH.
-3. `sendDeposit` verifies the Sepolia portal in
+3. `sendDeposit` verifies the configured Ethereum portal in
    `features/wallet/portal.ts::verifyPortal`, checks for an existing deposit with
    the same secret hash, estimates gas, and calls
    `portal.ts::submitDeposit`.
@@ -206,7 +206,7 @@ a browser leave-page confirmation.
    its derived address. `account-files.ts::writeAccountFile` exports only the
    address, three key materials, account contract metadata and network identity.
 5. Ready warns about private keys before download. There is no file-import or
-   random-account fallback. See the product README for independent SDK usage.
+   random-account fallback. See the root README for independent SDK usage.
 6. Setup progress maps verbose runtime diagnostics to short button labels. Wallet
    primary actions have fixed height and truncate labels instead of resizing.
 
@@ -215,7 +215,7 @@ a browser leave-page confirmation.
 - Public read failure: `controller.ts::loadFeed` calls `feed-reader.ts` and
   `public-reader.ts`; retry keeps the previous cursor and posts.
 - Wallet authorization failure: `features/wallet/l1.ts`.
-- Portal or Sepolia failure: `features/wallet/portal.ts`.
+- Portal or Ethereum failure: `features/wallet/portal.ts`.
 - Aztec/PXE/claim/post failure: `features/wallet/aztec.ts` and
   `runtime/wallet-runtime.mjs`.
 - Transaction sequencing or persistence failure:
@@ -239,14 +239,14 @@ npm run release:mainnet -- plan
 ```
 
 `npm run dev` uses an existing `web/dist/df-local.json`. The local command builds
-contracts and writes a local manifest. Public-testnet release packaging is
-documented in `df-billboard/DEPLOYMENT.md`; it never deploys automatically.
+contracts and writes a local manifest. Public release packaging is documented in
+`docs/DEPLOYMENT.md`; it never deploys automatically.
 
 The mainnet frontend reads the public, versioned `deployments/mainnet.json`.
 `npm run build:mainnet` produces `.local/releases/notch-mainnet/public`; use
 `-- --out PATH` for a fresh output directory on later builds. It does not read
 private deployment journals, change the development manifest or upload anything.
-See `df-billboard/MAINNET.md` for network pins and deployment addresses.
+See [Deployment](DEPLOYMENT.md) for network pins and release procedures.
 
 
 ## Resuming a withdrawal after reload
@@ -291,5 +291,5 @@ instead of submitting a new deposit. `readDepositHistory` scans bounded block
 ranges and validates transactions; `depositWasClaimed` computes the message
 nullifier locally and sends only the siloed nullifier to the node. Recovery
 checkpoints persist across refresh/export, and L1/L2 balances must reconcile
-before the flow permits posting or more stake. See the product README for the
-frozen `l1-signature-v1` derivation scheme and legacy account limitations.
+before the flow permits posting or more stake. See the root README for the
+frozen `l1-signature-v1` derivation scheme and account limitations.
