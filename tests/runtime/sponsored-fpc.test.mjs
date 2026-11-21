@@ -13,16 +13,12 @@ import { resolveSponsoredFpc } from "../../runtime/sponsored-fpc.mjs";
 
 const sdk = { AztecAddress, getContractClassFromArtifact };
 const artifact = SponsoredFPCContract.artifact;
-const address =
-  "0x2b4bb42e8d8a7978edae5c3a078cc5d53c8cf3875fd3c191a3fba9cab7508dcf";
+const instance = await getContractInstanceFromInstantiationParams(artifact, {
+  salt: Fr.fromString("0x01"),
+});
+const address = instance.address.toString();
 
 test("custom FPC resolution checks the deployed class without assuming a canonical salt", async () => {
-  const instance = await getContractInstanceFromInstantiationParams(artifact, {
-    salt: Fr.fromString(
-      "0x0dcb95cea9941da9d6dcebf38b7159b84ba26230ee6b250ede0e8370b2a03c2d"
-    ),
-  });
-  assert.equal(instance.address.toString(), address);
   let calls = 0;
   const node = {
     getContract: async (requested) => {

@@ -9,8 +9,8 @@
   "board": "0x090065f980667a9f5273c8b7e7ff31d234c375bfc172539f43d2c91284717c78",
   "boardArtifactHash": "dd636b5d4354780b07026707b893cb192487378dfa910708776692079a3a2eca",
   "boardClassId": "0x112d479ea241cd96b4f79d008b90ca8ad2399848dd329f265adefbf60ce67edd",
-  "sponsoredFpc": "0x2b4bb42e8d8a7978edae5c3a078cc5d53c8cf3875fd3c191a3fba9cab7508dcf",
-  "sponsorSalt": "0x0dcb95cea9941da9d6dcebf38b7159b84ba26230ee6b250ede0e8370b2a03c2d",
+  "sponsoredFpc": "0x1e573d0eaac0e4c4024f23ade65b6300d6c562b4731d871536a562042eab4b6d",
+  "sponsorSalt": "0x1e97b859f8d71364e3fd35d7005743cae7c1a3830fec0363ddf56354ef1c7bd9",
   "deploymentTx": "0x1bd255d6c00946767e4d48fb0988953060f099de0d8ae3e07f3beaf5a7f42cb4",
   "l1Stake": {
     "chainId": 1,
