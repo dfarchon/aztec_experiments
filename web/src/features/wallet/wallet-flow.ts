@@ -264,10 +264,10 @@ export function createWalletFlow(
       const portal = await verifyPortal(provider, config);
       if (!job.l1Tx) {
         const matches = await findDeposit(
-          portal,
+          provider,
+          config,
           payer,
-          job.secretHash,
-          config.l1Stake.deploymentBlock || 0
+          job.secretHash
         );
         if (matches.length > 1)
           throw new Error("Multiple deposits used the same recovery secret");
@@ -344,10 +344,10 @@ export function createWalletFlow(
       progress("Checking the L1 stake…");
       const portal = await verifyPortal(provider, config);
       const previous = await findDeposit(
-        portal,
+        provider,
+        config,
         payer,
-        job.secretHash,
-        config.l1Stake.deploymentBlock || 0
+        job.secretHash
       );
       if (previous.length) {
         if (previous.length !== 1)

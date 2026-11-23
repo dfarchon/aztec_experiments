@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { Interface, keccak256 } from "ethers";
+import { Interface, keccak256, zeroPadValue } from "ethers";
 
 import {
+  findDeposit,
   portalABI,
+  readDepositHistory,
   submitDeposit,
   verifyPortal,
   waitForDepositReceipt,
@@ -245,4 +247,111 @@ test("recoverable deposits bind gas estimation and submission to the signed nonc
   );
   assert(!submitted);
   assert.deepEqual(overrides, []);
+});
+
+test("historical log reads split at 10,000 blocks and shrink to a provider range cap", async () => {
+  const secretHash = `0x${"6".repeat(64)}`;
+  const l1Tx = `0x${"8".repeat(64)}`;
+  const deposit = {
+    ...iface.encodeEventLog(iface.getEvent("Deposited"), [
+      payer,
+      STAKE_UNIT,
+      `0x${"7".repeat(64)}`,
+      1n,
+      secretHash,
+    ]),
+    blockNumber: 100,
+    index: 0,
+    transactionHash: l1Tx,
+  };
+  const pages = [];
+  const provider = {
+    getBlockNumber: async () => 2500,
+    getLogs: async ({ fromBlock, toBlock }) => {
+      if (toBlock - fromBlock + 1 > 1000)
+        throw Object.assign(
+          new Error("ranges over 1000 blocks are not supported on free plan"),
+          { code: 35 }
+        );
+      pages.push([fromBlock, toBlock]);
+      return fromBlock <= 100 && toBlock >= 100 ? [deposit] : [];
+    },
+    getTransaction: async () => ({
+      from: payer,
+      to: portalAddress,
+      nonce: 4,
+      value: STAKE_UNIT,
+      data: iface.encodeFunctionData("deposit", [secretHash]),
+    }),
+  };
+  const active = await readDepositHistory(
+    provider,
+    { ...config, l1Stake: { ...config.l1Stake, deploymentBlock: 0 } },
+    payer,
+    STAKE_UNIT
+  );
+  assert.deepEqual(pages, [
+    [0, 624],
+    [625, 1249],
+    [1250, 1874],
+    [1875, 2499],
+    [2500, 2500],
+  ]);
+  assert.equal(active.length, 1);
+  assert.equal(active[0].nonce, 4);
+});
+
+test("an archive-only L1 RPC reports an actionable log error", async () => {
+  const provider = {
+    getBlockNumber: async () => 100,
+    getLogs: async () => {
+      throw Object.assign(new Error("could not coalesce error"), {
+        info: {
+          error: {
+            code: -32602,
+            message:
+              "Archive requests require a personal token. Get one at: https://www.allnodes.com/publicnode",
+          },
+        },
+      });
+    },
+  };
+  await assert.rejects(
+    readDepositHistory(
+      provider,
+      { ...config, l1Stake: { ...config.l1Stake, deploymentBlock: 0 } },
+      payer,
+      STAKE_UNIT
+    ),
+    /archive-capable endpoint such as Infura/
+  );
+});
+
+test("deposit lookup scans bounded ranges with payer and secret topics", async () => {
+  const secretHash = `0x${"6".repeat(64)}`;
+  const pages = [];
+  const provider = {
+    getBlockNumber: async () => 20_500,
+    getLogs: async ({ fromBlock, toBlock, topics }) => {
+      pages.push([fromBlock, toBlock]);
+      assert.deepEqual(topics.slice(1), [
+        zeroPadValue(payer, 32),
+        null,
+        secretHash,
+      ]);
+      return [];
+    },
+  };
+  const matches = await findDeposit(
+    provider,
+    { ...config, l1Stake: { ...config.l1Stake, deploymentBlock: 5 } },
+    payer,
+    secretHash
+  );
+  assert.deepEqual(pages, [
+    [5, 10_004],
+    [10_005, 20_004],
+    [20_005, 20_500],
+  ]);
+  assert.deepEqual(matches, []);
 });

@@ -4,6 +4,7 @@ import {
   Interface,
   JsonRpcProvider,
   keccak256,
+  type Log,
   zeroPadValue,
 } from "ethers";
 
@@ -177,15 +178,112 @@ export async function verifyPortal(
   return portal;
 }
 
-export async function findDeposit(
-  portal: PortalContract,
-  payer: string,
-  secretHash: string,
-  deploymentBlock = 0
+export const L1_LOG_CHUNK_SIZE = 10_000;
+const MIN_L1_LOG_CHUNK_SIZE = 100;
+
+interface LogFilter {
+  address: string;
+  topics: (string | string[] | null)[];
+}
+
+function rpcErrorText(error: unknown) {
+  const value = error as {
+    info?: { error?: { message?: unknown } };
+    shortMessage?: unknown;
+    message?: unknown;
+  };
+  return [value?.info?.error?.message, value?.shortMessage, value?.message]
+    .filter(
+      (part): part is string => typeof part === "string" && part.length > 0
+    )
+    .join(" | ");
+}
+
+function isArchiveRestriction(text: string) {
+  return /personal token|archive (?:request|data)/i.test(text);
+}
+
+function isRangeRestriction(text: string) {
+  return /range|too many|more than \d+ (?:results|logs)|timeout|response size/i.test(
+    text
+  );
+}
+
+function l1RpcFailure(error: unknown) {
+  const text = rpcErrorText(error);
+  if (isArchiveRestriction(text))
+    return new Error(
+      "L1 RPC cannot read historical logs. Set L1_RPC_URL to an archive-capable endpoint such as Infura."
+    );
+  if (isRangeRestriction(text))
+    return new Error(
+      "L1 RPC rejected the log query range. Retry, or use an archive-capable L1 RPC."
+    );
+  return error instanceof Error
+    ? error
+    : new Error(text || "L1 RPC request failed");
+}
+
+async function readLogs(
+  provider: JsonRpcProvider,
+  filter: LogFilter,
+  fromBlock: number,
+  toBlock: number
 ) {
-  return portal.queryFilter(
-    portal.filters.Deposited(payer, null, null, null, secretHash),
-    deploymentBlock
+  const logs: Log[] = [];
+  let chunkSize = L1_LOG_CHUNK_SIZE;
+  let start = fromBlock;
+  while (start <= toBlock) {
+    const end = Math.min(start + chunkSize - 1, toBlock);
+    try {
+      logs.push(
+        ...(await provider.getLogs({
+          ...filter,
+          fromBlock: start,
+          toBlock: end,
+        }))
+      );
+      start = end + 1;
+    } catch (error) {
+      const text = rpcErrorText(error);
+      // Providers with a smaller block-range cap usually accept a narrower
+      // query, so halve the chunk instead of failing the whole recovery.
+      if (
+        chunkSize > MIN_L1_LOG_CHUNK_SIZE &&
+        !isArchiveRestriction(text) &&
+        isRangeRestriction(text)
+      ) {
+        chunkSize = Math.max(MIN_L1_LOG_CHUNK_SIZE, Math.floor(chunkSize / 2));
+        continue;
+      }
+      throw l1RpcFailure(error);
+    }
+  }
+  return logs;
+}
+
+export async function findDeposit(
+  provider: JsonRpcProvider,
+  config: NotchDeployment,
+  payer: string,
+  secretHash: string
+) {
+  const from = config.l1Stake.deploymentBlock ?? 0;
+  const end = await provider.getBlockNumber();
+  const topic = portalInterface.getEvent("Deposited")!.topicHash;
+  return readLogs(
+    provider,
+    {
+      address: config.l1Stake.portal,
+      topics: [
+        topic,
+        zeroPadValue(payer, 32),
+        null,
+        zeroPadValue(secretHash, 32),
+      ],
+    },
+    from,
+    end
   );
 }
 
@@ -209,36 +307,35 @@ export async function readDepositHistory(
     l1Tx: string;
     nonce: number;
   }[] = [];
-  // Bound each RPC request instead of relying on an unlimited historical log query.
-  for (let start = from; start <= end; start += 2000) {
-    const logs = await provider.getLogs({
+  const logs = await readLogs(
+    provider,
+    {
       address: config.l1Stake.portal,
       topics: [topics, zeroPadValue(payer, 32)],
-      fromBlock: start,
-      toBlock: Math.min(start + 1999, end),
-    });
-    logs.sort((a, b) => a.blockNumber - b.blockNumber || a.index - b.index);
-    for (const log of logs) {
-      const event = portalInterface.parseLog(log);
-      if (!event || event.args.depositor.toLowerCase() !== payer.toLowerCase())
-        throw new Error("Deposit recovery log mismatch");
-      const amount = BigInt(event.args.amount);
-      if (event.name === "Withdrawn") {
-        balance -= amount;
-        if (balance < 0n)
-          throw new Error("Incomplete deposit recovery history");
-        if (balance === 0n) active = [];
-      } else {
-        balance += amount;
-        active.push({
-          amount: amount.toString(),
-          secretHash: String(event.args.secretHash),
-          messageKey: String(event.args.key),
-          leafIndex: String(event.args.index),
-          l1Tx: log.transactionHash,
-          nonce: 0,
-        });
-      }
+    },
+    from,
+    end
+  );
+  logs.sort((a, b) => a.blockNumber - b.blockNumber || a.index - b.index);
+  for (const log of logs) {
+    const event = portalInterface.parseLog(log);
+    if (!event || event.args.depositor.toLowerCase() !== payer.toLowerCase())
+      throw new Error("Deposit recovery log mismatch");
+    const amount = BigInt(event.args.amount);
+    if (event.name === "Withdrawn") {
+      balance -= amount;
+      if (balance < 0n) throw new Error("Incomplete deposit recovery history");
+      if (balance === 0n) active = [];
+    } else {
+      balance += amount;
+      active.push({
+        amount: amount.toString(),
+        secretHash: String(event.args.secretHash),
+        messageKey: String(event.args.key),
+        leafIndex: String(event.args.index),
+        l1Tx: log.transactionHash,
+        nonce: 0,
+      });
     }
   }
   if (balance !== expectedBalance || balance > MAX_STAKE)

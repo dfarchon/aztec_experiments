@@ -224,7 +224,7 @@ function fixture(t) {
   f.createL1Provider = () => f.provider;
   f.verifyPortal = async () => f.portal;
   f.readDepositHistory = readDepositHistory;
-  f.findDeposit = async (_portal, _payer, secretHash) =>
+  f.findDeposit = async (_provider, _config, _payer, secretHash) =>
     f.deposits
       .filter((job) => job.secretHash === secretHash)
       .map((job) => ({ transactionHash: job.l1Tx }));
@@ -523,11 +523,7 @@ test("history scanning is paged, discards fully withdrawn cycles and rejects inc
     }),
   };
   const active = await readDepositHistory(provider, config, payer, STAKE_UNIT);
-  assert.deepEqual(pages, [
-    [10, 2009],
-    [2010, 4009],
-    [4010, 4020],
-  ]);
+  assert.deepEqual(pages, [[10, 4020]]);
   assert.equal(active.length, 1);
   assert.equal(active[0].nonce, 3);
   await assert.rejects(
