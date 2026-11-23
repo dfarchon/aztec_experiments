@@ -323,8 +323,55 @@ test("an archive-only L1 RPC reports an actionable log error", async () => {
       payer,
       STAKE_UNIT
     ),
-    /archive-capable endpoint such as Infura/
+    /historical logs required for wallet recovery/
   );
+});
+
+test("rate limits and timeouts fail once without shrinking the range", async () => {
+  for (const [message, expected] of [
+    ["Too Many Requests", /rate-limiting historical log reads/],
+    ["upstream timeout", /timed out while reading historical logs/],
+  ]) {
+    let calls = 0;
+    const provider = {
+      getBlockNumber: async () => 20_500,
+      getLogs: async () => {
+        calls++;
+        throw new Error(message);
+      },
+    };
+    await assert.rejects(
+      readDepositHistory(
+        provider,
+        { ...config, l1Stake: { ...config.l1Stake, deploymentBlock: 0 } },
+        payer,
+        STAKE_UNIT
+      ),
+      expected
+    );
+    assert.equal(calls, 1);
+  }
+});
+
+test("an RPC behind the deployment block fails before requesting logs", async () => {
+  let calls = 0;
+  const provider = {
+    getBlockNumber: async () => 99,
+    getLogs: async () => {
+      calls++;
+      return [];
+    },
+  };
+  await assert.rejects(
+    readDepositHistory(
+      provider,
+      { ...config, l1Stake: { ...config.l1Stake, deploymentBlock: 100 } },
+      payer,
+      STAKE_UNIT
+    ),
+    /not synchronized to the configured deployment block/
+  );
+  assert.equal(calls, 0);
 });
 
 test("deposit lookup scans bounded ranges with payer and secret topics", async () => {

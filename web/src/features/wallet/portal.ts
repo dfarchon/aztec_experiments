@@ -66,19 +66,6 @@ export interface PortalContract {
   ROLLUP_VERSION(): Promise<bigint>;
   MAX_STAKE(): Promise<bigint>;
   deposits(address: string): Promise<bigint>;
-  filters: {
-    Deposited(
-      payer: string,
-      key: null,
-      index: null,
-      block: null,
-      secretHash: string
-    ): unknown;
-  };
-  queryFilter(
-    filter: unknown,
-    fromBlock: number
-  ): Promise<{ transactionHash: string }[]>;
   connect(signer: unknown): {
     deposit: DepositMethod;
     withdraw: WithdrawMethod;
@@ -203,21 +190,37 @@ function isArchiveRestriction(text: string) {
   return /personal token|archive (?:request|data)/i.test(text);
 }
 
+function isRateLimit(text: string) {
+  return /rate.?limit|too many requests|\b429\b/i.test(text);
+}
+
+function isTimeout(text: string) {
+  return /timeout|timed out|deadline exceeded/i.test(text);
+}
+
 function isRangeRestriction(text: string) {
-  return /range|too many|more than \d+ (?:results|logs)|timeout|response size/i.test(
+  return /block range|ranges? (?:over|is too)|too many (?:results|logs)|more than \d+ (?:results|logs)|query (?:exceeds|returned)|response size/i.test(
     text
   );
 }
 
 function l1RpcFailure(error: unknown) {
   const text = rpcErrorText(error);
+  if (isRateLimit(text))
+    return new Error(
+      "L1 RPC is rate-limiting historical log reads. Try again shortly."
+    );
+  if (isTimeout(text))
+    return new Error(
+      "L1 RPC timed out while reading historical logs. Try again shortly."
+    );
   if (isArchiveRestriction(text))
     return new Error(
-      "L1 RPC cannot read historical logs. Set L1_RPC_URL to an archive-capable endpoint such as Infura."
+      "L1 RPC cannot read the historical logs required for wallet recovery. Try again later or contact the site operator."
     );
   if (isRangeRestriction(text))
     return new Error(
-      "L1 RPC rejected the log query range. Retry, or use an archive-capable L1 RPC."
+      "L1 RPC rejected the historical log request. Try again later or contact the site operator."
     );
   return error instanceof Error
     ? error
@@ -230,6 +233,10 @@ async function readLogs(
   fromBlock: number,
   toBlock: number
 ) {
+  if (fromBlock > toBlock)
+    throw new Error(
+      "L1 RPC is not synchronized to the configured deployment block. Try again later or contact the site operator."
+    );
   const logs: Log[] = [];
   let chunkSize = L1_LOG_CHUNK_SIZE;
   let start = fromBlock;
@@ -251,6 +258,8 @@ async function readLogs(
       if (
         chunkSize > MIN_L1_LOG_CHUNK_SIZE &&
         !isArchiveRestriction(text) &&
+        !isRateLimit(text) &&
+        !isTimeout(text) &&
         isRangeRestriction(text)
       ) {
         chunkSize = Math.max(MIN_L1_LOG_CHUNK_SIZE, Math.floor(chunkSize / 2));
