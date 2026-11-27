@@ -302,8 +302,7 @@ export function createWalletFlow(
     if (!session) return true;
     const claimSession = session;
     const alreadyClaimed =
-      (job.recovered || (job.l2Attempted && !job.l2Tx)) &&
-      (await depositWasClaimed(claimSession, config, job));
+      job.recovered && (await depositWasClaimed(claimSession, config, job));
     if (disposed || saved?.deposit !== job || session !== claimSession)
       throw new Error("Deposit saved. Reconnect to resume claim.");
     const result = alreadyClaimed

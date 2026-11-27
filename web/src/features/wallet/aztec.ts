@@ -238,10 +238,15 @@ export async function claimDeposit(
     deposit.l2Tx = null;
     persist();
   }
-  if (deposit.l2Attempted)
-    throw new Error(
-      "Claim submission is uncertain. Check its transaction before retrying."
-    );
+  if (deposit.l2Attempted && !deposit.l2Tx) {
+    // Older versions marked an attempt before proving. First check consumption;
+    // if absent, simulation and the message nullifier guard a fresh claim.
+    const claimed = await depositWasClaimed(session, config, deposit);
+    assertActive();
+    if (claimed) return "complete";
+    deposit.l2Attempted = false;
+    persist();
+  }
   if (!deposit.messageKey || !deposit.leafIndex)
     throw new Error("Wait for L1 confirmation before claiming the stake");
 
@@ -285,14 +290,16 @@ export async function claimDeposit(
   assertActive();
   await call.simulate(options);
   assertActive();
-  deposit.l2Attempted = true;
-  persist();
+  if (!("onTxPrepared" in session.wallet))
+    throw new Error("Wallet runtime is out of date. Reload to continue setup.");
   const previous = session.wallet.onTxPrepared;
-  if ("onTxPrepared" in session.wallet)
-    session.wallet.onTxPrepared = (hash: string) => {
-      deposit.l2Tx = hash;
-      persist();
-    };
+  session.wallet.onTxPrepared = (hash: string) => {
+    assertActive();
+    // The runtime awaits this checkpoint after proving and before broadcasting.
+    deposit.l2Tx = hash;
+    deposit.l2Attempted = true;
+    persist();
+  };
   try {
     const sent = await call.send(options);
     deposit.l2Tx = sent.receipt.txHash.toString();
@@ -301,8 +308,7 @@ export async function claimDeposit(
       throw new Error("Aztec deposit claim reverted");
     return "complete";
   } finally {
-    if ("onTxPrepared" in session.wallet)
-      session.wallet.onTxPrepared = previous;
+    session.wallet.onTxPrepared = previous;
   }
 }
 

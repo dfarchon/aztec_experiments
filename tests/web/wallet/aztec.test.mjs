@@ -456,3 +456,156 @@ test("withdrawal proof absence is pending, while reverted transactions remain er
     /withdrawal reverted/
   );
 });
+
+function resumableClaimFixture(consumed = false) {
+  const f = claimFixture();
+  f.session.wallet.onTxPrepared = null;
+  Object.assign(f.session.runtime.sdk, {
+    TxHash: { fromString: (x) => x },
+    computeL1ToL2MessageNullifier: async () => "nullifier",
+    siloNullifier: async () => "siloed",
+    MerkleTreeId: { NULLIFIER_TREE: 0 },
+  });
+  f.session.node.findLeavesIndexes = async () => [consumed ? 1n : undefined];
+  f.session.node.getL1ToL2MessageMembershipWitness = async () => true;
+  f.job.l2Attempted = true;
+  return f;
+}
+
+test("legacy uncertain claims check consumption and resume without another L1 payment", async () => {
+  const f = resumableClaimFixture();
+  const checkpoints = [];
+  f.call.send = async () => {
+    assert.equal(f.job.l2Attempted, false);
+    assert.equal(f.job.l2Tx, null);
+    await f.session.wallet.onTxPrepared("claim-hash");
+    assert.deepEqual(checkpoints.at(-1), {
+      hash: "claim-hash",
+      attempted: true,
+    });
+    return {
+      receipt: {
+        txHash: { toString: () => "claim-hash" },
+        executionResult: "success",
+      },
+    };
+  };
+  assert.equal(
+    await claimDeposit(
+      f.session,
+      config,
+      "payer",
+      f.job,
+      () =>
+        checkpoints.push({ hash: f.job.l2Tx, attempted: f.job.l2Attempted }),
+      () => {},
+      f.assertActive
+    ),
+    "complete"
+  );
+  assert.equal(f.session.wallet.onTxPrepared, null);
+});
+
+test("legacy claim already consumed completes without proving or sending", async () => {
+  const f = resumableClaimFixture(true);
+  assert.equal(
+    await claimDeposit(
+      f.session,
+      config,
+      "payer",
+      f.job,
+      () => {},
+      () => {},
+      f.assertActive
+    ),
+    "complete"
+  );
+  assert.equal(f.counts().simulations, 0);
+  assert.equal(f.counts().sends, 0);
+});
+
+test("proof failure before a transaction exists remains retryable", async () => {
+  const f = resumableClaimFixture();
+  f.call.send = async () => {
+    throw new Error("Proof failed");
+  };
+  for (let i = 0; i < 2; i++) {
+    await assert.rejects(
+      claimDeposit(
+        f.session,
+        config,
+        "payer",
+        f.job,
+        () => {},
+        () => {},
+        f.assertActive
+      ),
+      /Proof failed/
+    );
+    assert.equal(f.job.l2Attempted, false);
+    assert.equal(f.job.l2Tx, null);
+    assert.equal(f.session.wallet.onTxPrepared, null);
+  }
+});
+
+test("failure after the pre-broadcast checkpoint preserves and follows the original hash", async () => {
+  const f = resumableClaimFixture();
+  let sends = 0;
+  f.call.send = async () => {
+    sends++;
+    await f.session.wallet.onTxPrepared("original-hash");
+    throw new Error("Submission timed out");
+  };
+  await assert.rejects(
+    claimDeposit(
+      f.session,
+      config,
+      "payer",
+      f.job,
+      () => {},
+      () => {},
+      f.assertActive
+    ),
+    /Submission timed out/
+  );
+  assert.equal(f.job.l2Tx, "original-hash");
+  assert.equal(f.job.l2Attempted, true);
+  f.session.node.getTxReceipt = async (hash) => {
+    assert.equal(hash, "original-hash");
+    return { executionResult: "success" };
+  };
+  assert.equal(
+    await claimDeposit(
+      f.session,
+      config,
+      "payer",
+      f.job,
+      () => {},
+      () => {},
+      f.assertActive
+    ),
+    "complete"
+  );
+  assert.equal(sends, 1);
+});
+
+test("a failed consumption read never clears uncertain state or sends", async () => {
+  const f = resumableClaimFixture();
+  f.session.node.findLeavesIndexes = async () => {
+    throw new Error("RPC unavailable");
+  };
+  await assert.rejects(
+    claimDeposit(
+      f.session,
+      config,
+      "payer",
+      f.job,
+      () => {},
+      () => {},
+      f.assertActive
+    ),
+    /RPC unavailable/
+  );
+  assert.equal(f.job.l2Attempted, true);
+  assert.equal(f.counts().sends, 0);
+});
