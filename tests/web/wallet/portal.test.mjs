@@ -108,7 +108,7 @@ test("a reverted deposit reports the L1 revert before reading transaction data",
   assert.equal(reads, 0);
 });
 
-test("a confirmed deposit verifies its call and event before returning its message", async () => {
+test("a confirmed deposit verifies the Portal event before returning its message", async () => {
   const job = {
     l1Tx: "known",
     amount: STAKE_UNIT.toString(),
@@ -139,7 +139,7 @@ test("a confirmed deposit verifies its call and event before returning its messa
     await waitForDepositReceipt(provider, {}, payer, job, config),
     { messageKey: key, leafIndex: "1" }
   );
-  tx.value = 2n * STAKE_UNIT;
+  job.amount = (2n * STAKE_UNIT).toString();
   await assert.rejects(
     waitForDepositReceipt(provider, {}, payer, job, config),
     /does not match/
@@ -267,6 +267,10 @@ test("historical log reads split at 10,000 blocks and shrink to a provider range
   const pages = [];
   const provider = {
     getBlockNumber: async () => 2500,
+    getTransactionReceipt: async () => ({
+      status: 1,
+      logs: [{ ...deposit, address: portalAddress }],
+    }),
     getLogs: async ({ fromBlock, toBlock }) => {
       if (toBlock - fromBlock + 1 > 1000)
         throw Object.assign(
@@ -401,4 +405,99 @@ test("deposit lookup scans bounded ranges with payer and secret topics", async (
     [20_005, 20_500],
   ]);
   assert.deepEqual(matches, []);
+});
+
+test("mainnet type-4 deposit confirms and recovers using its actual Portal event", async () => {
+  // Public transaction 0xf1669408982307824c92cd1928692f7858eab8902a2c33e2ea3889a570e40d3e.
+  const sender = "0x702566bed3cdf6804cb807f3489dfe567a6a1cbf";
+  const portal = "0x472b1dc69736c9b6034ce7aabba1ff5f7f16307a";
+  const deployment = {
+    ...config,
+    l1Stake: { ...config.l1Stake, portal, deploymentBlock: 26507083 },
+  };
+  const job = {
+    l1Tx: "0xf1669408982307824c92cd1928692f7858eab8902a2c33e2ea3889a570e40d3e",
+    amount: STAKE_UNIT.toString(),
+    secretHash:
+      "0x233bc46be13d3a56adc4997391d21a8fd1c51119411c96b320f3e82c78042d7d",
+    nonce: 21,
+  };
+  const key =
+    "0x00010ecba63f32714ec0ad1e2ebb6407756e1e3d4722494ca48e02f98e08820a";
+  const log = {
+    address: portal,
+    transactionHash: job.l1Tx,
+    blockNumber: 26507083,
+    index: 0,
+    ...iface.encodeEventLog(iface.getEvent("Deposited"), [
+      sender,
+      STAKE_UNIT,
+      key,
+      1637n,
+      job.secretHash,
+    ]),
+  };
+  const receipt = { status: 1, logs: [log] };
+  const provider = {
+    waitForTransaction: async () => receipt,
+    getTransactionReceipt: async () => receipt,
+    getBlockNumber: async () => 26507083,
+    getLogs: async () => [log],
+    getTransaction: async () => ({
+      from: sender,
+      to: "0xdb9b1e94b5b69df7e401ddbede43491141047db3",
+      value: 0n,
+      data: "0x",
+      type: 4,
+      nonce: 22,
+    }),
+  };
+  assert.deepEqual(
+    await waitForDepositReceipt(provider, {}, sender, job, deployment),
+    { messageKey: key, leafIndex: "1637" }
+  );
+  const active = await readDepositHistory(
+    provider,
+    deployment,
+    sender,
+    STAKE_UNIT
+  );
+  assert.equal(active[0].secretHash, job.secretHash);
+  assert.equal(active[0].nonce, 22);
+  for (const wrong of [
+    { amount: (2n * STAKE_UNIT).toString() },
+    { secretHash: `0x${"9".repeat(64)}` },
+  ]) {
+    await assert.rejects(
+      waitForDepositReceipt(
+        provider,
+        {},
+        sender,
+        { ...job, ...wrong },
+        deployment
+      ),
+      /Deposit receipt does not match/
+    );
+  }
+  await assert.rejects(
+    waitForDepositReceipt(provider, {}, payer, job, deployment),
+    /Deposit receipt does not match/
+  );
+  log.address = address("9");
+  await assert.rejects(
+    waitForDepositReceipt(provider, {}, sender, job, deployment),
+    /Deposit receipt does not match/
+  );
+  log.address = portal;
+  receipt.status = 0;
+  await assert.rejects(
+    waitForDepositReceipt(provider, {}, sender, job, deployment),
+    /reverted/
+  );
+  receipt.status = 1;
+  provider.getTransaction = async () => null;
+  await assert.rejects(
+    readDepositHistory(provider, deployment, sender, STAKE_UNIT),
+    /still syncing/
+  );
 });

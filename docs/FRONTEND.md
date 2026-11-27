@@ -205,6 +205,15 @@ a browser leave-page confirmation.
    restore task. Disconnect, account/network changes and page disposal advance
    the controller session generation so late results cannot update a new session.
 
+Deposit confirmation and history recovery validate successful `Deposited` events
+from the configured Portal, including depositor, amount, claim commitment and
+message identity. Outer transaction destination/value are not authoritative for
+EIP-7702 or relayed wallet execution. A missing transaction/receipt remains a
+syncing state. Recovery tries the outer payer nonce (or current payer nonce for
+a relayer), its successor and at most 256 earlier nonces, accepting only an exact
+claim commitment match. Older unmatched deposits require the original browser's
+saved secret; they never cause a replacement payment.
+
 ### Setup continuation and account export
 
 1. L1 connection performs a bounded, read-only balance check through

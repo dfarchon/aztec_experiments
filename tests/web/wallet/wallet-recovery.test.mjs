@@ -20,6 +20,7 @@ import {
   accountRecoveryMessage,
   deriveAccountKeys,
   deriveDepositSecret,
+  recoverDepositSecret,
 } from "../../../web/src/features/wallet/wallet-recovery.ts";
 
 // Public, disposable test identity; no deployment keys or network calls are used.
@@ -195,6 +196,12 @@ function fixture(t) {
         blockNumber: 20 + index,
         index,
       })),
+    getTransactionReceipt: async (hash) => ({
+      status: 1,
+      logs: (await f.provider.getLogs())
+        .filter((log) => log.transactionHash === hash)
+        .map((log) => ({ ...log, address: config.l1Stake.portal })),
+    }),
     getTransaction: async (hash) => {
       const job = f.deposits.find((job) => job.l1Tx === hash);
       return {
@@ -380,6 +387,15 @@ test("a paid but unclaimed deposit recovers from L1 history and claims once with
   await flow.stake(STAKE_UNIT.toString());
   await flow.disconnect();
   values.clear();
+  // A wallet executor changed the outer destination/value/nonce after payment.
+  const originalTransaction = f.provider.getTransaction;
+  f.provider.getTransaction = async (hash) => ({
+    ...(await originalTransaction(hash)),
+    to: payer,
+    value: 0n,
+    data: "0x",
+    nonce: f.deposits[0].nonce + 1,
+  });
   flow = await f.open();
   // Clicking Stake with an existing balance must recover rather than send another deposit.
   await flow.stake(STAKE_UNIT.toString());
@@ -417,7 +433,10 @@ test("rejected signatures and incompatible old deposits never request payment or
   delete f.signError;
   const old = f.addDeposit(1);
   old.secretHash = `0x${"12".repeat(32)}`;
-  await assert.rejects(flow.continueSetup(), /original wallet and deployment/);
+  await assert.rejects(
+    flow.continueSetup(),
+    /claim secret could not be restored/
+  );
   assert.equal([...values.values()][0], initial);
   assert.equal(f.sends, 0);
 });
@@ -511,6 +530,11 @@ test("history scanning is paged, discards fully withdrawn cycles and rejects inc
         (log) => log.blockNumber >= fromBlock && log.blockNumber <= toBlock
       );
     },
+    getTransactionReceipt: async () => ({
+      status: 1,
+      logs: [{ ...logs[2], address: config.l1Stake.portal }],
+    }),
+    getTransactionCount: async () => 3,
     getTransaction: async () => ({
       from: payer,
       to: config.l1Stake.portal,
@@ -530,16 +554,22 @@ test("history scanning is paged, discards fully withdrawn cycles and rejects inc
     readDepositHistory(provider, config, payer, 2n * STAKE_UNIT),
     /history changed or is incomplete/
   );
+  // A relayed/wrapped outer call is valid when the Portal receipt agrees.
   provider.getTransaction = async () => ({
     from: Wallet.createRandom().address,
-    to: config.l1Stake.portal,
-    nonce: 3,
-    value: STAKE_UNIT,
-    data: iface.encodeFunctionData("deposit", [active[0].secretHash]),
+    nonce: 99,
+    value: 0n,
+    to: payer,
+    data: "0x",
   });
+  assert.equal(
+    (await readDepositHistory(provider, config, payer, STAKE_UNIT))[0].nonce,
+    3
+  );
+  provider.getTransactionReceipt = async () => ({ status: 1, logs: [] });
   await assert.rejects(
     readDepositHistory(provider, config, payer, STAKE_UNIT),
-    /transaction mismatch/
+    /Deposit receipt does not match/
   );
 });
 
@@ -828,4 +858,48 @@ test("a late proof response cannot revive a disconnected withdrawal", async (t) 
   assert.equal(f.state.payer, "");
   assert.equal(f.state.exitReady, false);
   assert.equal(f.l1Claims, 0);
+});
+
+test("wrapped transaction nonce recovery requires the exact onchain commitment", () => {
+  const claim = deriveDepositSecret(
+    keys,
+    config,
+    payer,
+    21,
+    STAKE_UNIT.toString()
+  );
+  assert.equal(
+    recoverDepositSecret(
+      keys,
+      config,
+      payer,
+      22,
+      STAKE_UNIT.toString(),
+      claim.secretHash
+    ).nonce,
+    21
+  );
+  assert.equal(
+    recoverDepositSecret(
+      keys,
+      config,
+      payer,
+      20,
+      STAKE_UNIT.toString(),
+      claim.secretHash
+    ).nonce,
+    21
+  );
+  assert.throws(
+    () =>
+      recoverDepositSecret(
+        keys,
+        config,
+        payer,
+        22,
+        (2n * STAKE_UNIT).toString(),
+        claim.secretHash
+      ),
+    /claim secret could not be restored/
+  );
 });

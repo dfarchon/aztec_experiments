@@ -97,3 +97,32 @@ export function deriveDepositSecret(
   );
   return { secret, secretHash: hashDepositSecret(BigInt(secret)) };
 }
+
+// Wallet wrappers/authorizations can change the outer nonce. Accept a candidate
+// only when its cryptographic commitment equals the successful Portal event.
+export function recoverDepositSecret(
+  keys: AccountKeys,
+  config: NotchDeployment,
+  payer: string,
+  nonce: number,
+  amount: string,
+  expectedHash: string
+) {
+  if (
+    !Number.isSafeInteger(nonce) ||
+    nonce < 0 ||
+    nonce >= Number.MAX_SAFE_INTEGER
+  )
+    throw new Error("Invalid deposit recovery nonce");
+  const candidates = [nonce, nonce + 1];
+  for (let offset = 1; offset <= 256 && nonce - offset >= 0; offset++)
+    candidates.push(nonce - offset);
+  for (const candidate of candidates) {
+    const claim = deriveDepositSecret(keys, config, payer, candidate, amount);
+    if (claim.secretHash.toLowerCase() === expectedHash.toLowerCase())
+      return { ...claim, nonce: candidate };
+  }
+  throw new Error(
+    "This stake's claim secret could not be restored. Return to the original browser and keep its data. Do not stake again."
+  );
+}

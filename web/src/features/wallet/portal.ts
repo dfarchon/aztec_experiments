@@ -5,6 +5,7 @@ import {
   type JsonRpcProvider,
   keccak256,
   type Log,
+  type TransactionReceipt,
   zeroPadValue,
 } from "ethers";
 
@@ -351,19 +352,26 @@ export async function readDepositHistory(
       "L1 stake history changed or is incomplete. Retry recovery."
     );
   for (const deposit of active) {
-    const transaction = await provider.getTransaction(deposit.l1Tx);
-    const call = transaction && portalInterface.parseTransaction(transaction);
+    const [transaction, receipt] = await Promise.all([
+      provider.getTransaction(deposit.l1Tx),
+      provider.getTransactionReceipt(deposit.l1Tx),
+    ]);
+    if (!transaction || !receipt)
+      throw new Error(
+        "L1 deposit is still syncing. Try again shortly. Do not stake again."
+      );
+    const message = verifiedDepositEvent(receipt, config, payer, deposit);
     if (
-      !transaction ||
-      transaction.from.toLowerCase() !== payer.toLowerCase() ||
-      transaction.to?.toLowerCase() !== config.l1Stake.portal.toLowerCase() ||
-      transaction.value !== BigInt(deposit.amount) ||
-      call?.name !== "deposit" ||
-      String(call.args.secretHash).toLowerCase() !==
-        deposit.secretHash.toLowerCase()
+      message.messageKey.toLowerCase() !== deposit.messageKey.toLowerCase() ||
+      message.leafIndex !== deposit.leafIndex
     )
-      throw new Error("Deposit recovery transaction mismatch");
-    deposit.nonce = transaction.nonce;
+      throw new Error("Deposit recovery message mismatch");
+    // The Portal event identifies the depositor; an outer transaction may be
+    // sent to a wallet executor or submitted by a relayer instead of the payer.
+    deposit.nonce =
+      transaction.from.toLowerCase() === payer.toLowerCase()
+        ? transaction.nonce
+        : await provider.getTransactionCount(payer);
   }
   return active;
 }
@@ -390,24 +398,18 @@ export async function waitForDepositReceipt(
   if (!receipt) return null;
 
   if (receipt.status !== 1) throw new Error("Deposit reverted on L1");
-  const transaction = await provider.getTransaction(job.l1Tx);
-  const call =
-    transaction &&
-    portalInterface.parseTransaction({
-      data: transaction.data,
-      value: transaction.value,
-    });
-  if (
-    !transaction ||
-    transaction.to?.toLowerCase() !== config.l1Stake.portal.toLowerCase() ||
-    transaction.from.toLowerCase() !== payer.toLowerCase() ||
-    transaction.value !== BigInt(job.amount) ||
-    (job.nonce !== undefined && transaction.nonce !== job.nonce) ||
-    call?.name !== "deposit" ||
-    call.args.secretHash !== job.secretHash
-  )
-    throw new Error("Saved deposit does not match the L1 transaction");
+  return verifiedDepositEvent(receipt, config, payer, job);
+}
 
+// A successful event from the verified Portal is authoritative for both direct
+// deposits and EIP-7702/batched wallet calls. Outer value/to/nonce need not match.
+function verifiedDepositEvent(
+  receipt: TransactionReceipt,
+  config: NotchDeployment,
+  payer: string,
+  deposit: { amount: string; secretHash: string }
+) {
+  if (receipt.status !== 1) throw new Error("Deposit reverted on L1");
   const events = receipt.logs
     .filter(
       (log) => log.address.toLowerCase() === config.l1Stake.portal.toLowerCase()
@@ -419,19 +421,20 @@ export async function waitForDepositReceipt(
         return null;
       }
     })
-    .filter((event) => event?.name === "Deposited");
-  const event = events[0];
-  if (
-    events.length !== 1 ||
-    !event ||
-    event.args.depositor.toLowerCase() !== payer.toLowerCase() ||
-    event.args.amount !== BigInt(job.amount) ||
-    event.args.secretHash !== job.secretHash
-  )
-    throw new Error("Deposit receipt mismatch");
+    .filter(
+      (event) =>
+        event?.name === "Deposited" &&
+        event.args.depositor.toLowerCase() === payer.toLowerCase() &&
+        String(event.args.secretHash).toLowerCase() ===
+          deposit.secretHash.toLowerCase()
+    );
+  if (events.length !== 1 || events[0]!.args.amount !== BigInt(deposit.amount))
+    throw new Error(
+      "Deposit receipt does not match the wallet, amount or claim secret"
+    );
   return {
-    messageKey: String(event.args.key),
-    leafIndex: String(event.args.index),
+    messageKey: String(events[0]!.args.key),
+    leafIndex: String(events[0]!.args.index),
   };
 }
 

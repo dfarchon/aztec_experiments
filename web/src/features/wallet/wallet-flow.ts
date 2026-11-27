@@ -38,6 +38,7 @@ import { MAX_STAKE, STAKE_UNIT, validateTopup } from "./stake-policy.ts";
 import { withWalletLock } from "./wallet-lock.ts";
 import {
   deriveDepositSecret,
+  recoverDepositSecret,
   RECOVERY_VERSION,
   signAccountKeys,
 } from "./wallet-recovery.ts";
@@ -486,17 +487,14 @@ export function createWalletFlow(
         assertRecord(record);
       }
       const jobs = deposits.map((deposit) => {
-        const claim = deriveDepositSecret(
+        const claim = recoverDepositSecret(
           keys,
           config,
           payer,
           deposit.nonce,
-          deposit.amount
+          deposit.amount,
+          deposit.secretHash
         );
-        if (claim.secretHash.toLowerCase() !== deposit.secretHash.toLowerCase())
-          throw new Error(
-            "This stake cannot be recovered with this signature. Use the original wallet and deployment. Do not stake again."
-          );
         return {
           ...deposit,
           ...claim,
