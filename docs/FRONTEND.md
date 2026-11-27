@@ -51,6 +51,17 @@ the controller:
 
 - `features/wallet/wallet-flow.ts` is the transaction coordinator.
 - `features/wallet/portal.ts` performs concrete Ethereum portal calls.
+- `features/wallet/l1-reader.ts` owns the app's direct Ethereum read transport.
+  Providers targeting the same endpoint share a serial queue with at least 200ms
+  between request starts. Identical in-flight method/parameter reads share one
+  result, but completed balances and receipts are not cached. Batch requests are
+  disabled. Only allowlisted reads retry rate limits (including HTTP 429 and
+  id-less gateway errors), at most three times with exponential backoff and
+  jitter. Destroyed callers stop receiving results and queued work is skipped
+  when no callers remain. Injected-wallet signatures and transaction submissions
+  do not pass through this queue. Limits are per browser page and endpoint,
+  not an aggregate limit across all website users.
+
 - `features/wallet/aztec.ts` performs concrete Aztec board and PXE-facing calls.
 - `features/wallet/account-storage.ts` owns the durable browser account record.
 - `features/wallet/wallet-recovery.ts` owns versioned signature messages and

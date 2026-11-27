@@ -2,7 +2,7 @@ import {
   BrowserProvider,
   Contract,
   Interface,
-  JsonRpcProvider,
+  type JsonRpcProvider,
   keccak256,
   type Log,
   zeroPadValue,
@@ -16,6 +16,7 @@ import {
 } from "../../app/network.ts";
 import { createPublicNode } from "../feed/public-reader.ts";
 import { type InjectedProvider, waitForWalletApproval } from "./l1.ts";
+import { L1ReadProvider } from "./l1-reader.ts";
 import { MAX_STAKE } from "./stake-policy.ts";
 import type {
   DepositRecord,
@@ -75,9 +76,7 @@ export interface PortalContract {
 }
 
 export function createL1Provider(config: NotchDeployment) {
-  return new JsonRpcProvider(config.l1Stake.rpcUrl, undefined, {
-    cacheTimeout: -1,
-  });
+  return new L1ReadProvider(config.l1Stake.rpcUrl);
 }
 
 // Display-only balance check; paid operations still verify the full portal binding.
