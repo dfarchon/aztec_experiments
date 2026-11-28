@@ -3,6 +3,7 @@ import { type ReactNode, useSyncExternalStore } from "react";
 import { AsciiClouds } from "../appearance/AsciiClouds";
 import { SiteHeader } from "../appearance/SiteHeader";
 import { useTheme } from "../appearance/theme";
+import { SettingsPanel } from "../features/settings/SettingsPanel";
 import { WalletPanel } from "../features/wallet/WalletPanel";
 import { NotificationToasts } from "../ui/NotificationToasts";
 import type { BillboardController } from "./types";
@@ -27,7 +28,9 @@ export function SiteLayout({
       <a href="#main-content" className="skip-link">
         Skip to content
       </a>
-      <SiteHeader>
+      <SiteHeader
+        settings={<SettingsPanel view={view} controller={controller} />}
+      >
         <WalletPanel view={view} controller={controller} />
       </SiteHeader>
       <div className="product-layout">{children}</div>

@@ -17,15 +17,27 @@ export function networkPolicy(env: Environment) {
       }
     : PUBLIC_NETWORKS[env];
 }
-export function validateRpc(url: string, env: Environment) {
-  const parsed = new URL(url);
+export function validateRpc(
+  url: string,
+  env: Environment,
+  allowLoopback = false
+) {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("Enter a valid RPC URL.");
+  }
   const local = ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname);
   if (
     parsed.username ||
     parsed.password ||
-    (env === "local"
-      ? !local || parsed.protocol !== "http:"
-      : local || parsed.protocol !== "https:")
+    parsed.hash ||
+    (allowLoopback && local
+      ? !["http:", "https:"].includes(parsed.protocol)
+      : env === "local"
+        ? !local || parsed.protocol !== "http:"
+        : local || parsed.protocol !== "https:")
   )
     throw new Error(`Invalid ${env} RPC URL`);
 }

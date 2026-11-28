@@ -1,4 +1,5 @@
 const pixelPaths = {
+  settings: "M7 0h6v3h3v3h4v8h-4v3h-3v3H7v-3H4v-3H0V6h4V3h3z M7 7v6h6V7z",
   copy: "M2 2h10v2H4v8H2z M6 6h12v12H6z M8 8v8h8V8z",
   check:
     "M2 9h2v2H2z M4 11h2v2H4z M6 13h2v2H6z M8 11h2v2H8z M10 9h2v2h-2z M12 7h2v2h-2z M14 5h2v2h-2z M16 3h2v2h-2z",
@@ -24,7 +25,7 @@ export function Icon({ name }: { name: keyof typeof pixelPaths }) {
       height="20"
       viewBox="0 0 20 20"
       fill="currentColor"
-      fillRule={name === "copy" ? "evenodd" : undefined}
+      fillRule={name === "copy" || name === "settings" ? "evenodd" : undefined}
       shapeRendering="crispEdges"
       aria-hidden="true"
     >

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createBillboardController } from "../../../web/src/app/controller.ts";
+import { l1RpcPreferenceKey } from "../../../web/src/features/settings/node-preferences.ts";
 
 const deployment = {
   kind: "notch-stake",
@@ -694,4 +695,52 @@ test("refresh restores a pending withdrawal without automatically requesting L1 
   assert(f.calls.includes("initializeAztec"));
   assert(!f.calls.includes("resumeExit"));
   assert.equal(f.controller.getSnapshot().canPost, false);
+});
+
+test("saved custom RPCs are applied before reads and wallet creation without fallback", async (t) => {
+  const urls = [];
+  let walletConfig;
+  const key = `notch/node/v1/local/${deployment.rollupAddress.toLowerCase()}`;
+  const l1Key = l1RpcPreferenceKey(deployment);
+  const store = new Map([
+    [key, JSON.stringify({ enabled: true, url: "http://localhost:9999" })],
+    [l1Key, JSON.stringify({ enabled: true, url: "http://localhost:8999" })],
+  ]);
+  const f = fixture(t, {
+    storage: {
+      getItem: (key) => store.get(key) ?? null,
+      setItem: (key, value) => store.set(key, value),
+      removeItem: (key) => store.delete(key),
+    },
+    readSdk: () => ({
+      AztecAddress: { fromStringUnsafe: (value) => value },
+      createAztecNodeClient: (url) => {
+        urls.push(url);
+        return {
+          getContract: async () => ({
+            currentContractClassId: deployment.boardClassId,
+          }),
+          getNodeInfo: async () => ({
+            l1ChainId: 31337,
+            nodeVersion: "6.0.0",
+            realProofs: false,
+            rollupVersion: 1,
+            l1ContractAddresses: { rollupAddress: deployment.rollupAddress },
+          }),
+        };
+      },
+    }),
+    createWalletFlow: (config) => {
+      walletConfig = config;
+      return { connect: async () => {}, dispose() {} };
+    },
+  });
+  await f.controller.initialize();
+  await f.controller.connect(selectedProvider);
+  assert.deepEqual(urls, ["http://localhost:9999"]);
+  assert.equal(walletConfig.nodeUrl, "http://localhost:9999");
+  assert.equal(walletConfig.customNode, true);
+  assert.equal(walletConfig.l1Stake.rpcUrl, "http://localhost:8999");
+  assert.equal(walletConfig.customL1Rpc, true);
+  assert.equal(walletConfig.walletL1RpcUrl, deployment.l1Stake.rpcUrl);
 });

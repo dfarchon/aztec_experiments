@@ -3,9 +3,14 @@ import { Link } from "react-router-dom";
 
 import { Icon } from "../ui/Icon";
 import { Brand } from "./Brand";
-import { ThemeToggle } from "./ThemeToggle";
 
-export function SiteHeader({ children }: { children?: ReactNode }) {
+export function SiteHeader({
+  children,
+  settings,
+}: {
+  children?: ReactNode;
+  settings?: ReactNode;
+}) {
   return (
     <header className="site-header">
       <div className="header-inner">
@@ -19,7 +24,7 @@ export function SiteHeader({ children }: { children?: ReactNode }) {
           >
             <Icon name="info" />
           </Link>
-          <ThemeToggle />
+          {settings}
           {children}
         </div>
       </div>

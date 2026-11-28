@@ -12,6 +12,12 @@ import {
   publicReadSDK,
 } from "../features/feed/public-reader.ts";
 import {
+  applyL1RpcPreference,
+  applyNodePreference,
+  readL1RpcPreference,
+  readNodePreference,
+} from "../features/settings/node-preferences.ts";
+import {
   type InjectedProvider,
   listEthereumWallets,
 } from "../features/wallet/l1.ts";
@@ -269,8 +275,21 @@ export function createBillboardController(
         "/df-local.json",
         { cache: "no-store" }
       );
+      deployment = applyNodePreference(
+        deployment,
+        readNodePreference(storage(), deployment)
+      );
+      deployment = applyL1RpcPreference(
+        deployment,
+        readL1RpcPreference(storage(), deployment)
+      );
       const env = environment(deployment.environment);
-      validateRpc(deployment.nodeUrl, env);
+      validateRpc(deployment.nodeUrl, env, deployment.customNode);
+      validateRpc(
+        deployment.l1Stake.rpcUrl,
+        env,
+        deployment.customL1Rpc === true
+      );
       if (env === "local") validateRpc(location.origin, env);
       else if (
         location.protocol !== "https:" &&

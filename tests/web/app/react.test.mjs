@@ -292,11 +292,11 @@ test("Onchain Reality shell keeps the wallet above the board", () => {
   assert.match(html, /class="billboard-app"/);
   assert.match(html, /<canvas class="ascii-clouds" aria-hidden="true">/);
   const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
-  assert.doesNotMatch(header, /Settings/);
+  assert.match(header, /aria-label="Settings"/);
   assert.match(header, /aria-label="About Notch"/);
   assert.match(header, /href="\/about"/);
   assert.match(header, /id="walletMenu"/);
-  assert.match(header, /class="header-control theme-toggle"/);
+  assert.match(header, /class="header-control settings-toggle"/);
   assert.match(
     header,
     /id="walletMenu"[^>]*class="header-control header-action"/

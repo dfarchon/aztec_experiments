@@ -114,8 +114,8 @@ export async function verifyPortal(
   const portalConfig = config.l1Stake;
   if (portalConfig.chainId !== policy.chainId)
     throw new Error("Wrong L1 configuration");
-  for (const url of [config.nodeUrl, portalConfig.rpcUrl])
-    validateRpc(url, env);
+  validateRpc(config.nodeUrl, env, config.customNode === true);
+  validateRpc(portalConfig.rpcUrl, env, config.customL1Rpc === true);
 
   const [info, evmNetwork, code] = await Promise.all([
     createPublicNode(config.nodeUrl).getNodeInfo(),

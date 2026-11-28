@@ -550,7 +550,7 @@ export function createWalletFlow(
           await switchEthereumChain(
             provider,
             `0x${config.l1Stake.chainId.toString(16)}`,
-            config.l1Stake.rpcUrl,
+            config.walletL1RpcUrl || config.l1Stake.rpcUrl,
             config.environment
           );
         payer = accounts[0];

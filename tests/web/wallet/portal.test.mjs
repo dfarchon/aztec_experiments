@@ -93,6 +93,61 @@ test("portal verification requires matching node and portal Inbox addresses", as
   );
 });
 
+test("explicit custom loopback RPCs are accepted on mainnet", async (t) => {
+  t.mock.method(globalThis, "fetch", async (_url, options) => {
+    const request = JSON.parse(options.body);
+    return Response.json({
+      jsonrpc: "2.0",
+      id: request.id,
+      result: {
+        l1ChainId: 1,
+        nodeVersion: "6.0.0",
+        realProofs: true,
+        rollupVersion: 1,
+        l1ContractAddresses: {
+          rollupAddress: rollup,
+          inboxAddress: inbox,
+        },
+      },
+    });
+  });
+  const provider = {
+    getNetwork: async () => ({ chainId: 1n }),
+    getCode: async () => "0x1234",
+    call: async ({ data }) => {
+      const name = iface.parseTransaction({ data }).name;
+      const result = {
+        board,
+        INBOX: inbox,
+        ROLLUP_VERSION: 1n,
+        MAX_STAKE,
+      }[name];
+      return iface.encodeFunctionResult(name, [result]);
+    },
+  };
+  const mainnet = {
+    ...config,
+    environment: "mainnet",
+    nodeUrl: "http://localhost:5180",
+    customNode: true,
+    customL1Rpc: true,
+    l1Stake: {
+      ...config.l1Stake,
+      chainId: 1,
+      rpcUrl: "http://localhost:5954",
+    },
+  };
+  await verifyPortal(provider, mainnet);
+  await assert.rejects(
+    verifyPortal(provider, {
+      ...mainnet,
+      customNode: undefined,
+      customL1Rpc: undefined,
+    }),
+    /Invalid mainnet RPC URL/
+  );
+});
+
 test("a reverted deposit reports the L1 revert before reading transaction data", async () => {
   let reads = 0;
   const provider = {

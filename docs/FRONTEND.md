@@ -313,3 +313,42 @@ nullifier locally and sends only the siloed nullifier to the node. Recovery
 checkpoints persist across refresh/export, and L1/L2 balances must reconcile
 before the flow permits posting or more stake. See the root README for the
 frozen `l1-signature-v1` derivation scheme and account limitations.
+
+## Settings and custom RPC endpoints
+
+The header settings control opens a native modal dialog, integrating appearance
+selection, an optional custom Aztec node, and an optional custom Ethereum L1 RPC.
+Theme changes apply immediately. Each inline Test button validates only its draft
+URL; it never persists or switches transports. Editing the URL or toggling a
+custom endpoint invalidates that endpoint's test result. Apply is enabled only
+after every enabled custom endpoint has passed its exact-URL test; it saves the
+choices and reloads the page. Use defaults stages both default choices without
+saving until Apply is clicked. Contract addresses, account derivation and
+pending-operation records are unchanged.
+
+`features/settings/node-preferences.ts` stores choices by environment and Rollup
+for the Aztec node, and by environment, L1 chain and Portal for the L1 RPC. Both
+choices are stored in localStorage. `controller.ts::loadDeployment` applies the
+choices before creating either the public client or wallet runtime. A failed
+custom endpoint never silently falls back to the site's default. Settings remains
+accessible when the feed cannot load; Use defaults restores both endpoints.
+
+`node-connection.ts` checks node version, chain, Rollup, proof mode, Inbox and board
+class before saving. Public nodes require HTTPS; explicit custom choices may use
+HTTP or HTTPS loopback URLs. Loopback transport does not change the deployment's
+network or proof policy. A self-hosted node must allow browser CORS and any local
+network access requested by the browser. Pending signatures, proving, connection
+and restore work disable node changes, while the theme remains usable.
+
+`l1-connection.ts` checks HTTPS or explicit loopback access, L1 chain ID, latest
+block versus the deployment block, Portal bytecode hash, Portal board and Inbox
+bindings, Rollup version and stake policy. Application reads, receipt checks and
+log recovery use the custom L1 RPC. Injected-wallet signing and transaction
+submission continue to use the wallet's own RPC. If a wallet adds an unknown
+chain, it receives the deployment's default L1 RPC rather than the reader's
+custom endpoint. A custom URL is stored locally and is visible in this browser's
+developer tools; it must not be treated as a server-side secret.
+
+The modal uses native focus trapping, Escape dismissal and focus return. Closing
+cancels connection testing without saving. Applying checks the current operation
+lock again after testing; storage errors leave the existing connection intact.

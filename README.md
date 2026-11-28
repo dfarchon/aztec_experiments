@@ -25,6 +25,10 @@ but the board does not publish an author address with each post.
 L2 fees are currently sponsored, subject to sponsor availability. Ethereum
 staking and withdrawal claims always require L1 gas.
 
+The in-app Settings dialog can test and apply browser-local custom Aztec and
+Ethereum L1 RPC endpoints. Choices remain on that device and never change the
+network, contract addresses, account derivation or pending transaction records.
+
 ## How it works
 
 1. Connect an Ethereum wallet and stake ETH in the Notch portal.

@@ -32,12 +32,15 @@ export function useTheme() {
   );
 }
 
-export function toggleTheme() {
-  const next = current === "dark" ? "light" : "dark";
+export function setTheme(next: Theme) {
   apply(next);
   try {
     localStorage.setItem(key, next);
   } catch {
     // The chosen theme still works for this visit.
   }
+}
+
+export function toggleTheme() {
+  setTheme(current === "dark" ? "light" : "dark");
 }

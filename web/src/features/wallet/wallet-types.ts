@@ -17,6 +17,9 @@ export interface NotchDeployment {
   schemaVersion: 2;
   environment?: Environment;
   nodeUrl: string;
+  customNode?: boolean;
+  customL1Rpc?: boolean;
+  walletL1RpcUrl?: string;
   rollupAddress: string;
   rollupVersion: string | number;
   board: string;
